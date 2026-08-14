@@ -247,6 +247,10 @@ _pending_
 
 This is the first hard evidence for D2 and for `Latency.md` §2, and it came from a real measurement rather than a cited benchmark. Use this number in the README and in Video 2: *"the fastest hosted provider's shortest possible call is 352 ms before our pipeline does anything."*
 
+**HF token.** Read scope, verified against `ai4bharat/MSMARCO-XI`. Optional — the dataset is public and downloaded fine anonymously — so it only buys rate limits and transfer speed. Read is the right scope: a write token in a `.env` could modify our own HF repos and buys nothing.
+
+**`.env` loading.** `config.load_env()` is dependency-free (no python-dotenv) and real environment variables win over the file, because in production the keys arrive as platform secrets and there is no `.env` at all. It also strips stray quotes: `KEY= "value"` would otherwise send the quote as part of the secret and produce a 401 that looks like a bad key rather than a bad file. That exact mistake happened here on first entry.
+
 **Free-tier rate limits observed:** 1,000 requests and 12,000 tokens per window. The token ceiling is the binding one — a full 250-query Band B benchmark at ~1,000 tokens per query needs ~250k tokens and will be throttled hard. **Plan Band B measurement as a smaller sample (say 50 queries) and say so in the methodology**, rather than discovering the throttle mid-benchmark. This also makes the Phase 5 circuit breaker easy to demo honestly: the 429 will be real.
 
 ---

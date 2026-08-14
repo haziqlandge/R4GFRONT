@@ -6,6 +6,7 @@ guardrails/policies.yaml, never inline at a call site.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Final
 
@@ -24,6 +25,48 @@ RESULTS_DIR: Final[Path] = BENCH_DIR / "results"
 SLICE_MANIFEST: Final[Path] = ARTIFACTS_DIR / "slice_manifest.json"
 PASSAGES_PARQUET: Final[Path] = ARTIFACTS_DIR / "passages.parquet"
 QUERIES_PARQUET: Final[Path] = ARTIFACTS_DIR / "queries.parquet"
+
+# --------------------------------------------------------------------------
+# Environment
+# --------------------------------------------------------------------------
+
+ENV_FILE: Final[Path] = REPO_ROOT / ".env"
+
+
+def load_env(path: Path = ENV_FILE, override: bool = False) -> list[str]:
+    """Load .env into os.environ. Returns the names of the keys it set.
+
+    Deliberately dependency-free rather than pulling in python-dotenv: this runs
+    in offline scripts and in service startup, and the parsing needed is trivial.
+
+    Real environment variables win by default (override=False), because in
+    production the keys arrive as platform secrets and there is no .env file at
+    all. Rules.md section 4: keys live only in services/, never in the browser.
+    """
+    if not path.exists():
+        return []
+    loaded: list[str] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        # Tolerate KEY= "value" / KEY='value'; a quote read as part of a secret
+        # produces a 401 that looks like a bad key rather than a bad file.
+        value = value.strip().strip('"').strip("'")
+        if not value:
+            continue
+        if override or key not in os.environ:
+            os.environ[key] = value
+            loaded.append(key)
+    return loaded
+
+
+# HTTP client identity. Groq's edge returns 403 with Cloudflare error code 1010
+# to default urllib/httpx User-Agents; it presents as an auth failure and is not
+# one. Every outbound client sets this.
+USER_AGENT: Final[str] = "ok4t-voice-rag/0.1"
 
 # --------------------------------------------------------------------------
 # Corpus slice. Rules.md section 5: frozen in Phase 1, never silently changed.

@@ -31,7 +31,11 @@ from huggingface_hub import HfApi, hf_hub_download
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "services"))
 
-from rag_core.config import DATASET_REPO, RAW_DIR, SOURCE_FILES  # noqa: E402
+from rag_core.config import DATASET_REPO, RAW_DIR, SOURCE_FILES, load_env  # noqa: E402
+
+# HF_TOKEN is optional - the dataset is public and downloads fine without it.
+# A read token only raises rate limits and speeds up transfers.
+load_env()
 
 # The schema we depend on, verified against the file rather than trusted from the
 # HF README (which is stale on file format and on the language count).
@@ -89,8 +93,11 @@ def main() -> int:
 
     RAW_DIR.mkdir(parents=True, exist_ok=True)
     revision = resolve_revision()
+    import os
+
     print(f"\n  dataset  {DATASET_REPO}")
     print(f"  revision {revision}")
+    print(f"  auth     {'HF_TOKEN' if os.environ.get('HF_TOKEN') else 'anonymous'}")
 
     for remote in SOURCE_FILES:
         print(f"\n  {remote}")
