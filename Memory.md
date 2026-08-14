@@ -233,6 +233,24 @@ _pending_
 
 ---
 
+## Mid-phase log
+
+### 14 Aug 2026 — API keys verified, and Groq's round trip confirms the dual-path thesis
+
+**Sarvam.** `POST /text-lid` returns 200. Correctly identified Devanagari Hindi input as `hi-IN` / `Deva`. Key is live. Note `/text-lid` covers only 11 languages, not all 23 — fine for our en+hi slice, but it is not a general language detector.
+
+**Groq.** `GET /v1/models` returns 200; both `llama-3.3-70b-versatile` and `llama-3.1-8b-instant` are available, 15 models total.
+
+**Gotcha:** Groq's edge returns `403, error code: 1010` — a Cloudflare fingerprint block — to any request with a default `urllib`/`python-requests` User-Agent. It looks exactly like an auth failure and is not one (a bad key returns 401 with a JSON body). **The `httpx.AsyncClient` in `answering/generative.py` must set an explicit User-Agent.** This would otherwise present as a mystery 403 in Phase 5, on the fallback path, under time pressure.
+
+**The number that matters.** A minimal non-streamed completion — 5 max tokens, 44 tokens total — took **352 ms** end to end from this machine. That is the floor: no retrieval, no prompt of any size, no real answer length, and not from a Mumbai container. It is comfortably outside the 200 ms budget on its own.
+
+This is the first hard evidence for D2 and for `Latency.md` §2, and it came from a real measurement rather than a cited benchmark. Use this number in the README and in Video 2: *"the fastest hosted provider's shortest possible call is 352 ms before our pipeline does anything."*
+
+**Free-tier rate limits observed:** 1,000 requests and 12,000 tokens per window. The token ceiling is the binding one — a full 250-query Band B benchmark at ~1,000 tokens per query needs ~250k tokens and will be throttled hard. **Plan Band B measurement as a smaller sample (say 50 queries) and say so in the methodology**, rather than discovering the throttle mid-benchmark. This also makes the Phase 5 circuit breaker easy to demo honestly: the 429 will be real.
+
+---
+
 ## Reversals and corrections
 
 _Log here whenever a prior decision is overturned. Include the original reasoning, what changed, and the new decision. These are the highest-value entries in the file._
@@ -272,7 +290,8 @@ Track these explicitly. An unverified assumption that turns out false late is th
 | A5 | C7 (doc2query / query-aligned) outperforms the other seven strategies on this corpus | Phase 3 | ☐ |
 | A6 | Extractive answers are good enough to be the default path rather than a fallback | Phase 5 | ☐ |
 | A7 | An India-region always-on container is available on the free or cheap tier of the chosen host | Phase 0 | ☐ **still open — human task, blocks nothing yet but invalidates `Architecture.md` §10 if false. Check before Phase 2.** |
-| A8 | Sarvam free credits cover the full build plus demo recording | Phase 4 | ☐ |
+| A8 | Sarvam free credits cover the full build plus demo recording | Phase 4 | ◐ key verified live 14 Aug; remaining credit balance not yet checked |
+| A10 | Groq free-tier limits allow a Band B benchmark of useful size | Phase 5 | ✗ **FALSE as stated** — 12,000 tokens/window caps it. Band B must be a ~50-query sample, stated in the methodology. |
 | A9 | The 200ms budget's 25ms reserve is enough to absorb tail jitter | Phase 5 | ◐ early evidence: a do-nothing stub already shows a 2.7ms P99→P100 gap from scheduler jitter alone |
 
 ---
