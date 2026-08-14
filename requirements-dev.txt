@@ -1,0 +1,14 @@
+# Offline build and measurement dependencies. Python 3.12.
+# NOT the runtime requirements - services/rag_core gets its own pinned set in Phase 2.
+# Rules.md section 3.1: these are "offline only (build scripts, not the hot path)".
+
+huggingface_hub>=0.24
+pyarrow>=17.0
+numpy>=1.26
+pydantic>=2.8
+orjson>=3.10
+
+# Test and type tooling
+pytest>=8.0
+pytest-asyncio>=0.23
+mypy>=1.11

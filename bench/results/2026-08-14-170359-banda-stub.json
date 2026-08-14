@@ -1,0 +1,41 @@
+{
+  "label": "stub",
+  "band": "A",
+  "generated_at": "2026-08-14T17:03:59.890435+00:00",
+  "git_sha": "uncommitted",
+  "environment": {
+    "python": "3.12.5",
+    "platform": "Windows-10-10.0.19045-SP0",
+    "processor": "Intel64 Family 6 Model 151 Stepping 2, GenuineIntel"
+  },
+  "methodology": {
+    "warmup_discarded": 30,
+    "samples": 250,
+    "concurrency": 1,
+    "percentile_method": "nearest",
+    "clock": "time.perf_counter_ns"
+  },
+  "budget_ms": 200.0,
+  "summary_ms": {
+    "p50": 72.552,
+    "p70": 72.568,
+    "p90": 72.592,
+    "p99": 72.663,
+    "p100": 75.302,
+    "mean": 72.572,
+    "stddev": 0.175,
+    "min": 72.533
+  },
+  "stage_median_ms": {
+    "input_guard": 5.502,
+    "embed_query": 10.002,
+    "dense_search": 5.002,
+    "lexical_search": 3.002,
+    "fuse": 0.502,
+    "rerank": 32.002,
+    "route": 0.504,
+    "answer_extractive": 4.002,
+    "output_guard": 10.002,
+    "serialize": 2.002
+  }
+}
