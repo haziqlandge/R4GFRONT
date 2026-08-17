@@ -253,6 +253,43 @@ This is the first hard evidence for D2 and for `Latency.md` §2, and it came fro
 
 **Free-tier rate limits observed:** 1,000 requests and 12,000 tokens per window. The token ceiling is the binding one — a full 250-query Band B benchmark at ~1,000 tokens per query needs ~250k tokens and will be throttled hard. **Plan Band B measurement as a smaller sample (say 50 queries) and say so in the methodology**, rather than discovering the throttle mid-benchmark. This also makes the Phase 5 circuit breaker easy to demo honestly: the 429 will be real.
 
+### 15 Aug 2026 — A7 resolved: Oracle Cloud Hyderabad, not Render
+
+Surveyed hosts against the three constraints in `Architecture.md` §10: India region, always-on, enough RAM.
+
+| Host | Free? | India region | Always-on | RAM / CPU |
+|---|---|---|---|---|
+| **Oracle Cloud, Ampere A1** | **$0 forever** | **Mumbai + Hyderabad** | **yes, real VM** | **12 GB / 2 OCPU** |
+| HF Spaces, CPU Basic | $0 | no, US only | sleeps at 48h idle | 16 GB / 2 vCPU |
+| Render Standard | $25/mo | no, Singapore | yes | 2 GB / 1 CPU |
+| Fly.io | ~$5-6/mo | Mumbai | yes | 2 GB |
+| Koyeb free | $0 | no | yes | 256 MB, unusable |
+
+**Render is out as the target.** No India region at all — nearest is Singapore. Worse, its free *and* Starter tiers are both 512 MB, and the service needs ~1.2 GB:
+
+| Component | RAM |
+|---|---|
+| Dense vectors, 295,890 × 384 × 4 B | 454 MB |
+| HNSW graph, M=32 | 77 MB |
+| ONNX embedder + reranker, int8 | 175 MB |
+| BM25 index + passage text | 250 MB |
+| Python + FastAPI + numpy | 200 MB |
+| **one strategy, total** | **~1.16 GB** |
+
+512 MB OOMs on the vectors alone. Render's floor for this workload is Standard at $25/mo, in the wrong region.
+
+**Decision: Oracle Cloud Always Free, Ampere A1, 2 OCPU / 12 GB, home region Hyderabad.** Zero cost, correct country, no cold start, and 12 GB leaves room to keep several chunking indexes resident — which is what F13's live strategy toggle needs. Hyderabad over Mumbai because Mumbai is heavily contended for A1 capacity.
+
+**Reversal condition:** A1 capacity never materialises in either India region. Fall back to Fly.io Mumbai at ~$5-6/mo, which satisfies the same constraints for money.
+
+**Render stays as an interim smoke-test target only** — proving wiring, CORS, health checks and the WS relay on a deliberately reduced corpus. Any number measured there is throwaway: Singapore-x86 will not survive the move to Hyderabad-ARM, and `Latency.md` §6 requires benchmarks against the real deployed service. **Nothing measured on Render goes in the README.**
+
+**This raises a new risk: A1 is ARM (aarch64), not x86.** `onnxruntime`, `hnswlib` and `bm25s` all support aarch64, but int8 inference uses different kernels there. Assumption A1 — the one the entire 200 ms budget rests on — must be re-verified on the actual box, early. Logged as A11.
+
+**Two gotchas recorded so nobody loses an evening:**
+- Oracle's **home region is permanent** and set at signup. Choosing wrong means a whole new account.
+- **Two firewalls.** Opening a port in the OCI security list is not enough; Oracle's Ubuntu images ship with `iptables` blocking everything except 22. Both must be opened. This is the single most common "my instance is unreachable" cause.
+
 ---
 
 ## Reversals and corrections
@@ -293,7 +330,8 @@ Track these explicitly. An unverified assumption that turns out false late is th
 | A4 | The frozen slice fits in the container RAM budget with all eight indexes loaded | Phase 3 | ☐ — input is now known: 295,890 passages, 147,945 per language |
 | A5 | C7 (doc2query / query-aligned) outperforms the other seven strategies on this corpus | Phase 3 | ☐ |
 | A6 | Extractive answers are good enough to be the default path rather than a fallback | Phase 5 | ☐ |
-| A7 | An India-region always-on container is available on the free or cheap tier of the chosen host | Phase 0 | ☐ **still open — human task, blocks nothing yet but invalidates `Architecture.md` §10 if false. Check before Phase 2.** |
+| A7 | An India-region always-on container is available on the free or cheap tier of the chosen host | Phase 0 | ✓ **TRUE** — Oracle Cloud Always Free, Ampere A1, 2 OCPU / 12 GB, Hyderabad, $0. See the 15 Aug mid-phase entry. |
+| A11 | ONNX int8 inference on ARM (Ampere A1) hits the same latency as x86 | Phase 2 | ☐ **new and load-bearing.** A1 is aarch64; int8 uses different kernels. Re-verify A1 and A2 on the actual box, early. |
 | A8 | Sarvam free credits cover the full build plus demo recording | Phase 4 | ◐ key verified live 14 Aug; remaining credit balance not yet checked |
 | A10 | Groq free-tier limits allow a Band B benchmark of useful size | Phase 5 | ✗ **FALSE as stated** — 12,000 tokens/window caps it. Band B must be a ~50-query sample, stated in the methodology. |
 | A9 | The 200ms budget's 25ms reserve is enough to absorb tail jitter | Phase 5 | ◐ early evidence: a do-nothing stub already shows a 2.7ms P99→P100 gap from scheduler jitter alone |

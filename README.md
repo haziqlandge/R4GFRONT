@@ -82,6 +82,10 @@ Every run writes a dated, immutable JSON to `bench/results/`. Results are never 
 | `scripts/` | Offline: download, freeze, index build, ONNX export, benchmarks, evals |
 | `bench/` | Frozen query sets and dated results |
 
+## Joining the project
+
+New to this repo? Read [`HANDOFF.md`](HANDOFF.md) — local setup, which keys you need, the traps already paid for, and what a human still has to do by hand.
+
 ## Planning documents
 
 [`Project.md`](Project.md) scope and success criteria · [`Architecture.md`](Architecture.md) the design · [`Rules.md`](Rules.md) hard constraints · [`Phases.md`](Phases.md) the schedule · [`Latency.md`](Latency.md) the budget · [`Design.md`](Design.md) the interface system · [`Submission.md`](Submission.md) deliverables · [`Memory.md`](Memory.md) decisions, reversals and what they cost
