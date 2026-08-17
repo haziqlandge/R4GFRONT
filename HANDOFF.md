@@ -95,7 +95,7 @@ Code cannot close these. They are tracked here because forgetting them is how th
 
 | # | Task | Owner | Status | Blocks |
 |---|---|---|---|---|
-| H1 | Oracle Cloud account, **home region Hyderabad**, A1 instance | | ☐ in progress | Phase 7 deploy |
+| H1 | GCP project + VM in `asia-south1`, **and a budget alert** | | ☐ in progress | Phase 7 deploy |
 | H2 | Sarvam account + key | | ✓ done | Phase 4 |
 | H3 | Groq account + key | | ✓ done | Phase 5 |
 | H4 | Vercel account for the frontend | | ☐ | Phase 7 |
@@ -108,12 +108,15 @@ Code cannot close these. They are tracked here because forgetting them is how th
 
 **H6 and H7 are mandatory, per-member, and across three platforms.** Teams lose on this, not on engineering.
 
-### Oracle setup, since H1 is in flight
+### GCP setup, since H1 is in flight
 
-- **Home region is permanent and set at signup.** Hyderabad (`ap-hyderabad-1`), not Mumbai — Mumbai is heavily contended for A1 capacity. Choosing wrong means a new account.
-- Shape `VM.Standard.A1.Flex`, **2 OCPU / 12 GB**, Ubuntu 22.04 aarch64, public subnet, assign public IPv4, and **save the private key** — it is unrecoverable afterwards.
-- `Out of host capacity` is expected, not a failure. Retry across availability domains and off-peak. If it persists, switch the account to Pay-As-You-Go — Always-Free shapes still cost $0 but you stop being deprioritised.
-- **Two firewalls.** Opening a port in the OCI security list is not enough; Oracle's Ubuntu images ship with `iptables` blocking everything but 22. Open it in both, then `sudo netfilter-persistent save`.
+Full procedure in `deploy/gcp.md`. The parts that are easy to get wrong:
+
+- **Region `asia-south1` (Mumbai)**, `n2-standard-2`, Ubuntu 22.04, always on. **Not `e2`** — `e2` is burstable and burst throttling wrecks P100, which is the number that fails.
+- **Not Cloud Run.** A ~1.2 GB warm index cannot survive cold starts.
+- **Set a budget alert immediately** ($50 / $150 / $250). If the $300 drains, every resource stops and Compute Engine data is marked for deletion with a 30-day grace period. Losing the live URL during the September selection rounds would be an unforced submission failure.
+- Reserve a **static IP before** creating the VM, so the URL never moves.
+- The trial ends at $300 **or** 90 days, whichever comes first — roughly 13 November from a 15 August signup. You are not charged unless you manually upgrade.
 
 ---
 

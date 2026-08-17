@@ -405,7 +405,7 @@ Abstention is never silent. It returns a typed reason (`OFF_TOPIC`, `LOW_CONFIDE
 | Audio | Web Audio API + AudioWorklet | Only reliable way to get 16kHz PCM16 in-browser |
 | Frontend host | Vercel, `bom1` / India region | Team has an account; edge close to judges |
 | Backend | Python 3.11, FastAPI, uvicorn | Ecosystem for ONNX, hnswlib, bm25s |
-| Backend host | Fly.io or Render, **India region, always-on container** | Serverless cold starts are fatal to P100 |
+| Backend host | **GCP Compute Engine `n2-standard-2`, `asia-south1` (Mumbai), always-on** | Serverless cold starts are fatal to P100; `e2` burst throttling is fatal to it too |
 | STT | Sarvam `saaras:v3-realtime` | Requirement 1; Indic-native; partial transcripts |
 | Embeddings | `intfloat/multilingual-e5-small`, ONNX int8 | Multilingual, small, fast, local |
 | Dense index | `hnswlib`, in-process | No network hop |
@@ -471,13 +471,16 @@ Client sends binary PCM16 16kHz mono frames. Server sends:
 ## 10. Deployment topology
 
 ```
-Vercel (bom1)  ──────►  Fly.io / Render (Mumbai, always-on, 2 vCPU, 4 GB)
-   Next.js                 ├─ stt_gateway  (thin, async, low CPU)
+Vercel (bom1)  ──────►  GCP Compute Engine (asia-south1 Mumbai, always-on)
+   Next.js                 n2-standard-2, 2 vCPU, 8 GB, x86
+                           ├─ stt_gateway  (thin, async, low CPU)
                            └─ rag_core     (warm indexes in RAM)
                                   │
                                   └──────► Groq API (fallback path only)
                                   └──────► Sarvam API (via gateway)
 ```
+
+Host decided 15 Aug 2026. Full setup in `deploy/gcp.md`; the reasoning, including what was rejected, is reversal R3 in `Memory.md`. Short version: Mumbai region, **x86** (which retires the ARM risk an Oracle Ampere box would have carried), a VM rather than Cloud Run because a ~1.2 GB warm index cannot survive cold starts, and `n2` rather than `e2` because `e2` is burstable and burst throttling destroys P100.
 
 Constraints:
 - `rag_core` must be a long-running process, never serverless. Index load takes seconds; paying that per request destroys P100.

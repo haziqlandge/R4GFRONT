@@ -296,6 +296,32 @@ Surveyed hosts against the three constraints in `Architecture.md` §10: India re
 
 _Log here whenever a prior decision is overturned. Include the original reasoning, what changed, and the new decision. These are the highest-value entries in the file._
 
+### R3: Google Cloud Mumbai, not Oracle Cloud Hyderabad
+**Date:** 15 Aug 2026 | **Overturns:** the A7 resolution taken earlier the same day
+
+**Original reasoning.** Oracle Cloud Always Free gave 2 OCPU / 12 GB in an India region at $0 forever, which beat Render's $25/mo Singapore floor on every axis. The accepted costs were ARM (aarch64), the "out of host capacity" lottery, and self-managing a bare VM.
+
+**What changed.** A Google Cloud account with $300 / 90-day trial credits became available. That reprices the comparison entirely.
+
+**New decision.** Compute Engine VM, `n2-standard-2` (2 vCPU / 8 GB), **`asia-south1` (Mumbai)**, always on. Notes in `deploy/gcp.md`.
+
+**Why this is better, not merely different:**
+
+1. **It is x86.** This retires assumption **A11** without an experiment. ONNX int8 on aarch64 uses different kernels, and A11 sat directly on top of A1 and A2 — the assumptions the entire 200 ms budget rests on. Removing an untested variable from the critical path six days before the deadline is worth more than the money saved.
+2. **Mumbai, not Hyderabad.** Marginally closer to most judges, and a first-class region rather than a capacity lottery.
+3. **No provisioning gamble.** Oracle's A1 "out of host capacity" could have burned an evening or a week, with no way to predict which.
+
+**Costs accepted:**
+
+- **It is not free after the runway ends.** ~$70/mo means the $300 lasts about four months, to roughly mid-December. The live URL must survive the HH Goa selection rounds through mid-September, so this is comfortable — but it is a runway, not a permanent home.
+- **Trial ends at $300 or 90 days, whichever first**, and then *all resources stop* with data marked for deletion and a 30-day grace period. A budget alert is mandatory, not optional.
+
+**Explicitly rejected: Cloud Run.** It is the obvious GCP answer for FastAPI and the wrong one. `rag_core` holds ~1.2 GB of warm index and takes seconds to load; Cloud Run pays that per cold start, which `Rules.md` §3.2 bans. Pinning `--min-instances=1` does keep it warm, but then you pay VM prices for something you cannot SSH into, `mmap` predictably, or profile. For a project about per-millisecond control, that trade is backwards.
+
+**Also rejected: `e2` machine types**, despite being cheaper. The `e2` family is burstable — sustained CPU throttles toward a baseline once credits run out. Invisible at P50, brutal at P100, and P100 is the number that fails. `Latency.md` §4 reserves 25 ms for jitter and a throttling vCPU eats all of it.
+
+**Reversal condition:** credits drain faster than projected, or the frontend/judging window extends past the runway. Fall back to Oracle Always Free, which stays $0 — at the cost of re-verifying A11 on ARM.
+
 ### R1: C5 metadata-aware chunking redefined; the `url` field does not exist
 **Date:** 14 Aug 2026 | **Overturns:** `Architecture.md` §4 as originally written
 
@@ -330,8 +356,9 @@ Track these explicitly. An unverified assumption that turns out false late is th
 | A4 | The frozen slice fits in the container RAM budget with all eight indexes loaded | Phase 3 | ☐ — input is now known: 295,890 passages, 147,945 per language |
 | A5 | C7 (doc2query / query-aligned) outperforms the other seven strategies on this corpus | Phase 3 | ☐ |
 | A6 | Extractive answers are good enough to be the default path rather than a fallback | Phase 5 | ☐ |
-| A7 | An India-region always-on container is available on the free or cheap tier of the chosen host | Phase 0 | ✓ **TRUE** — Oracle Cloud Always Free, Ampere A1, 2 OCPU / 12 GB, Hyderabad, $0. See the 15 Aug mid-phase entry. |
-| A11 | ONNX int8 inference on ARM (Ampere A1) hits the same latency as x86 | Phase 2 | ☐ **new and load-bearing.** A1 is aarch64; int8 uses different kernels. Re-verify A1 and A2 on the actual box, early. |
+| A7 | An India-region always-on container is available on the free or cheap tier of the chosen host | Phase 0 | ✓ **TRUE** — GCP Compute Engine `n2-standard-2`, `asia-south1` (Mumbai), on $300 trial credits. See reversal R3. |
+| A11 | ONNX int8 inference on ARM (Ampere A1) hits the same latency as x86 | Phase 2 | ~~open~~ **MOOT.** Retired by R3: GCP is x86, so the question no longer arises. |
+| A12 | $300 of GCP credit outlasts the judging window | Phase 7 | ◐ ~$70/mo projects to ~4 months (mid-Dec) against a mid-Sept judging need. Budget alert required. |
 | A8 | Sarvam free credits cover the full build plus demo recording | Phase 4 | ◐ key verified live 14 Aug; remaining credit balance not yet checked |
 | A10 | Groq free-tier limits allow a Band B benchmark of useful size | Phase 5 | ✗ **FALSE as stated** — 12,000 tokens/window caps it. Band B must be a ~50-query sample, stated in the methodology. |
 | A9 | The 200ms budget's 25ms reserve is enough to absorb tail jitter | Phase 5 | ◐ early evidence: a do-nothing stub already shows a 2.7ms P99→P100 gap from scheduler jitter alone |
