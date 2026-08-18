@@ -1,0 +1,63 @@
+{
+  "job": "J12",
+  "strategy": "c1",
+  "rrf_k": 60,
+  "dense_top_k": 50,
+  "lexical_top_k": 50,
+  "k": 10,
+  "queries": 250,
+  "methodology": "top-K chunks mapped to passage ids, no dedup; matches 05_eval_retrieval.py",
+  "results": {
+    "en": {
+      "dense": {
+        "recall@10": 0.896,
+        "mrr@10": 0.5181333333333332,
+        "hit@1": 0.34,
+        "recall@20": 0.936,
+        "recall@50": 0.96
+      },
+      "bm25": {
+        "recall@10": 0.628,
+        "mrr@10": 0.3374015873015875,
+        "hit@1": 0.208,
+        "recall@20": 0.716,
+        "recall@50": 0.8
+      },
+      "fused": {
+        "recall@10": 0.836,
+        "mrr@10": 0.45462698412698405,
+        "hit@1": 0.3,
+        "recall@20": 0.936,
+        "recall@50": 0.98
+      }
+    },
+    "hi": {
+      "dense": {
+        "recall@10": 0.696,
+        "mrr@10": 0.3824015873015872,
+        "hit@1": 0.252,
+        "recall@20": 0.748,
+        "recall@50": 0.824
+      },
+      "bm25": {
+        "recall@10": 0.424,
+        "mrr@10": 0.1978619047619048,
+        "hit@1": 0.112,
+        "recall@20": 0.492,
+        "recall@50": 0.572
+      },
+      "fused": {
+        "recall@10": 0.608,
+        "mrr@10": 0.3108603174603175,
+        "hit@1": 0.192,
+        "recall@20": 0.736,
+        "recall@50": 0.832
+      }
+    }
+  },
+  "recall_gap_en_minus_hi": {
+    "dense": 0.20000000000000007,
+    "bm25": 0.20400000000000001,
+    "fused": 0.22799999999999998
+  }
+}

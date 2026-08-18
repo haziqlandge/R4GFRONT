@@ -31,8 +31,9 @@ Severity is about the submission, not about engineering neatness:
 | I14 | The 5070 Ti is the only unproven part of the toolchain | **P1** | Phase 3 (J5) |
 | I15 | Amends I7 — the Groq cap also rules out offline use | **P1** | Phase 3 (J6) |
 | I16 | `tests/test_lexical.py` pushed before J11 exists — collection fails | **RESOLVED** | — |
-| I17 | BM25 alone *widens* the en/hi gap to 0.204 | **P1** | Phase 3 (J12) |
+| I17 | ~~BM25 widens the en/hi gap~~ — **corrected**: the gap is flat across retrievers | **P2** | Phase 5 |
 | I18 | Lexical P99 breaches its 12 ms stage timeout on English | **P2** | Phase 3 (J12) / Phase 5 |
+| I19 | RRF fusion does not earn its place at the reranker's depth | **P1** | Phase 3 (J16) / Phase 5 |
 
 ---
 
@@ -417,39 +418,58 @@ something to know before running a bare `pytest` and assuming the box is broken.
 
 ---
 
-## I17 — BM25 alone widens the en/hi gap rather than closing it
+## I17 — CORRECTED: BM25 does not widen the en/hi gap; the gap is flat
 
-**Severity: P1.** `Phase3-Parallel.md` J11 named this as the outcome to watch for,
-and it is what happened. Measured on the frozen 250, BM25 alone, chunk hits
-resolved to passage ids:
+**Severity: P2, downgraded from P1. The original claim was my own measurement
+error and is retracted below.**
 
-| | Recall@10 | MRR@10 | Hit@1 |
+### What I first reported, and why it was wrong
+
+J11 initially reported BM25 at en Recall@10 0.636 / hi 0.432, called the 0.204
+gap "wider than dense C1's 0.188", and escalated it to P1 as the outcome J11's
+brief warned to watch for.
+
+**The two numbers were measured with different rulers.** The BM25 figure came
+from a depth-50 search deduplicated to ten distinct passages; the dense 0.870
+came from `05_eval_retrieval.py`, which takes the top-10 **chunks** and maps them
+to passage ids *without* deduplicating, so one passage can occupy several of the
+ten slots. The deduplicating method searches deeper for the same k and scores
+strictly higher. Comparing one against the other is not a comparison.
+
+This is I6's error repeated — a plausible conclusion resting on two different
+baselines — which is exactly why I6 is written down. Caught while building J12's
+harness, by insisting all three retrievers go through one scoring function.
+
+### Measured consistently (`05b_eval_fusion.py`, all three through one function)
+
+| retriever | en R@10 | hi R@10 | gap |
 |---|---|---|---|
-| en | 0.636 | 0.341 | 0.208 |
-| hi | 0.432 | 0.202 | 0.112 |
+| dense | 0.896 | 0.696 | **+0.200** |
+| bm25 | 0.628 | 0.424 | **+0.204** |
+| fused | 0.836 | 0.608 | +0.228 |
 
-**The gap is 0.204 Recall@10, against dense C1's 0.188** (en 0.870 / hi 0.682,
-I5). So the lever chosen as the most plausible fix for I5 is, on its own, *worse*
-for Hindi in relative terms than the dense retrieval it was meant to help.
+**BM25's gap (0.204) is statistically indistinguishable from dense's (0.200).**
+On 250 queries one query is 0.004, so the entire difference is a single query.
+BM25 does not widen the gap; it reproduces it almost exactly while sitting about
+0.27 lower overall.
 
-This is not yet a verdict on the design. BM25's value in this system is as a
-**complementary** signal fused with dense (Architecture.md 3.5), not as a
-standalone retriever, and both languages are well below dense here — BM25 alone
-was never going to win. The open question J12 must answer is whether RRF fusion
-narrows the gap or inherits it. **Fusion is where this is decided, so J12 must
-report Recall@10 per language, not just pooled.**
+### What survives, and what it means
 
-If fusion also widens the gap, then per J11's brief and `Rules.md` 1 the
-multilingual framing in `Project.md` 3 gets restated honestly rather than
-glossed: the system would be one that retrieves well in English and acceptably
-in Hindi, which is a true and still-interesting claim.
+The retracted claim was that BM25 is differentially bad for Hindi. It is not — it
+is uniformly worse than dense in both languages, and the **en/hi gap is a
+property of the corpus, not of the retriever**. Two independent retrieval methods
+with completely different failure modes reproducing the same 0.20 gap is much
+stronger evidence for I5's original reading: the Hindi side is machine-translated
+and simply carries less recoverable signal. No retriever change is going to fix
+that, which redirects I5's remaining hope to the reranker and to Phase 5.
 
-Plausible cause, not yet tested: the corpus is machine-translated, so Hindi
-passages are lexically less consistent with Hindi queries than the English
-originals are with English queries — synonym choice drifts per sentence in MT
-output, and BM25 has no synonym tolerance at all where dense embeddings do.
-That predicts BM25 should underperform *specifically* on translated text, which
-is testable against the `is_selected_any` English originals.
+Also worth noting: dense measures 0.896 here against the published 0.870, because
+retrieving 50 with `ef_search=64` and truncating to 10 beats retrieving 10
+directly. That is a real if minor free win and belongs to J15's remit.
+
+The MT-drift hypothesis stands and is still untested: BM25 has no synonym
+tolerance where dense embeddings do, so it should underperform *specifically* on
+translated text. Testable against the `is_selected_any` English originals.
 
 ---
 
@@ -512,6 +532,85 @@ the Hindi slowest eight**. 1,025 tokens of one repeated phrase is only a handful
 of *distinct* terms, and BM25 scans posting lists per distinct term. The guard
 that rescues the dense path is simply not needed for this one, which is a point
 in favour of the guard being a dense-stage concern rather than a global one.
+
+---
+
+## I19 — RRF fusion does not earn its place at the reranker's depth
+
+**Severity: P1.** It is a live architectural question, not a bug: `fusion.py`
+works, is tested, and was verified correct before this was written.
+
+### The measurement
+
+`05b_eval_fusion.py`, frozen 250, one scoring function for all three retrievers:
+
+| depth | dense en | fused en | dense hi | fused hi |
+|---|---|---|---|---|
+| @10 | 0.896 | **0.836** | 0.696 | **0.608** |
+| **@20** | 0.936 | **0.936** | 0.748 | **0.736** |
+| @50 | 0.960 | **0.980** | 0.824 | **0.832** |
+
+Read the rows in order and the shape is unmistakable. Fusion is **much worse at
+10, exactly level at 20, and better at 50.**
+
+### Why Recall@10 is the wrong number to judge it on
+
+Fusion is not the final ranker. The cross-encoder reranks **exactly 20**
+candidates (`Architecture.md` 3.6) and produces the order the user sees. So the
+only thing fusion owes the system is that gold is *inside* the top 20 — the
+reranker can fix order, but it cannot recover a document that never arrived.
+
+At that depth fusion delivers **+0.000 en and −0.012 hi**. It costs a 10 ms
+stage (I18, which does not currently fit its own timeout) and buys nothing.
+
+### It is not an implementation bug — that was checked first
+
+Falsification, all 250 English queries: fusing with `weights=[1.0, 0.0]`
+reproduces dense's top-10 **exactly, 250/250**. The negative result is real.
+
+The diagnosis is sharp. Fusion promotes **916** rows into the top-10 that dense's
+top-10 did not contain, and **13 of them (1.4%) are gold**. Mean overlap between
+the two top-50 lists is only 12.9 of 50, so the retrievers disagree about most of
+what they return, and unweighted RRF treats both sides of every disagreement as
+equally credible. Since BM25 is ~0.27 Recall@10 weaker, that trade loses.
+
+**This is RRF behaving exactly as designed, on inputs it was not designed for.**
+RRF assumes retrievers of broadly comparable quality; `1/(k+rank)` gives BM25's
+rank-1 the same weight as dense's rank-1. Nothing about the constant k=60 is
+wrong — Architecture.md 3.5's reasoning for choosing rank-based fusion over score
+normalisation still holds, and I3 is still why scores cannot be added.
+
+### The real tension this exposes
+
+Fusion's only genuine contribution (+0.020 en, +0.008 hi) lands at **depth 50**,
+and `Architecture.md` 3.6 already rejected reranking 50: *"doubles the cost for a
+marginal gain"*. So the design contains a stage whose benefit appears only at a
+depth another stage was explicitly tuned not to read.
+
+Three ways out, for J16 to settle — **not a J12 decision**:
+
+1. **Drop fusion from the default path.** Reclaims 10 ms of a 200 ms budget and
+   removes I18 entirely. The code stays; it costs nothing to keep and Phase 5 may
+   revive it.
+2. **Rerank deeper than 20.** Revisits a tuned number with a measured reason,
+   which is legitimate, but spends 25–45 ms to buy ~0.02 recall.
+3. **Calibrate RRF weights.** `reciprocal_rank_fusion` already takes `weights`
+   for this. Down-weighting lexical should recover most of the @10 loss while
+   keeping the @50 gain. **This must happen on the dev partition, never on the
+   frozen 250** (`Rules.md` 5) — fitting weights against the bench set would make
+   every fused number in the comparison table self-congratulatory.
+
+**Recommendation: option 1 for Phase 3's table, option 3 in Phase 5** once the
+reranker exists and there is something to calibrate against. Fusion's value
+genuinely cannot be judged before the reranker is real, because its entire case
+rests on candidate-set quality rather than on final order.
+
+### Report it either way
+
+Per `Rules.md` 1 this goes in the README as a finding, not omitted as a dead end.
+"We built hybrid retrieval, measured it against dense alone at the depth our
+architecture actually consumes, and found it did not pay for itself" is a
+stronger result than a fusion row quietly left out of the table.
 
 ---
 

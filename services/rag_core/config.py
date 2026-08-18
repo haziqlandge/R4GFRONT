@@ -131,6 +131,20 @@ LEXICAL_TOP_K: Final[int] = 50  # matches DENSE_TOP_K; RRF fuses equal-depth lis
 # its own - the two are only meaningful together. See lexical.py.
 LEXICAL_DIRNAME: Final[str] = "bm25"
 
+# --------------------------------------------------------------------------
+# Fusion. Architecture.md 3.5.
+# --------------------------------------------------------------------------
+
+# Cormack et al.'s original constant, and the standard default. It damps the
+# influence of the top ranks: with k=60 the gap between rank 1 and rank 2 is
+# small, so a single retriever cannot dominate the fused order on confidence
+# alone. Lowering it makes fusion behave more like "trust whoever ranked it
+# first". Not tuned here - tuning it against the bench slice would fit the
+# published number to the test set (Rules.md 5).
+RRF_K: Final[int] = 60
+
+FUSED_TOP_K: Final[int] = 50  # what fusion hands to the reranker in Phase 5
+
 # Rules.md 2.2: set explicitly, never left to the ONNX Runtime default.
 #
 # BUILD = 8. Measured on an i5-12400F (6 physical / 12 logical) against real C1
