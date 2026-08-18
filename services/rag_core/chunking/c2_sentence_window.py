@@ -40,25 +40,100 @@ reproducible. Put every tunable in it.
 
 from __future__ import annotations
 
+import re
 from typing import Iterable
 
 from ..retrieval.embedder import Embedder
 from .base import Chunk, PassageRecord
 
+WINDOW_NEIGHBOURS = 2
+MAX_PASSAGE_TOKENS = 384
+
+# Devanagari danda and double danda. A period-based splitter leaves an entire
+# Hindi passage as one "sentence", which is the silent-quality failure
+# Architecture.md 3.4 warns about.
+_DANDA = "।॥"
+_INDIC_SPLIT = re.compile(f"[{_DANDA}]+")
+_LATIN_SPLIT = re.compile(r"(?<=[.!?])\s+")
+
+
+def split_sentences(text: str, language: str) -> list[str]:
+    """Sentence split, script-aware.
+
+    indic-nlp-library is the documented tool for this and is on the allowlist,
+    but its trivial_tokenize emits the danda as a separate token rather than
+    giving sentence spans - so for segmentation the danda regex is both simpler
+    and exactly what the library would key on. Latin text keeps the standard
+    terminal-punctuation rule.
+    """
+    parts = (_INDIC_SPLIT if language == "hi" else _LATIN_SPLIT).split(text)
+    return [s.strip() for s in parts if s and s.strip()]
+
 
 class SentenceWindowChunker:
-    """Not implemented. See the module docstring for the job and the traps."""
+    """One sentence per chunk; neighbours attached at retrieval, not at build.
+
+    The window is deliberately NOT materialised into the indexed text. Indexing
+    sentence+neighbours would embed each sentence up to three times and defeat
+    the precision the strategy is after - the point is a tight vector and a wide
+    returned context.
+    """
 
     name = "c2"
 
-    def __init__(self, embedder: Embedder, **kwargs: object) -> None:
-        raise NotImplementedError(
-            "c2 is job J2 on EMBED. See the docstring in this file and "
-            "Phase3-Parallel.md section 2."
-        )
+    def __init__(
+        self,
+        embedder: Embedder,
+        window: int = WINDOW_NEIGHBOURS,
+        max_tokens: int = MAX_PASSAGE_TOKENS,
+        **kwargs: object,
+    ) -> None:
+        self.embedder = embedder
+        self.window = window
+        self.max_tokens = max_tokens
+        self.truncated_count = 0
 
     def params(self) -> dict[str, object]:
-        raise NotImplementedError
+        return {
+            "strategy": self.name,
+            "window_neighbours": self.window,
+            "max_passage_tokens": self.max_tokens,
+            "unit": "sub-passage, sentence",
+            "expansion": "at retrieval, not at build",
+        }
 
     def chunk(self, passages: Iterable[PassageRecord]) -> list[Chunk]:
-        raise NotImplementedError
+        out: list[Chunk] = []
+        for p in passages:
+            out.extend(self.chunk_one(p))
+        return out
+
+    def chunk_one(self, passage: PassageRecord) -> list[Chunk]:
+        text: str = passage["text"] or ""
+        if not text.strip():
+            return []
+
+        enc = self.embedder.tokenizer.encode(text, add_special_tokens=False)
+        truncated = len(enc.ids) > self.max_tokens
+        if truncated:
+            self.truncated_count += 1
+            text = text[: enc.offsets[self.max_tokens - 1][1]]
+
+        chunks: list[Chunk] = []
+        for i, sentence in enumerate(split_sentences(text, passage["language"])):
+            n_tok = len(self.embedder.tokenizer.encode(sentence, add_special_tokens=False).ids)
+            if n_tok == 0:
+                continue
+            chunks.append(
+                Chunk(
+                    chunk_id=f"{passage['passage_id']}#{len(chunks)}",
+                    text=sentence,
+                    passage_id=passage["passage_id"],
+                    parallel_id=passage["parallel_id"],
+                    language=passage["language"],
+                    ordinal=len(chunks),
+                    token_count=n_tok,
+                    truncated=truncated,
+                )
+            )
+        return chunks

@@ -1,0 +1,73 @@
+{
+  "strategy": "c8",
+  "split": "dev",
+  "k": 10,
+  "index_meta": {
+    "strategy": "c8",
+    "params": {
+      "strategy": "c8",
+      "window_tokens": 96,
+      "overlap_tokens": 24,
+      "max_passage_tokens": 384,
+      "unit": "sub-passage, whole-passage context",
+      "pooling": "mean over span of full-passage last_hidden_state"
+    },
+    "embedder": {
+      "model": "onnx/model_qint8_avx512_vnni.onnx",
+      "sha256": "dd476dd0c2514e9b9be83aeb3853fac0763e0bdf4a71645407587d77c48a2d88",
+      "dim": 384
+    },
+    "hnsw": {
+      "space": "ip",
+      "M": 32,
+      "ef_construction": 200
+    },
+    "counts": {
+      "passages": 295888,
+      "chunks": 379240,
+      "truncated": 262,
+      "degenerate_dropped": 2,
+      "tokens_embedded": 26764579
+    },
+    "build_seconds": {
+      "embed": 3693.3,
+      "index": 67.9
+    },
+    "build_env": {
+      "device_tag": "BENCH",
+      "backend": "onnx-cpu",
+      "threads": 8
+    },
+    "slice_records_sha256": "7f9f7c5978bc2456308669cd071c3ed63d5c774f4b858e9822737b59c5743360"
+  },
+  "results": {
+    "en": {
+      "queries": 500,
+      "recall@10": 0.87,
+      "mrr@10": 0.5206349206349206,
+      "hit@1": 0.366,
+      "by_query_type": {
+        "DESCRIPTION": 0.888,
+        "ENTITY": 0.8,
+        "LOCATION": 1.0,
+        "NUMERIC": 0.844,
+        "PERSON": 1.0
+      },
+      "seconds": 1.5
+    },
+    "hi": {
+      "queries": 500,
+      "recall@10": 0.672,
+      "mrr@10": 0.35384444444444435,
+      "hit@1": 0.23,
+      "by_query_type": {
+        "DESCRIPTION": 0.653,
+        "ENTITY": 0.633,
+        "LOCATION": 0.667,
+        "NUMERIC": 0.698,
+        "PERSON": 0.714
+      },
+      "seconds": 1.7
+    }
+  }
+}

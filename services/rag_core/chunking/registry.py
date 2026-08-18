@@ -29,6 +29,8 @@ from typing import Callable, Final
 
 from .base import Chunker
 from .c1_fixed import FixedChunker
+from .c2_sentence_window import SentenceWindowChunker
+from .c8_late import LateChunker
 from .c5_metadata import MetadataChunker
 from .c6_hierarchical import HierarchicalChunker
 from .c7_doc2query import Doc2QueryChunker
@@ -81,11 +83,7 @@ _FILENAMES: Final[dict[str, str]] = {
 # name -> factory. Every value is callable as factory(embedder, **kwargs).
 STRATEGIES: Final[dict[str, Callable[..., Chunker]]] = {
     "c1": FixedChunker,
-    "c2": _Pending(
-        "c2", "J2", "EMBED",
-        "sentence-window: embed single sentences, expand to n=2 neighbours at "
-        "retrieval. Writes artifacts/sentences.parquet, which J3 consumes.",
-    ),
+    "c2": SentenceWindowChunker,
     "c3": _Pending(
         "c3", "J3", "EMBED",
         "semantic breakpoint at the 92nd percentile of consecutive-sentence "
@@ -99,11 +97,7 @@ STRATEGIES: Final[dict[str, Callable[..., Chunker]]] = {
     "c5": MetadataChunker,
     "c6": HierarchicalChunker,
     "c7": Doc2QueryChunker,
-    "c8": _Pending(
-        "c8", "J8", "LLM",
-        "late chunking: encode the full passage, mean-pool per C1 span so each "
-        "chunk vector carries whole-passage context.",
-    ),
+    "c8": LateChunker,
 }
 
 ALL_STRATEGIES: Final[tuple[str, ...]] = tuple(sorted(STRATEGIES))

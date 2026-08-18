@@ -30,6 +30,7 @@ Severity is about the submission, not about engineering neatness:
 | I13 | Build time is no longer comparable across strategies | **P2** | Phase 3 (J15) |
 | I14 | The 5070 Ti is the only unproven part of the toolchain | **P1** | Phase 3 (J5) |
 | I15 | Amends I7 — the Groq cap also rules out offline use | **P1** | Phase 3 (J6) |
+| I21 | Eval results assembled from runs with different query counts | **P1** | Phase 3 (J15) |
 | I16 | `tests/test_lexical.py` pushed before J11 exists — collection fails | **RESOLVED** | — |
 | I17 | ~~BM25 widens the en/hi gap~~ — **corrected**: the gap is flat across retrievers | **P2** | Phase 5 |
 | I18 | Lexical P99 breaches its 12 ms stage timeout on English | **P2** | Phase 3 (J12) / Phase 5 |
@@ -806,6 +807,46 @@ languages.
    headroom is in *ranking*, not retrieval. Chunking cannot reach it; the Phase 5
    cross-encoder is the lever. This is the strongest available argument that
    Phase 5 matters more than any further chunking strategy.
+
+---
+
+## I21 — Eval results were assembled from runs with different query counts
+
+**Severity: P1 for the Phase 3 decision. Found 18 Aug while evaluating C8.**
+
+`05_eval_retrieval.py` defaults to `--limit 500`. The c1/c5/c6/c7 runs were made
+with `--limit 250`; the c8 run used the default. Comparing the stored JSONs
+therefore compared sample sizes, not strategies:
+
+| stored file | queries | en Recall@10 |
+|---|---|---|
+| c1 | 250 | 0.896 |
+| c8 | 500 | 0.870 |
+
+That reads as "C8 is 0.026 worse". Re-run through one code path on the same 500
+queries, **both score 0.870** — the gap was entirely an artifact.
+
+**The real C8 result, from a paired bootstrap on identical queries (4,000
+resamples):**
+
+| | delta (C8 − C1) | 95% CI | |
+|---|---|---|---|
+| en Recall@10 | +0.000 | [−0.024, +0.022] | not significant |
+| en Hit@1 | +0.010 | [−0.016, +0.036] | not significant |
+| **hi Recall@10** | **−0.030** | **[−0.050, −0.010]** | **significant** |
+| hi Hit@1 | +0.004 | [−0.018, +0.028] | not significant |
+
+So late chunking does nothing for English and measurably **hurts** Hindi.
+
+**Fix, and it is structural rather than a re-run.** The Phase 3 comparison table
+must be produced by a single process that evaluates every strategy with identical
+settings in one pass (J15), not assembled from separately-dated JSON files. Dated
+immutable results are right for tracking a number over time (`Rules.md` §5); they
+are the wrong input for a cross-strategy comparison, because nothing in the file
+forces two of them to be comparable.
+
+Paired bootstrap deltas belong in that table too. Unpaired confidence intervals
+on 250-500 queries are wide enough to hide every effect measured in this phase.
 
 ---
 
