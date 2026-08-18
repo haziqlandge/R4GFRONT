@@ -234,6 +234,10 @@ ok4t-voice-rag/
 ├── Submission.md
 ├── Memory.md
 ├── .env.example
+├── requirements.txt                   # runtime deps for services/
+├── requirements-dev.txt               # offline build + measurement tooling
+├── pytest.ini
+├── deploy/gcp.md                      # host setup, see Memory.md R3
 ├── docker-compose.yml
 │
 ├── apps/
@@ -304,7 +308,7 @@ ok4t-voice-rag/
 │   ├── 00_download_dataset.py
 │   ├── 01_freeze_slice.py            # writes slice manifest + seed
 │   ├── 02_build_indexes.py           # all 8 strategies
-│   ├── 03_export_onnx.py             # embedder + reranker quantization
+│   ├── 03_export_onnx.py             # fetch ONNX from the Hub + parity gate
 │   ├── 04_bench_latency.py           # P50/P70/P100 harness
 │   ├── 05_eval_retrieval.py          # Recall/MRR/nDCG per strategy
 │   └── 06_eval_guardrails.py         # abstention precision/recall
