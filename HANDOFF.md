@@ -25,7 +25,7 @@ Read in this order, and do not skip the first one:
 5. `ISSUES.md` — measured open problems.
 6. `Architecture.md`, `Latency.md` — the design and the budget.
 
-**Phases 0, 1 and 2 are complete.** The pipeline works end to end: Band A P50 **3.31 ms** against a 200 ms budget, en Recall@10 **0.870**, 35 tests green.
+**Phases 0, 1 and 2 are complete.** The pipeline works end to end: Band A P50 **3.31 ms** against a 200 ms budget, en Recall@10 **0.870**, 35 tests green. (Phase 3 in progress on BENCH: 90 tests green, C1/C5/C6/C7 + BM25 built.)
 
 **Phase 3 is running across three machines** — see `Phase3-Parallel.md`. Its critical path is J5 → J6 → J7 on the LLM box (CUDA up, then the overnight proposition pass). Everything else has slack.
 
@@ -77,7 +77,7 @@ A failed `--verify` means every number in `bench/results/` is invalid against yo
 ### 2.4 Verify the rig and the pipeline
 
 ```bash
-.venv/Scripts/python -m pytest                                    # 35 tests, all must pass
+.venv/Scripts/python -m pytest                                    # 90 tests, all must pass
 .venv/Scripts/python scripts/04_bench_latency.py --stub --breakdown
 .venv/Scripts/python scripts/05_eval_retrieval.py                 # correctness gate
 .venv/Scripts/python scripts/04_bench_latency.py --pipeline --lang en --breakdown

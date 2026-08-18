@@ -225,7 +225,8 @@ Post the mismatch to the team and stop. Do not "just rebuild and see".
 .venv/Scripts/python -m pytest
 ```
 
-Expected: **35 passed**.
+Expected: **90 passed**. (Was 35 at end of Phase 2; J11 lexical, J12 fusion and
+the C5/C6/C7 chunkers added the rest.)
 
 BENCH only (the other boxes have no index yet):
 
@@ -302,7 +303,7 @@ You are ready to start your jobs when all of these are true:
 - [ ] your box's extra packages installed and smoke-tested (GPU boxes: **the real kernel launch**, not just `is_available()`)
 - [ ] `01_freeze_slice.py --verify` prints `slice reproduces exactly.`
 - [ ] `03_export_onnx.py` prints `PASS int8 matches fp32 on retrieval`
-- [ ] `pytest` shows 35 passed
+- [ ] `pytest` shows 90 passed
 - [ ] you know your job IDs from [`Phase3-Parallel.md`](Phase3-Parallel.md) §2
 
 If any box fails a check, say so in the team channel before starting work. A box that quietly proceeds past a failed `--verify` corrupts the comparison table for everyone.

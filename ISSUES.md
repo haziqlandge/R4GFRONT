@@ -36,6 +36,8 @@ Severity is about the submission, not about engineering neatness:
 | I19 | RRF fusion does not earn its place at the reranker's depth | **P1** | Phase 3 (J16) / Phase 5 |
 | I20 | C7 as specified leaks the answer key; A5 cannot be tested here | **P0** | Phase 3 (J16) |
 | I21 | C5 and C6 are retrieval-identical to C1 by construction | **P2** | Phase 3 (J15) |
+| I22 | C4 killed on a costed impossibility, not deferred | **RESOLVED (decision)** | — |
+| I23 | Strategy deltas need PAIRED tests; unpaired CIs hide real effects | **P1** | Phase 3 (J15) |
 
 ---
 
@@ -712,6 +714,98 @@ strategies "did nothing". What they actually bought is not measured by Recall@10
 J15 should report both as ties **with the footnote**, and Phase 5 should measure
 what they actually change. Reporting them as bare ties would be technically true
 and substantively misleading.
+
+---
+
+## I22 — C4 is killed, on a costed impossibility rather than a deferral
+
+**Decision, 19 August.** Not "ran out of time" — the cost was computed before the
+attempt, and the arithmetic is the deliverable.
+
+### The cost model
+
+| quantity | value | source |
+|---|---|---|
+| passages to decompose | 295,890 | frozen slice |
+| output tokens per passage | ~80 | `Phase3-Parallel.md` J6 sizing |
+| **total output tokens** | **~23.7 M** | product of the above |
+| 3B model, 4-bit, this CPU | ~15 tok/s | no usable GPU |
+| **wall clock, 3B** | **~18 days** | 23.7M / 15 |
+| 1B model, 4-bit, this CPU | ~40 tok/s | optimistic |
+| **wall clock, 1B** | **~7 days** | 23.7M / 40 |
+| time to code freeze | **< 3 days** | `Rules.md` 7 |
+
+Hardware: the only GPU on BENCH is a **GT 710**, Kepler / sm_35, below the floor
+of every current CUDA wheel. Groq is excluded by I15 — a 12,000-token window
+against a 23.7-million-token job is not slow, it is arithmetically impossible.
+
+### Why it is not worth chasing on another box either
+
+`Phase3-Parallel.md` J6 already warns C4 "is a genuine risk of producing a
+*worse* index than C1 while costing far more, because an LLM restating a
+machine-translated Hindi passage is a lossy pass over an already-lossy text."
+That risk is now better founded than when it was written: I17 established that
+the en/hi gap is a property of the machine-translated corpus rather than of any
+retriever. A generative pass over that text adds a second lossy translation on
+top of the first, and there is no measurement in this project that would let us
+attribute the result to the strategy rather than to compounding MT damage.
+
+### What ships instead
+
+The cost model above, published. "Costed at 23.7M output tokens, 7–18 days on
+available hardware, killed on 19 Aug with the arithmetic shown" is an engineering
+result. A half-built C4 is a broken index. Per `Rules.md` 1 this goes in the
+README as a finding, not omitted.
+
+**Reversal condition:** a working CUDA box with continuous batching makes C4 a
+few hours rather than days. If EMBED or LLM comes up, C4 is reinstated on its
+original terms — the decision is about available hardware, not about the idea.
+
+---
+
+## I23 — Strategy comparisons need PAIRED significance tests
+
+**Severity: P1, and it changes how J15 must report every number.**
+
+Measured on the frozen 250 with 10,000 bootstrap resamples:
+
+| | value | 95% CI |
+|---|---|---|
+| c1 en Recall@10 | 0.896 | [0.856, 0.932] |
+| c1 hi Recall@10 | 0.696 | [0.636, 0.752] |
+| **unpaired CI half-width** | **±0.038 en / ±0.056 hi** | |
+| **paired delta, c7 − c1, en** | **−0.024** | **[−0.044, −0.008] significant** |
+| **paired delta, c7 − c1, hi** | **−0.040** | **[−0.064, −0.020] significant** |
+| en/hi gap (c1) | +0.200 | [+0.140, +0.260] **real, not noise** |
+
+### The trap, stated plainly
+
+Read the unpaired CIs alone and every strategy in this project looks
+indistinguishable — c7's ±0.04 sits well inside a ±0.038 error bar, and the
+tempting conclusion is "the eval is saturated at 0.896, nothing can be measured,
+stop building strategies."
+
+**That conclusion is wrong, and the paired test proves it.** All strategies are
+evaluated on *identical* queries, so the correct test is on the per-query
+difference, which cancels the query-difficulty variance that dominates the
+unpaired interval. Paired, c7's small deficit is unambiguously real in both
+languages.
+
+### Consequences
+
+1. **J15 must report paired bootstrap deltas against C1**, not just absolute
+   numbers with independent error bars. Reporting unpaired CIs would understate
+   the eval's sensitivity by roughly 4x and invite exactly the wrong call.
+2. A **standalone** claim ("C8 reaches 0.92") still needs to clear ~0.08 en /
+   ~0.11 hi to mean anything in isolation. Paired-vs-C1 and absolute claims have
+   different thresholds and must not be mixed in one sentence.
+3. The **en/hi gap is statistically real**, which retires any lingering doubt in
+   I5/I17 that it might be small-sample noise.
+4. **Hit@1 is 0.340 en / 0.252 hi against Recall@10 0.896.** The right passage is
+   in the top ten far more often than it is at rank one, so the remaining
+   headroom is in *ranking*, not retrieval. Chunking cannot reach it; the Phase 5
+   cross-encoder is the lever. This is the strongest available argument that
+   Phase 5 matters more than any further chunking strategy.
 
 ---
 

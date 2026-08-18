@@ -70,7 +70,31 @@ Compute the 92nd percentile over the whole corpus once and record it in `meta.js
 
 **J4. C7 doc2query, query-aligned.** `[attended]`, cheap.
 
-`Architecture.md` §4 flags this as the highest-leverage strategy on this corpus and `Memory.md` A5 predicts it wins. It is also nearly free: the paired MS MARCO query text already exists in `queries.parquet`. Index each query as an additional vector pointing at its passage, on top of the C1 chunk vectors. That is roughly 30,000 extra vectors on a 379,242 base.
+`Architecture.md` §4 flags this as the highest-leverage strategy on this corpus and `Memory.md` A5 predicts it wins. It is also nearly free: the paired MS MARCO query text already exists in `queries.parquet`. Index each query as an additional vector pointing at its passage, on top of the C1 chunk vectors.
+
+> ### 🛑 CORRECTED 19 Aug — the "~30,000 extra vectors" below was a leak
+>
+> This job originally read *"roughly 30,000 extra vectors on a 379,242 base"* —
+> 15,000 queries × 2 languages, i.e. **every** query. **Do not build that.**
+> `bench/queries_250.jsonl` **is** the `test` split. Indexing a test query's text
+> against its own gold passage puts the answer key into the index: searching that
+> query then matches a vector that *is* the query, pointing at the passage it is
+> scored on.
+>
+> Measured, both ways, on the frozen 250 — the leak is worth **+0.47 Hit@1 in
+> English and +0.54 in Hindi**, and it also appears to close the I5 multilingual
+> gap. A5 predicts C7 wins, so this would have read as confirmation.
+>
+> **Build only `corpus_only` queries — 24,000 vectors.** `c7_doc2query.py`
+> defaults to this (`SAFE_SPLITS`); any opt-in stamps `leaky: true` into
+> `meta.json` and `--leaky` writes to `c7-leaky/` so it can never overwrite the
+> canonical index.
+>
+> C7 is already **built and evaluated on BENCH**. Do not rebuild it on EMBED.
+> Full reasoning and numbers in `ISSUES.md` **I20**, which also records why the
+> split filter cannot rescue the strategy: with one real query per passage group,
+> an evaluated passage is either leaked or unaugmented, so **A5 is untestable on
+> this corpus** without an LLM generating synthetic queries.
 
 **Verify rather than assume.** A5 is an open assumption, and a prediction that turns out right is only worth something if it could have turned out wrong.
 
