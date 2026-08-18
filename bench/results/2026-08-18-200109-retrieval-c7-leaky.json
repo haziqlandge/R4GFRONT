@@ -1,0 +1,88 @@
+{
+  "strategy": "c7-leaky",
+  "split": "test",
+  "k": 10,
+  "index_meta": {
+    "strategy": "c7",
+    "params": {
+      "strategy": "c7",
+      "window_tokens": 96,
+      "overlap_tokens": 24,
+      "max_passage_tokens": 384,
+      "unit": "sub-passage + query vector",
+      "reuses": "c1",
+      "indexable_splits": [
+        "corpus_only",
+        "dev",
+        "test"
+      ],
+      "leaky": true,
+      "query_vectors": 30000,
+      "skipped_unsafe_queries": 0
+    },
+    "embedder": {
+      "model": "onnx/model_qint8_avx512_vnni.onnx",
+      "sha256": "dd476dd0c2514e9b9be83aeb3853fac0763e0bdf4a71645407587d77c48a2d88",
+      "dim": 384
+    },
+    "hnsw": {
+      "space": "ip",
+      "M": 32,
+      "ef_construction": 200
+    },
+    "counts": {
+      "passages": 295888,
+      "chunks": 409240,
+      "truncated": 262,
+      "degenerate_dropped": 2,
+      "appended_vectors": 30000
+    },
+    "derived_from": {
+      "strategy": "c1",
+      "reused_vectors": 379240,
+      "chunk_ids_verified_identical": true
+    },
+    "build_env": {
+      "device_tag": "BENCH",
+      "backend": "onnx-cpu",
+      "threads": 8
+    },
+    "build_seconds": {
+      "chunk": 53.1,
+      "embed": 27.5,
+      "index": 4.1
+    },
+    "slice_records_sha256": "7f9f7c5978bc2456308669cd071c3ed63d5c774f4b858e9822737b59c5743360",
+    "leaky": true
+  },
+  "results": {
+    "en": {
+      "queries": 250,
+      "recall@10": 0.972,
+      "mrr@10": 0.8743380952380954,
+      "hit@1": 0.808,
+      "by_query_type": {
+        "DESCRIPTION": 0.97,
+        "ENTITY": 0.933,
+        "LOCATION": 0.857,
+        "NUMERIC": 0.989,
+        "PERSON": 1.0
+      },
+      "seconds": 0.8
+    },
+    "hi": {
+      "queries": 250,
+      "recall@10": 0.936,
+      "mrr@10": 0.8474666666666666,
+      "hit@1": 0.792,
+      "by_query_type": {
+        "DESCRIPTION": 0.902,
+        "ENTITY": 1.0,
+        "LOCATION": 1.0,
+        "NUMERIC": 0.967,
+        "PERSON": 1.0
+      },
+      "seconds": 0.9
+    }
+  }
+}
