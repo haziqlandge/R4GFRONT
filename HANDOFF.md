@@ -44,26 +44,56 @@ py -3.12 -m venv .venv                      # macOS/Linux: python3.12 -m venv .v
 .venv/Scripts/python -m pip install -r requirements-dev.txt
 ```
 
-### 2.3 Reproduce the corpus
+### 2.3 Rebuild everything from scratch
 
-Nothing under `artifacts/` is committed except the manifest — it is 490 MB of data. You regenerate it, and the point of the manifest is that you get a **byte-identical** slice:
+**Nothing under `artifacts/` is committed except `slice_manifest.json`** — it is ~1.7 GB of data. All of it regenerates from the repo, and the manifest is what guarantees you get a **byte-identical** corpus rather than a similar one.
+
+Run these in order. Total ~45 minutes, most of it the index build:
 
 ```bash
-.venv/Scripts/python scripts/00_download_dataset.py      # ~440 MB download, a few minutes
-.venv/Scripts/python scripts/01_freeze_slice.py          # ~2 minutes
+.venv/Scripts/python scripts/00_download_dataset.py      # 440 MB download, ~3 min
+.venv/Scripts/python scripts/01_freeze_slice.py          # ~2 min
 .venv/Scripts/python scripts/01_freeze_slice.py --verify artifacts/slice_manifest.json
+.venv/Scripts/python scripts/03_export_onnx.py           # 578 MB download + parity gate, ~6 min
+.venv/Scripts/python scripts/02_build_indexes.py         # ~31 min, CPU-bound
 ```
 
-The last command must print `slice reproduces exactly.` If it does not, **stop** — every benchmark in `bench/results/` is invalid against your slice and something has drifted. Expected output: 15,000 queries, 295,890 passages, `records_sha256` starting `7f9f7c59`.
+**Checkpoints — if any of these differ, stop and investigate before building on top:**
 
-### 2.4 Verify the measurement rig
+| after | must show |
+|---|---|
+| `01_freeze_slice.py --verify` | `slice reproduces exactly.` — 15,000 queries, 295,890 passages, `records_sha256` starting `7f9f7c59` |
+| `03_export_onnx.py` | `PASS int8 matches fp32 on retrieval`, int8 file ~113 MB |
+| `02_build_indexes.py` | 379,242 chunks, `index.bin` ~655 MB |
+
+A failed `--verify` means every number in `bench/results/` is invalid against your slice. Do not proceed.
+
+### 2.4 Verify the rig and the pipeline
 
 ```bash
-.venv/Scripts/python -m pytest                                    # 15 tests, all must pass
+.venv/Scripts/python -m pytest                                    # 35 tests, all must pass
 .venv/Scripts/python scripts/04_bench_latency.py --stub --breakdown
+.venv/Scripts/python scripts/05_eval_retrieval.py                 # correctness gate
+.venv/Scripts/python scripts/04_bench_latency.py --pipeline --lang en --breakdown
 ```
 
-The stub must report a P50 near 72.5 ms and print `PASS: harness overhead is within 5 ms.`
+Expected: the stub reports P50 near 72.5 ms with `PASS: harness overhead is within 5 ms`. `05_eval_retrieval.py` reports **en Recall@10 ≈ 0.870, hi ≈ 0.682** and prints `PASS retrieval is sound`.
+
+To run the service:
+
+```bash
+cd services && ../.venv/Scripts/python -m uvicorn rag_core.main:app --port 8000
+```
+
+`/health` returns 503 until warmup finishes (~2 s), then 200.
+
+### 2.5 What does NOT transfer between machines
+
+**Latency numbers.** `Latency.md` §6 fixes the measurement environment, and a different CPU produces different results. The Phase 2 figures (en P50 3.31 ms) were measured on an i5-12400F. Results in `bench/results/` are tagged with a git SHA and machine details for exactly this reason — **do not compare numbers across machines, and do not publish numbers from a dev box.** The figures that ship come from the deployed GCP instance (`Latency.md` §6, issue I8).
+
+**Thread counts.** `ONNX_THREADS_BUILD=8` was tuned on a 6-physical-core CPU (see `ISSUES.md` I6). On a machine with a different core count, re-measure against **real C1 chunks** before changing it — a synthetic benchmark gave a directionally wrong answer once already.
+
+**Retrieval quality numbers DO transfer.** Recall@10, MRR@10 and Hit@1 depend only on the frozen slice and the model, both of which are reproducible. If those differ, something is genuinely wrong.
 
 ---
 
