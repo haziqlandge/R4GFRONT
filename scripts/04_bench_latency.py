@@ -34,10 +34,16 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "services"))
 
 from rag_core.config import (  # noqa: E402
+    BENCH_DIR,
     BUDGET_MS,
+    DEFAULT_STRATEGY,
+    INT8_MODEL,
+    ONNX_DIR,
+    ONNX_THREADS_SERVING,
     PERCENTILE_METHOD,
     PERCENTILES,
     RESULTS_DIR,
+    TOKENIZER_FILE,
     WARMUP_RUNS,
 )
 from rag_core.harness.trace import Trace, span  # noqa: E402
@@ -87,6 +93,58 @@ async def stub_pipeline() -> Trace:
             _spin_ms(ms)
     trace.finish()
     return trace
+
+
+# ---------------------------------------------------------------------------
+# Real pipeline (Phase 2 onward)
+# ---------------------------------------------------------------------------
+
+
+def load_pipeline(strategy: str = DEFAULT_STRATEGY):
+    """Build the in-process pipeline exactly as main.py does.
+
+    Deliberately not going through HTTP: Band A is defined in Latency.md 1 as
+    transcript-received to response-serialized inside rag_core. Adding a loopback
+    HTTP hop would measure uvicorn and the kernel, not the pipeline. `--url`
+    exists separately for the deployed end-to-end measurement.
+    """
+    from rag_core.harness.stages import Runtime, build_pipeline
+    from rag_core.retrieval.dense import DenseIndex
+    from rag_core.retrieval.embedder import Embedder
+
+    embedder = Embedder(
+        ONNX_DIR / INT8_MODEL, ONNX_DIR / TOKENIZER_FILE, threads=ONNX_THREADS_SERVING
+    )
+    index = DenseIndex(strategy)
+    index.load()
+    rt = Runtime(embedder, index)
+    rt.build_passage_map(index.chunks)
+    return build_pipeline(rt)
+
+
+def load_bench_queries(field: str) -> list[str]:
+    """bench/queries_250.jsonl, frozen in Phase 1 before anything could be tuned."""
+    path = BENCH_DIR / "queries_250.jsonl"
+    if not path.exists():
+        raise SystemExit(f"{path} missing. Run scripts/01_freeze_slice.py.")
+    with path.open(encoding="utf-8") as fh:
+        return [json.loads(line)[field] for line in fh if line.strip()]
+
+
+def make_pipeline_runner(pipeline, queries: list[str]):
+    """Cycles the frozen query set so every run is a different real query."""
+    from rag_core.harness.pipeline import Context
+
+    counter = {"i": 0}
+
+    async def run_one() -> Trace:
+        q = queries[counter["i"] % len(queries)]
+        counter["i"] += 1
+        trace = Trace(budget_ms=BUDGET_MS)
+        await pipeline.run(Context(query=q, trace=trace))
+        return trace
+
+    return run_one
 
 
 # ---------------------------------------------------------------------------
@@ -225,19 +283,31 @@ def report(label: str, band: str, summary: dict[str, float], result: BenchResult
 
 
 async def main_async(args: argparse.Namespace) -> int:
-    if not args.stub:
-        print("Only --stub is implemented in Phase 0. The real pipeline lands in "
-              "Phase 2 and plugs in via run_benchmark().", file=sys.stderr)
+    if args.stub:
+        fn = stub_pipeline
+        label = args.label
+    elif args.pipeline:
+        field = "query_en" if args.lang == "en" else "query_hi"
+        queries = load_bench_queries(field)
+        pipeline = load_pipeline(args.strategy)
+        fn = make_pipeline_runner(pipeline, queries)
+        label = f"{args.strategy}-{args.lang}"
+        print(f"  benching {len(queries)} frozen queries ({args.lang})")
+    else:
+        print("Pass --stub or --pipeline.", file=sys.stderr)
         return 2
 
     result = await run_benchmark(
-        stub_pipeline, runs=args.runs, warmup=args.warmup, concurrency=args.concurrency
+        fn, runs=args.runs, warmup=args.warmup, concurrency=args.concurrency
     )
     summary = summarize(result.samples_ms)
-    report(args.label, args.band, summary, result, args.breakdown)
+    report(label, args.band, summary, result, args.breakdown)
 
-    path = write_result(args.label, args.band, result, summary, args.breakdown)
+    path = write_result(label, args.band, result, summary, args.breakdown)
     print(f"\n  written to {path.relative_to(Path.cwd()) if path.is_relative_to(Path.cwd()) else path}")
+
+    if not args.stub:
+        return 0
 
     # Rig validation: the stub's stages sum to a known total. If the reported P50
     # drifts far from it, the harness overhead is polluting the measurement.
@@ -256,6 +326,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--stub", action="store_true",
                         help="bench the known-answer stub pipeline")
+    parser.add_argument("--pipeline", action="store_true",
+                        help="bench the real in-process rag_core pipeline")
+    parser.add_argument("--strategy", default=DEFAULT_STRATEGY)
+    parser.add_argument("--lang", default="en", choices=["en", "hi"],
+                        help="which frozen query set to bench")
     parser.add_argument("--runs", type=int, default=250,
                         help="measured runs after warmup (default 250)")
     parser.add_argument("--warmup", type=int, default=WARMUP_RUNS,

@@ -96,6 +96,31 @@ DEV_QUERY_COUNT: Final[int] = 2_000  # Phase 5 threshold calibration only
 BENCH_QUERY_COUNT: Final[int] = 250  # the published benchmark set
 
 # --------------------------------------------------------------------------
+# Embedder and index
+# --------------------------------------------------------------------------
+
+EMBED_MODEL_REPO: Final[str] = "intfloat/multilingual-e5-small"
+INT8_MODEL: Final[str] = "onnx/model_qint8_avx512_vnni.onnx"
+FP32_MODEL: Final[str] = "onnx/model.onnx"
+TOKENIZER_FILE: Final[str] = "onnx/tokenizer.json"
+EMBED_DIM: Final[int] = 384
+
+# Architecture.md 3.3. ef_search is the primary latency dial and is tuned against
+# the budget in Phase 5; lower trades recall for speed close to linearly.
+HNSW_M: Final[int] = 32
+HNSW_EF_CONSTRUCTION: Final[int] = 200
+HNSW_EF_SEARCH: Final[int] = 64
+
+DENSE_TOP_K: Final[int] = 50
+DEFAULT_STRATEGY: Final[str] = "c1"
+
+# Rules.md 2.2: set explicitly, never left to the ONNX Runtime default. Measured
+# on a 12-core box: 8 threads = 210 chunks/sec, 16 threads = 61. Oversubscription
+# is 3.4x slower, not marginally worse. The hot path wants 2.
+ONNX_THREADS_SERVING: Final[int] = 2
+ONNX_THREADS_BUILD: Final[int] = 8
+
+# --------------------------------------------------------------------------
 # Latency contract. Latency.md section 4.
 # --------------------------------------------------------------------------
 

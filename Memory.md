@@ -208,7 +208,68 @@ Phase 2 index building. Phase 3 retrieval eval has free ground truth. Phase 5 th
 - `queries.parquet` carries `answer_en`/`answer_hi` that nothing consumes yet. Phase 5 calibration is where they earn their place.
 
 ### [Phase 2] Thin vertical slice, text only
-_pending_
+**Date:** 18 Aug 2026 | **Who:** Claude Code session | **Branch:** `p2-vertical-slice`
+
+**What happened**
+One working query path end to end: text in, cited passage out, with a real measured P50. ONNX embedder fetched and parity-gated, C1 chunker, 379,242-chunk HNSW index, typed pipeline harness with the budget counter, `POST /v1/answer`, retrieval eval, and the benchmark. 35 tests green, `mypy --strict` clean across 34 files.
+
+**Why this approach**
+Kept deliberately thin - one chunker, dense only, no BM25, no reranker, no guardrails - because the point of this phase is an early architectural signal. If the number had come back bad, a thin slice says *which* stage is at fault; a full stack does not.
+
+Added one thing the original task list did not have: `scripts/05_eval_retrieval.py`. Phase 2's exit criterion is a P50, and a P50 from a retriever returning garbage is not a weak number, it is a meaningless one. Every e5 failure mode is silent - omit the `query: `/`passage: ` prefixes or pool on CLS instead of a masked mean and you get a fast service that confidently retrieves the wrong passage, with nothing anywhere raising. The corpus ships `is_selected`, so ground truth was free.
+
+`03_export_onnx.py` fetches rather than exports. The model author already publishes ONNX including an int8 build quantized for AVX512-VNNI; exporting it ourselves would have installed torch (~2 GB) and optimum to reproduce an existing artifact.
+
+**What it unblocks**
+Phase 3 adds seven chunkers as siblings under `artifacts/indexes/<strategy>/` with no restructuring. Phase 5 appends rerank and route stages to `build_pipeline()` without touching existing stages. The frontend contract in `answering/schemas.py` is already the final Architecture.md section 9 shape, so Phase 8 builds against it once.
+
+**Numbers**
+
+| | |
+|---|---|
+| Chunks | 379,242 from 295,890 passages (1.282/passage), 262 truncated |
+| Index | 655 MB `index.bin`, 50 MB `chunks.parquet` |
+| Build | chunk 55s, embed 30.8 min (211/s avg), HNSW 1.4 min |
+| int8 vs fp32 | cosine 0.99686; Hit@1 0.945 vs 0.935; Recall@10 1.000 both |
+
+Retrieval, 500 dev queries, k=10, dense-only:
+
+| | Recall@10 | MRR@10 | Hit@1 |
+|---|---|---|---|
+| en | 0.870 | 0.525 | 0.362 |
+| hi | 0.682 | 0.367 | 0.224 |
+
+**Band A latency, 250 frozen queries, 30 warmup discarded:**
+
+| | P50 | P70 | P90 | P99 | P100 |
+|---|---|---|---|---|---|
+| en | **3.31** | 3.53 | 3.85 | 4.41 | 4.72 |
+| hi | 3.83 | 4.21 | 4.59 | 5.89 | 119.13 |
+| en, concurrency 8 | 3.50 | 3.73 | 4.03 | 4.65 | 4.92 |
+
+Per-stage medians: `embed_query` 2.81 ms, `dense_search` 0.42 ms, `answer_extractive` 0.03 ms.
+
+**Surprises and gotchas**
+
+- **P50 is 3.31 ms against a 200 ms budget.** Phases.md set 40 ms as "comfortable headroom"; we are 12x inside that. The reranker's 60 ms allocation, BM25, and all four guardrail layers now fit with room to spare. The architecture is not merely viable, it is over-provisioned - which is a far better problem than the alternative and means Phase 5 can afford accuracy rather than hunting milliseconds.
+- **A pathological query costs 118 ms, reproducibly.** Hindi P100 is 119 ms against a P99 of 5.89. It is one query, `query_id=156297`, 7,168 characters of `आर्कजी का फ़ाइल प्रारूप` repeating - the same translation repetition-loop pathology found in passages during Phase 1, now in a *query*. It fills the embedder's entire 512-token window instead of ~20 tokens. Re-run 20x it costs 111 ms every time, so it is the input and not scheduler noise. **This makes the Layer 1 input guard a latency mechanism, not only a safety one** - the same structural point as the reranker score serving both routing and abstention. It stays in the frozen benchmark (Rules.md 5) and gets fixed properly by the length bound in Phase 6.
+- **Hit@1 is 0.362 en / 0.224 hi**, and the Phase 2 extractive path returns the top passage. So the naive answer is wrong most of the time. That is expected and is precisely what the Phase 5 reranker exists to fix - rerank top-20 to reorder top-1. It does quantify how much the design leans on that reranker, which was previously an assumption.
+- **Thread oversubscription is 3.4x slower, not marginally worse.** On a 12-core box: 8 threads 210 chunks/sec, 16 threads 61. Rules.md 2.2 warned about this; now there is a number.
+- **Length-sorted batching is 1.46x faster.** The tokenizer pads each batch to its longest member, so mixed-length batches spend most of their compute on padding.
+- **My first int8 parity gate was a bad test.** It compared top-10 neighbour overlap among randomly sampled passages and failed at 0.866. Measured properly, the similarity gap between neighbour rank 10 and rank 11 on this corpus is 0.00137 while int8 perturbs cosine by ~0.004 - the perturbation exceeds the tie gap, so that ordering is noise and its instability measures nothing. Replaced with query-to-gold retrieval agreement, where the two models are indistinguishable. Lesson worth keeping: a failing gate deserves a diagnosis before a threshold change, and sometimes the diagnosis is that the gate was wrong.
+- Chunk text is sliced from the source by character offset rather than decoded from token ids. Decode round-trips lose whitespace and normalise characters, and the extractive path hands this text to the user verbatim.
+
+- **Dense cosine is a poor out-of-distribution detector, and this changes Phase 6.** Live endpoint results: a correct English match scores 0.9193, a correct Hindi match 0.9050, and the pure gibberish query `zxqwv fhqwhgads plorbnak` scores **0.8624**. A ~0.05 margin between "right answer" and "meaningless input" is far too narrow to set an abstention floor on. This is direct evidence for Architecture.md 3.6's choice to make the *reranker* score the confidence signal rather than the retrieval score - a cross-encoder actually reads the query against the passage, where a bi-encoder only compares two independent embeddings. Phase 6 must calibrate the floor on rerank score; a dense-score floor would either abstain on good answers or accept nonsense.
+- The gibberish query's top hits are two passages whose entire text is `-`. There are exactly 2 such passages in 295,890 (0.001%), both Hindi, and they act as attractors for meaningless queries because a degenerate embedding sits near the centroid. Filter empty and near-empty passages at index build time in Phase 3. The slice itself stays frozen (Rules.md 5).
+- **Non-ASCII payloads through curl on Windows get mangled.** A Hindi query sent via `curl -d` returned unrelated passages and looked like a cross-lingual retrieval bug; the same query sent through Python `urllib` with explicit UTF-8 encoding returns the correct passage at rank 1. Test Indic-language endpoints with a real HTTP client, not shell curl, or the next session will chase a defect that is not there.
+
+**Open threads**
+- Hindi retrieval trails English by ~0.19 Recall@10. Expected - queries and passages are both machine-translated and e5-small is weaker on Devanagari - but worth confirming BM25 (Phase 3) and the reranker (Phase 5) close the gap rather than widen it.
+- `Runtime.build_passage_map` reconstructs passage text by taking the longest chunk. Correct for the 78% of passages that yield one chunk, approximate for the rest. Phase 5 needs a real passage store when span selection requires exact offsets.
+- All eight indexes at 655 MB each will not be simultaneously resident on an 8 GB box. The F13 strategy toggle must load on switch. A deliberate toggle is not the hot path, so this is acceptable, but it changes F13's design.
+- Benchmarks so far are local x86, not the GCP box. Latency.md 6 requires the published numbers come from the deployed service.
+
+---
 
 ### [Phase 3] Chunking depth
 _pending_
@@ -352,12 +413,12 @@ Track these explicitly. An unverified assumption that turns out false late is th
 
 | # | Assumption | Verify in | Status |
 |---|---|---|---|
-| A1 | ONNX int8 `multilingual-e5-small` embeds a short query in under 15ms on the target container CPU | Phase 2 | ☐ |
+| A1 | ONNX int8 `multilingual-e5-small` embeds a short query in under 15ms on the target container CPU | Phase 2 | ✓ **TRUE, 2.81 ms median** locally. Re-verify on the GCP box. |
 | A2 | Cross-encoder rerank of 20 candidates fits in 45ms on the same CPU | Phase 5 | ☐ |
 | A3 | Sarvam's realtime endpoint emits partials fast enough and stably enough for speculative prefetch to hit often | Phase 4 | ☐ |
-| A4 | The frozen slice fits in the container RAM budget with all eight indexes loaded | Phase 3 | ☐ — input is now known: 295,890 passages, 147,945 per language |
+| A4 | The frozen slice fits in the container RAM budget with all eight indexes loaded | Phase 3 | ✗ **FALSE as stated.** One index is 655 MB; eight will not co-reside in 8 GB alongside the models. Load-on-switch instead. |
 | A5 | C7 (doc2query / query-aligned) outperforms the other seven strategies on this corpus | Phase 3 | ☐ |
-| A6 | Extractive answers are good enough to be the default path rather than a fallback | Phase 5 | ☐ |
+| A6 | Extractive answers are good enough to be the default path rather than a fallback | Phase 5 | ◐ dense-only Hit@1 is 0.362 en / 0.224 hi, so the naive top-passage answer is usually wrong. Rests entirely on the Phase 5 reranker. |
 | A7 | An India-region always-on container is available on the free or cheap tier of the chosen host | Phase 0 | ✓ **TRUE** — GCP Compute Engine `n2-standard-2`, `asia-south1` (Mumbai), on $300 trial credits. See reversal R3. |
 | A11 | ONNX int8 inference on ARM (Ampere A1) hits the same latency as x86 | Phase 2 | ~~open~~ **MOOT.** Retired by R3: GCP is x86, so the question no longer arises. |
 | A12 | $300 of GCP credit outlasts the judging window | Phase 7 | ◐ ~$70/mo projects to ~4 months (mid-Dec) against a mid-Sept judging need. Budget alert required. |

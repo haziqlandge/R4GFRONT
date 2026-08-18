@@ -2,6 +2,11 @@
 
 Nine phases across nine days. 14 August to 22 August 2026.
 
+**Schedule note, 18 August.** Phases 0 and 1 completed on 14 August; Phase 2 began
+on 18 August rather than 15. The day labels below are the original plan and are
+kept for the record; actual completion dates live in `Memory.md`. The cut order in
+"Slack and contingency" has not been applied and remains available.
+
 Every phase has an **exit criterion**. A phase is not done when the code is written; it is done when the exit criterion is demonstrably met and the `Memory.md` entry is written. Do not start phase N+1 with phase N unfinished. Half-finished phases stacked on top of each other is exactly the failure mode this document exists to prevent.
 
 **The ordering principle:** measurement before optimization, thin end-to-end slice before depth, deployment before polish. The riskiest unknowns are front-loaded.
@@ -50,19 +55,20 @@ Nothing else can be evaluated until we can measure. This is deliberately first.
 ---
 
 ## Phase 2: Thin vertical slice, text only
-**Day: 15 August | Owner: 2 people | Duration: 1 day**
+**Planned day: 15 August | Actual: 18 August | Owner: 2 people | Duration: 1 day**
 
 The goal is one working query path, end to end, with no voice, one chunking strategy, no guardrails, no reranker. Prove the shape before adding depth.
 
 **Tasks**
-- `scripts/03_export_onnx.py`: export `multilingual-e5-small` to ONNX, quantize int8, verify output parity against the PyTorch model within tolerance
+- `scripts/03_export_onnx.py`: **fetch** `multilingual-e5-small` ONNX from the Hub, which publishes both fp32 and an int8 build quantized for AVX512-VNNI. Exporting it ourselves would install `torch` (~2 GB) and `optimum` to reproduce an artifact the model author already ships. Verify parity **on retrieval** (Hit@1 / Recall@10 against gold passages), not on raw vector cosine — see the note in the script for why neighbour-overlap on random passages is a meaningless test on this corpus.
 - `retrieval/embedder.py`: ONNX session, correct `query: ` / `passage: ` prefixes, batch encode
-- `chunking/c1_fixed.py`: 256 tokens, 40 overlap. The baseline only.
+- `chunking/c1_fixed.py`: **96 tokens, 24 overlap** — not 256/40. Decision D8: no English passage exceeds 205 words, so a 256-token window emits one chunk per passage and the strategy does nothing. The baseline only.
 - `scripts/02_build_indexes.py`: build the C1 dense index with hnswlib, serialize to disk
 - `retrieval/dense.py`: load, mmap, search
 - `answering/extractive.py`: naive version, return the top passage verbatim
 - `harness/pipeline.py`: Stage protocol, Pipeline runner, Context model, span emission
 - `main.py`: `POST /v1/answer`, lifespan warmup, health check gated on index load
+- `scripts/05_eval_retrieval.py`: Recall@10 / MRR@10 against the free `is_selected` ground truth. **A P50 from a retriever returning garbage is meaningless**, and every e5 failure mode (missing prefixes, CLS instead of mean pooling) is silent. This is the gate that separates "fast" from "fast and correct".
 - Bench it. Record the number.
 
 **Exit criterion:** `curl -X POST localhost:8000/v1/answer -d '{"query":"..."}'` returns a cited passage, and `scripts/04_bench_latency.py` reports a real P50 for this path over 250 queries.

@@ -1,0 +1,25 @@
+# Runtime dependencies for services/. Python 3.12.
+# Distinct from requirements-dev.txt, which carries the offline build and
+# measurement tooling. Keep this list minimal: every import here is loaded
+# inside the 200ms budget's process.
+
+# Inference. Rules.md 2.1: ONNX Runtime only, never PyTorch at request time.
+onnxruntime>=1.19
+
+# Tokenization. The `tokenizers` Rust library loads tokenizer.json directly,
+# so neither `transformers` nor `torch` is needed. Smaller image, faster start.
+tokenizers>=0.20
+
+# Indexes
+hnswlib>=0.8
+numpy>=1.26
+
+# Service
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2.8
+orjson>=3.10
+httpx>=0.27
+
+# Artifact loading at startup
+pyarrow>=17.0
