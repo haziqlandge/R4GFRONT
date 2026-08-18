@@ -114,6 +114,23 @@ HNSW_EF_SEARCH: Final[int] = 64
 DENSE_TOP_K: Final[int] = 50
 DEFAULT_STRATEGY: Final[str] = "c1"
 
+# --------------------------------------------------------------------------
+# Lexical index. Architecture.md 3.4.
+# --------------------------------------------------------------------------
+
+# Textbook BM25 defaults, and deliberately not tuned. Tuning k1/b against the
+# bench slice would fit the published number to the test set; if they ever move
+# it must be against the dev partition, per Rules.md 5.
+BM25_K1: Final[float] = 1.5
+BM25_B: Final[float] = 0.75
+BM25_METHOD: Final[str] = "lucene"
+
+LEXICAL_TOP_K: Final[int] = 50  # matches DENSE_TOP_K; RRF fuses equal-depth lists
+
+# Lives beside the dense index it is row-aligned with, not in a directory of
+# its own - the two are only meaningful together. See lexical.py.
+LEXICAL_DIRNAME: Final[str] = "bm25"
+
 # Rules.md 2.2: set explicitly, never left to the ONNX Runtime default.
 #
 # BUILD = 8. Measured on an i5-12400F (6 physical / 12 logical) against real C1

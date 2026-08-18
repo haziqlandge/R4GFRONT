@@ -30,6 +30,9 @@ Severity is about the submission, not about engineering neatness:
 | I13 | Build time is no longer comparable across strategies | **P2** | Phase 3 (J15) |
 | I14 | The 5070 Ti is the only unproven part of the toolchain | **P1** | Phase 3 (J5) |
 | I15 | Amends I7 — the Groq cap also rules out offline use | **P1** | Phase 3 (J6) |
+| I16 | `tests/test_lexical.py` pushed before J11 exists — collection fails | **RESOLVED** | — |
+| I17 | BM25 alone *widens* the en/hi gap to 0.204 | **P1** | Phase 3 (J12) |
+| I18 | Lexical P99 breaches its 12 ms stage timeout on English | **P2** | Phase 3 (J12) / Phase 5 |
 
 ---
 
@@ -377,6 +380,138 @@ I7 records the 12,000-token window as capping Band B at roughly 50 queries. It a
 **C4 through Groq is not slow, it is arithmetically impossible.** See **D11**. C4 moves to a local 3B–7B model on the 5070 Ti, and the Groq quota is reserved for the scored runtime path — the Phase 5 generative fallback and the Band B benchmark.
 
 Standing rule: no offline corpus processing touches Groq.
+
+---
+
+## I16 — RESOLVED: `tests/test_lexical.py` pushed before J11 exists
+
+**Resolved by J11.** `lexical.py` is implemented and all 17 tests pass; the suite
+is **52 passed** (was 35 plus a collection error). The original entry is kept
+below because the failure mode — a test file committed ahead of the code it
+tests, which aborts collection rather than reporting one red test — is worth
+recognising quickly if it happens again.
+
+**Severity: P2. Not an environment problem — do not spend prereq time on it.**
+
+`tests/test_lexical.py` imports `BM25Index`, `detect_language`, `tokenize` from
+`services/rag_core/retrieval/lexical.py`. That module is still the Phase 3 stub
+(`"""bm25s wrapper, Indic-aware tokenization. Phase 3."""`, one line, no code) —
+J11 (BENCH's lexical index job) has not started. The test file was committed and
+pushed ahead of the implementation it tests.
+
+Effect: `pytest` fails at **collection**, not at a test failure, which aborts the
+whole run rather than reporting one red test.
+
+```
+.venv/Scripts/python -m pytest --ignore=tests/test_lexical.py
+# 35 passed — matches PREREQUISITES.md §4 exactly
+```
+
+The `PREREQUISITES.md` §8 ready-check (`pytest` → 35 passed) should be read as
+**35 passed, `test_lexical.py` excluded** until J11 lands. No other prerequisite
+is affected — system detection, venv, base/bench imports, slice verify
+(`7f9f7c59...`), the built C1 index, and the bench latency stub all pass clean.
+
+Resolves itself the moment J11 is implemented; nothing to fix here, just
+something to know before running a bare `pytest` and assuming the box is broken.
+
+---
+
+## I17 — BM25 alone widens the en/hi gap rather than closing it
+
+**Severity: P1.** `Phase3-Parallel.md` J11 named this as the outcome to watch for,
+and it is what happened. Measured on the frozen 250, BM25 alone, chunk hits
+resolved to passage ids:
+
+| | Recall@10 | MRR@10 | Hit@1 |
+|---|---|---|---|
+| en | 0.636 | 0.341 | 0.208 |
+| hi | 0.432 | 0.202 | 0.112 |
+
+**The gap is 0.204 Recall@10, against dense C1's 0.188** (en 0.870 / hi 0.682,
+I5). So the lever chosen as the most plausible fix for I5 is, on its own, *worse*
+for Hindi in relative terms than the dense retrieval it was meant to help.
+
+This is not yet a verdict on the design. BM25's value in this system is as a
+**complementary** signal fused with dense (Architecture.md 3.5), not as a
+standalone retriever, and both languages are well below dense here — BM25 alone
+was never going to win. The open question J12 must answer is whether RRF fusion
+narrows the gap or inherits it. **Fusion is where this is decided, so J12 must
+report Recall@10 per language, not just pooled.**
+
+If fusion also widens the gap, then per J11's brief and `Rules.md` 1 the
+multilingual framing in `Project.md` 3 gets restated honestly rather than
+glossed: the system would be one that retrieves well in English and acceptably
+in Hindi, which is a true and still-interesting claim.
+
+Plausible cause, not yet tested: the corpus is machine-translated, so Hindi
+passages are lexically less consistent with Hindi queries than the English
+originals are with English queries — synonym choice drifts per sentence in MT
+output, and BM25 has no synonym tolerance at all where dense embeddings do.
+That predicts BM25 should underperform *specifically* on translated text, which
+is testable against the `is_selected_any` English originals.
+
+---
+
+## I18 — Lexical search P99 breaches its own stage timeout on English
+
+**Severity: P2.** `config.STAGE_TIMEOUT_MS["lexical_search"]` is 12.0 ms and the
+budget is 10.0 ms. Measured on BENCH over the frozen 250, three passes, index
+loaded from disk:
+
+| | P50 | P99 | P100 |
+|---|---|---|---|
+| en | 2.93 ms | **13.26 ms** | 15.30 ms |
+| hi | 2.04 ms | 9.14 ms | 9.92 ms |
+
+English P99 exceeds the hard timeout, so `StageTimeout` would fire on roughly the
+slowest 1% of English traffic. Hindi fits.
+
+**The cost driver is not query length.** Correlation between token count and
+latency is **−0.369** for English — negative. The slowest queries (`ipa stands
+for what`, `cost to hire painter for kitchen cabinets`) are 4–7 tokens, the same
+as the fastest. What they share is high-document-frequency terms (`for`, `what`,
+`to`, `how`), so cost tracks total posting-list length scanned, not query size.
+
+### Stopword removal was measured and rejected
+
+The obvious fix makes things worse on the metrics that matter:
+
+| variant | en P50 | en P99 | en MRR@10 | en Hit@1 |
+|---|---|---|---|---|
+| **baseline (shipped)** | **2.93 ms** | 13.26 ms | **0.341** | **0.208** |
+| stopwords dropped, index + query | 8.20 ms | 11.21 ms | 0.346 | 0.212 |
+| stopwords dropped, query only | 8.24 ms | 11.10 ms | 0.331 | 0.196 |
+
+It buys ~2 ms at P99 and costs ~5.3 ms at P50 — a 2.8× median regression — while
+moving quality by less than noise. Rejected on that trade alone.
+
+**Unexplained and left unexplained deliberately.** Removing terms from the query
+makes `bm25s` *slower* at the median, which contradicts the posting-list model
+that correctly explains everything else here. It is not the index changing shape:
+query-side-only removal against an unmodified on-disk index reproduces the
+regression exactly (8.24 vs 8.20 ms). Suspect `bm25s`'s `backend_selection="auto"`
+switching scoring paths on query characteristics. Not chased further because the
+shipping decision does not depend on the answer — baseline wins on both P50 and
+quality — but it is written down because the next person to reach for stopwords
+will otherwise redo this.
+
+### What to do about the breach
+
+Not a J11 decision. The 10/12 ms allocation was written in Phase 2 as an estimate
+*before this stage existed*, and changing it is a `Latency.md` 4 contract change
+that has to be made against the whole budget (175 ms allocated, 25 ms reserve),
+not against one stage in isolation. Options for whoever owns that call: widen the
+lexical timeout from the reserve, or drop `LEXICAL_TOP_K` below 50 and re-measure.
+
+### Unexpected good news: BM25 is immune to the I1 pathology
+
+`query_id=156297` — 7,168 characters, 1,025 tokens, the repetition loop that cost
+the dense path 119 ms and forced the 64-token input guard — **does not appear in
+the Hindi slowest eight**. 1,025 tokens of one repeated phrase is only a handful
+of *distinct* terms, and BM25 scans posting lists per distinct term. The guard
+that rescues the dense path is simply not needed for this one, which is a point
+in favour of the guard being a dense-stage concern rather than a global one.
 
 ---
 
