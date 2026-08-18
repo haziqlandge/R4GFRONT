@@ -29,6 +29,9 @@ from typing import Callable, Final
 
 from .base import Chunker
 from .c1_fixed import FixedChunker
+from .c5_metadata import MetadataChunker
+from .c6_hierarchical import HierarchicalChunker
+from .c7_doc2query import Doc2QueryChunker
 
 
 class PendingStrategy(RuntimeError):
@@ -93,21 +96,9 @@ STRATEGIES: Final[dict[str, Callable[..., Chunker]]] = {
         "proposition: local LLM decomposes each passage into atomic facts. "
         "Overnight job, sharded and checkpointed. Never Groq (D11).",
     ),
-    "c5": _Pending(
-        "c5", "J13", "BENCH",
-        "metadata-aware: reuses C1 vectors as-is, changes the payload and the "
-        "pre-filter. No new embeddings.",
-    ),
-    "c6": _Pending(
-        "c6", "J14", "BENCH",
-        "hierarchical: children are the C1 chunks already on disk, parent is "
-        "the query_id passage group. A lookup table, not a second index.",
-    ),
-    "c7": _Pending(
-        "c7", "J4", "EMBED",
-        "doc2query: index the paired MS MARCO query text as an extra vector "
-        "pointing at its passage. ~30k extra vectors on a 379,242 base.",
-    ),
+    "c5": MetadataChunker,
+    "c6": HierarchicalChunker,
+    "c7": Doc2QueryChunker,
     "c8": _Pending(
         "c8", "J8", "LLM",
         "late chunking: encode the full passage, mean-pool per C1 span so each "
@@ -120,6 +111,10 @@ ALL_STRATEGIES: Final[tuple[str, ...]] = tuple(sorted(STRATEGIES))
 # Strategies that need no new embeddings - they reuse the C1 vectors already on
 # disk. This is why C5 and C6 sit on the GPU-less box (Phase3-Parallel.md 1).
 REUSES_C1_VECTORS: Final[frozenset[str]] = frozenset({"c5", "c6"})
+
+# Strategies that keep every C1 chunk and append to it. Their build can start
+# from C1's vectors and embed only the new rows - see scripts/02c_build_derived.py.
+EXTENDS_C1_VECTORS: Final[frozenset[str]] = frozenset({"c7"})
 
 
 def get(name: str) -> Callable[..., Chunker]:

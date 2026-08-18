@@ -1,67 +1,156 @@
-"""C7: doc2query / query-aligned. Job J4, box EMBED.
+"""C7: doc2query, query-aligned. Job J4.
 
-MSMARCO-XI ships query-passage pairs. Index the PAIRED QUERY text as an
-additional vector pointing at its passage, on top of the C1 chunk vectors.
-Roughly 30,000 extra vectors on a 379,242 base - nearly free.
+Index each query's text as an extra vector pointing at the passage that answers
+it, on top of the C1 chunk vectors. The premise is that a stored query matches a
+future similar query far better than the passage prose does, which is the
+highest-leverage idea available on this corpus (Architecture.md 4) and the one
+Memory.md A5 predicts will win.
 
-Architecture.md 4 flags this as the highest-leverage strategy for this corpus
-because it directly closes the vocabulary gap between how people ask and how
-passages are written. Assumption A5 predicts it wins.
+╔══════════════════════════════════════════════════════════════════════════╗
+║  READ THIS BEFORE CHANGING `indexable_splits`.                           ║
+║                                                                          ║
+║  The benchmark's 250 queries ARE the `test` split. Indexing a test        ║
+║  query's own text against its own gold passage puts the exact answer key  ║
+║  into the index: searching that query then matches a vector that IS the   ║
+║  query, pointing at the passage it is scored on. Recall goes near 1.0 and ║
+║  the number is meaningless.                                              ║
+║                                                                          ║
+║  Phase3-Parallel.md J4 sizes this strategy at "~30,000 extra vectors",    ║
+║  i.e. all 15,000 queries x 2 languages - which would include all 1,000    ║
+║  test queries and leak. That estimate is the trap, not the target.       ║
+║  Default here is `corpus_only` (12,000 queries, 24,000 vectors).          ║
+╚══════════════════════════════════════════════════════════════════════════╝
 
-VERIFY RATHER THAN ASSUME. A prediction that turns out right is only worth
-something if it could have turned out wrong.
+**The deeper problem, which the split filter does not solve.** Real doc2query
+generates *synthetic* queries for a passage, so a stored query can resemble a
+future unseen query for that same passage. This corpus gives each passage group
+exactly one real query, and for an evaluated passage that query IS the evaluation
+query. So there is no honest way for a real-query C7 to help a benchmark query:
+either the query is indexed (leakage) or the passage is unaugmented (no effect).
+Excluding test and dev leaves the bench queries' own passages untouched, so C7
+here can only match C1 or add noise.
 
-TRAP, and it is easy to get backwards: the query vector must carry the
-`passage: ` prefix, NOT `query: `. It is being indexed as a REPRESENTATION OF A
-PASSAGE, not used as a search query. Getting this wrong costs recall and raises
-nothing - the same silent-failure class as the pooling and prefix mistakes
-called out in `retrieval/embedder.py`.
+That makes C7-as-specified unmeasurable on this dataset rather than merely
+disappointing, and it puts a real condition on A5: doc2query cannot be validated
+here without an LLM to generate queries, which is the same blocker as C4. Build
+the honest variant, report that it does not move, and say why - a strategy that
+cannot be tested is a finding, not a gap in the table.
 
-Depends on: J1 GPU embedder + its parity gate.
-
-Implementing this
------------------
-You add ONLY this file. `registry.py`, `scripts/02_build_indexes.py` and
-`scripts/05_eval_retrieval.py` are owned by BENCH (Phase3-Parallel.md 2.4/4).
-When the class is ready, tell BENCH and they swap the `_Pending` entry in
-`registry.py` for it. That is the whole integration.
-
-Implement the `Chunker` protocol from `base.py`: `name`, `chunk(passages)`,
-`params()`. `c1_fixed.py` is the worked example - read it first, it is short.
-
-Two things `c1_fixed.py` does that every strategy must also do:
-  - slice chunk text from the source by CHARACTER OFFSET, never by decoding
-    token ids back to text. The extractive path returns this text to the user
-    verbatim and a decode round-trip loses whitespace and normalises characters.
-  - apply the length cap before chunking. One Hindi passage is 4,093 words from
-    a 205-word English source (a translation repetition loop). Uncapped, a few
-    of those dominate the build.
-
-`params()` is written into `meta.json` and is how the strategy becomes
-reproducible. Put every tunable in it.
+`--leaky` exists to quantify what the mistake would have looked like. It is never
+the default and its meta.json is stamped `leaky: true`.
 """
 
 from __future__ import annotations
 
 from typing import Iterable
 
+import pyarrow.parquet as pq
+
+from ..config import QUERIES_PARQUET
 from ..retrieval.embedder import Embedder
 from .base import Chunk, PassageRecord
+from .c1_fixed import FixedChunker
+
+# Splits whose query text may enter the index. `test` is the benchmark and `dev`
+# is reserved for Phase 5 threshold calibration; indexing either contaminates the
+# partition it belongs to (config.py, Rules.md 5).
+SAFE_SPLITS = frozenset({"corpus_only"})
+ALL_SPLITS = frozenset({"corpus_only", "dev", "test"})
 
 
 class Doc2QueryChunker:
-    """Not implemented. See the module docstring for the job and the traps."""
-
     name = "c7"
 
-    def __init__(self, embedder: Embedder, **kwargs: object) -> None:
-        raise NotImplementedError(
-            "c7 is job J4 on EMBED. See the docstring in this file and "
-            "Phase3-Parallel.md section 2."
-        )
+    def __init__(
+        self,
+        embedder: Embedder,
+        indexable_splits: frozenset[str] = SAFE_SPLITS,
+        **kwargs: object,
+    ) -> None:
+        self._c1 = FixedChunker(embedder, **kwargs)  # type: ignore[arg-type]
+        self.embedder = embedder
+        self.indexable_splits = frozenset(indexable_splits)
+        self.query_vectors = 0
+        self.skipped_unsafe = 0
+
+    @property
+    def truncated_count(self) -> int:
+        return self._c1.truncated_count
+
+    @property
+    def leaky(self) -> bool:
+        """True when a partition reserved for evaluation is being indexed."""
+        return bool(self.indexable_splits - SAFE_SPLITS)
 
     def params(self) -> dict[str, object]:
-        raise NotImplementedError
+        return {
+            **self._c1.params(),
+            "strategy": self.name,
+            "unit": "sub-passage + query vector",
+            "reuses": "c1",
+            "indexable_splits": sorted(self.indexable_splits),
+            "leaky": self.leaky,
+            "query_vectors": self.query_vectors,
+            "skipped_unsafe_queries": self.skipped_unsafe,
+        }
 
     def chunk(self, passages: Iterable[PassageRecord]) -> list[Chunk]:
-        raise NotImplementedError
+        passages = list(passages)
+        present = {str(p["passage_id"]) for p in passages}
+
+        out: list[Chunk] = []
+        for passage in passages:
+            out.extend(self._c1.chunk_one(passage))
+
+        parallel_of = {str(p["passage_id"]): str(p["parallel_id"]) for p in passages}
+
+        queries = pq.read_table(
+            QUERIES_PARQUET,
+            columns=["query_id", "query_en", "query_hi", "gold_en_ids",
+                     "gold_hi_ids", "split"],
+        ).to_pylist()
+
+        self.query_vectors = 0
+        self.skipped_unsafe = 0
+        for row in queries:
+            if str(row["split"]) not in self.indexable_splits:
+                self.skipped_unsafe += 1
+                continue
+            for language, text_key, gold_key in (
+                ("en", "query_en", "gold_en_ids"),
+                ("hi", "query_hi", "gold_hi_ids"),
+            ):
+                text = (row[text_key] or "").strip()
+                gold = list(row[gold_key] or ())
+                if not text or not gold:
+                    continue
+                passage_id = str(gold[0])
+                # A --limit smoke build holds only a slice of the corpus, so a
+                # query may point at a passage that is not in this index.
+                if passage_id not in present:
+                    continue
+                self.query_vectors += 1
+                out.append(
+                    Chunk(
+                        # `q` marks these rows in the id itself, so a chunk that
+                        # turns up in a trace is identifiable as query-derived
+                        # without a join against meta.
+                        chunk_id=f"{passage_id}#q{row['query_id']}",
+                        text=text,
+                        passage_id=passage_id,
+                        parallel_id=parallel_of.get(passage_id, ""),
+                        language=language,
+                        ordinal=0,
+                        token_count=len(
+                            self.embedder.tokenizer.encode(
+                                text, add_special_tokens=False
+                            ).ids
+                        ),
+                        meta={
+                            "source": "query",
+                            "query_id": str(row["query_id"]),
+                            "split": str(row["split"]),
+                        },
+                    )
+                )
+        return out

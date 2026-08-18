@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Any, Iterable, Protocol, runtime_checkable
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 # Rows as they come out of parquet. Typed aliases rather than bare `dict` so
 # mypy --strict passes and so the shape is documented at every call site.
@@ -39,6 +39,17 @@ class Chunk(BaseModel):
     ordinal: int  # position of this chunk within its passage
     token_count: int
     truncated: bool = False  # source passage was capped before chunking
+
+    # Strategy-specific payload, empty for strategies that need none.
+    #
+    # Deliberately one open dict rather than a growing list of typed columns:
+    # C5 needs filter keys, C6 needs a parent id, C7 needs to mark which rows are
+    # query-derived, and a ninth strategy will need something else again. Adding
+    # a named field per strategy would make this shared model grow every time
+    # someone adds a chunker, which is exactly what the Chunker protocol exists
+    # to prevent. Values are strings so the parquet column type stays stable
+    # across strategies that put different things in it.
+    meta: dict[str, str] = Field(default_factory=dict)
 
 
 @runtime_checkable

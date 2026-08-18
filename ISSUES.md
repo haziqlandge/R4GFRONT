@@ -34,6 +34,8 @@ Severity is about the submission, not about engineering neatness:
 | I17 | ~~BM25 widens the en/hi gap~~ — **corrected**: the gap is flat across retrievers | **P2** | Phase 5 |
 | I18 | Lexical P99 breaches its 12 ms stage timeout on English | **P2** | Phase 3 (J12) / Phase 5 |
 | I19 | RRF fusion does not earn its place at the reranker's depth | **P1** | Phase 3 (J16) / Phase 5 |
+| I20 | C7 as specified leaks the answer key; A5 cannot be tested here | **P0** | Phase 3 (J16) |
+| I21 | C5 and C6 are retrieval-identical to C1 by construction | **P2** | Phase 3 (J15) |
 
 ---
 
@@ -611,6 +613,105 @@ Per `Rules.md` 1 this goes in the README as a finding, not omitted as a dead end
 "We built hybrid retrieval, measured it against dense alone at the depth our
 architecture actually consumes, and found it did not pay for itself" is a
 stronger result than a fusion row quietly left out of the table.
+
+---
+
+## I20 — C7 as specified leaks the answer key, and A5 cannot be tested on this corpus
+
+**Severity: P0.** Not because anything is broken — the shipped C7 is clean — but
+because following `Phase3-Parallel.md` J4 literally would have put a fabricated
+number into the comparison table, confirming a prediction the project had already
+written down.
+
+### The trap
+
+J4 sizes C7 at *"roughly 30,000 extra vectors"* — 15,000 queries x 2 languages,
+i.e. **every** query. But `bench/queries_250.jsonl` **is** the `test` split (ids
+match exactly: 4578, 7451, 7821, …). Indexing a test query's text against its own
+gold passage puts the answer key in the index: searching that query then matches
+a vector that *is* the query, pointing at the passage being scored.
+
+`Memory.md` A5 predicts C7 wins. It would have won enormously, and the result
+would have read as confirmation rather than contamination.
+
+### Measured, because the size of it is the point
+
+Both variants were built and evaluated on the frozen 250 (`c7-leaky/` is a
+diagnostic and is never published):
+
+| | en R@10 | en MRR | en Hit@1 | hi R@10 | hi MRR | hi Hit@1 |
+|---|---|---|---|---|---|---|
+| c1 baseline | 0.896 | 0.518 | 0.340 | 0.696 | 0.382 | 0.252 |
+| **c7 honest** | 0.872 | 0.508 | 0.336 | 0.656 | 0.353 | 0.228 |
+| **c7 leaky** | 0.972 | 0.874 | **0.808** | 0.936 | 0.847 | **0.792** |
+
+The leak is worth **+0.47 Hit@1 in English and +0.54 in Hindi**. It would also
+have appeared to close I5's multilingual gap — Hindi Hit@1 more than triples —
+so it would have looked like the single best result in the project.
+
+### The deeper problem: the split filter does not rescue the strategy
+
+Restricting to `corpus_only` removes the leak but cannot make C7 work here.
+Real doc2query indexes *synthetic* queries, so a stored query can resemble a
+future unseen query for the same passage. This corpus gives each passage group
+exactly one real query, and for an evaluated passage that query IS the evaluation
+query. So either the query is indexed (leakage) or the evaluated passage is
+unaugmented (no effect). There is no third option.
+
+That is exactly what the honest numbers show: **c7 is slightly WORSE than c1**
+(-0.024 en, -0.040 hi Recall@10). The 24,000 added vectors are all attached to
+passages no benchmark query asks about, so they can only compete for top-k slots.
+The measurement is doing precisely what it should.
+
+### Consequence for A5
+
+**A5 is not confirmed and not refuted — it is untestable on this dataset**, and
+that is the honest finding. Validating doc2query needs an LLM to generate queries
+per passage, which is the same blocker as C4 (`Devices.md` 5, I15). If a GPU box
+generates propositions for C4, generating a few synthetic queries per passage
+would make C7 genuinely measurable; that is the only route to an A5 verdict.
+
+`Rules.md` 1: this goes in the README as a finding. "Our predicted winner turned
+out to be untestable, and the version that would have won was reading the answer
+key" is a far better result than a C7 row quietly reporting 0.97.
+
+### Guards now in place
+
+- `c7_doc2query.py` defaults to `SAFE_SPLITS = {corpus_only}`; `dev` and `test`
+  are excluded, and any opt-in sets `leaky: true` in `params()` and `meta.json`.
+- `--leaky` writes to `artifacts/indexes/c7-leaky/`, never over the canonical
+  `c7/` — the same precaution `--limit` already needed in `02_build_indexes.py`
+  after a smoke run destroyed a finished index once.
+- Six tests in `tests/test_derived_chunkers.py` pin the default and the flag.
+
+---
+
+## I21 — C5 and C6 are retrieval-identical to C1, by construction
+
+**Severity: P2.** Measured on the frozen 250, all three score **exactly**
+en 0.896 / 0.518 / 0.340 and hi 0.696 / 0.382 / 0.252.
+
+This is the design working, not a failure. C5 changes the payload and C6 adds a
+parent lookup; neither changes a span, a text or a vector — which is why
+`02c_build_derived.py` can copy C1's `index.bin` outright and build each in about
+60 seconds instead of 31 minutes. The identical scores are also the strongest
+available evidence that the vector reuse is correct: any drift in spans would
+have moved these numbers.
+
+**The risk is presentational, and it lands on J15.** A comparison table listing
+C1, C5 and C6 with three identical rows invites the reader to conclude that two
+strategies "did nothing". What they actually bought is not measured by Recall@10:
+
+- **C5** buys *conditional* retrieval — "answer-bearing Hindi passages only" —
+  plus a latency win from a smaller candidate set. `hnswlib.knn_query(filter=…)`
+  supports this natively (verified). Its value is a capability, and unfiltered it
+  is C1 by definition.
+- **C6** buys ~2,000 words of parent context for the answer stage. Its effect is
+  on answer quality and prompt size, neither of which Phase 3 measures.
+
+J15 should report both as ties **with the footnote**, and Phase 5 should measure
+what they actually change. Reporting them as bare ties would be technically true
+and substantively misleading.
 
 ---
 
