@@ -241,6 +241,7 @@ Do not spend time rediscovering these.
 | Groq returns `403, error code: 1010` | Cloudflare fingerprint block on default Python User-Agents, **not** an auth failure. Set an explicit User-Agent (`config.USER_AGENT`). |
 | `git commit -m "multi-line"` mangles the message | PowerShell 5.1 breaks embedded quotes. Use `git commit -F <file>`. |
 | Everything is slow / a thread count seems wrong | Thread counts are tuned per-CPU. Re-measure against **real C1 chunks**, never a synthetic workload. `ISSUES.md` I6 records how a synthetic benchmark gave a directionally wrong answer. |
+| A finished index was replaced by a tiny one | `--limit` is a smoke test. It now writes to `<strategy>-smoke/` and can no longer touch the canonical index — but if you see a `meta.json` with far fewer passages than expected, that is what happened. Check `counts.passages` before trusting an index. |
 
 ---
 

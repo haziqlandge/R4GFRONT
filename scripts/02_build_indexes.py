@@ -116,7 +116,9 @@ def main() -> int:
     parser.add_argument("--list", action="store_true",
                         help="show registered strategies and who owns each")
     parser.add_argument("--threads", type=int, default=ONNX_THREADS_BUILD)
-    parser.add_argument("--limit", type=int, default=0, help="debug: cap passages")
+    parser.add_argument("--limit", type=int, default=0,
+                        help="smoke test on N passages; writes to <strategy>-smoke/, "
+                             "never to the canonical index")
     args = parser.parse_args()
 
     if args.list:
@@ -183,8 +185,16 @@ def main() -> int:
     index_secs = time.perf_counter() - t0
     print(f"  built      {index_secs / 60:.1f} min")
 
-    out_dir = INDEX_DIR / chunker.name
+    # A --limit run is a smoke test and must NEVER overwrite the canonical index.
+    # Learned the hard way: two `--limit 3000` runs silently replaced a finished
+    # 379,242-chunk index with a 3,970-chunk one, costing a 31-minute rebuild. On
+    # this project that is the cheap version of the mistake - C2 is a 60-75 minute
+    # build and C4 runs overnight.
+    out_dir = INDEX_DIR / (f"{chunker.name}-smoke" if args.limit else chunker.name)
     out_dir.mkdir(parents=True, exist_ok=True)
+    if args.limit:
+        print(f"  SMOKE      --limit {args.limit}, writing to {out_dir.name}/ "
+              f"(canonical {chunker.name}/ untouched)")
     index.save_index(str(out_dir / "index.bin"))
     pq.write_table(
         pa.Table.from_pylist([c.model_dump() for c in chunks]),
