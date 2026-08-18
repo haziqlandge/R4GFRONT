@@ -245,13 +245,44 @@ Expected: both queries and passages are machine-translated, and `multilingual-e5
 
 ---
 
-## I6 — Thread counts in config are wrong for both workloads
+## I6 — Thread counts: measured, and the synthetic benchmark was misleading
 
-**Severity: P2, and it corrects an earlier claim of mine.**
+**Severity: P2. Resolved — no config change. Kept because the reasoning matters more than the outcome.**
 
-A clean sweep on the i5-12400F (6 physical cores, 12 logical):
+### Build threads: keep 8
 
-**Serving — single short query, latency-bound:**
+A first sweep used a **synthetic** workload (`short_en * 40` — uniformly short English strings) and showed build throughput rising with thread count:
+
+| threads | chunks/sec (synthetic) |
+|---|---|
+| 6 | 872.6 |
+| 8 | 999.9 |
+| 12 | 1115.5 |
+
+On that basis I recommended moving `ONNX_THREADS_BUILD` from 8 to 12. **That recommendation was wrong, and the percentage I attached to it was also wrong.**
+
+**The arithmetic error:** 1115.5 / 999.9 = **+11.6%** for 8 → 12. I reported ~28%, which is 1115.5 / 872.6 — the 6 → 12 comparison. Two different baselines conflated.
+
+**The substantive error:** the workload wasn't representative. Re-run against **actual C1 chunk texts** sampled from the completed 379,242-chunk build, through the exact production path (global length sort → batch 32 → int8 embedder → scatter back), two interleaved rounds per configuration:
+
+| threads | chunks/sec (real C1) | runs |
+|---|---|---|
+| **8** | **213.0** | 213.6, 212.4 |
+| 12 | 208.7 | 204.9, 212.4 |
+
+**8 → 12 is −2.0%.** The advantage did not shrink; it reversed.
+
+Sample validity: sample token distribution p50 72 / mean 70.1 against population p50 73 / mean 70.6; language mix 45/55 en-hi in both. The projection also validates against reality — 29.7 min predicted at 8 threads versus **30.8 min actually observed** on the full build.
+
+**Why the synthetic number lied.** Real C1 chunks are p50 **72 tokens**; the synthetic strings were roughly 5–10× shorter. With long sequences each batch already saturates all 6 physical cores at 8 threads, so 4 extra logical threads add contention and nothing else. With trivially short strings, per-batch compute is small relative to dispatch overhead, so more threads appeared to help. The 11.6% was an artifact of the toy workload.
+
+**Decision: `ONNX_THREADS_BUILD` stays at 8.** Projected saving from switching to 12 is **−4.9 min across Phase 3's eight index builds** — i.e. a loss.
+
+Honest caveat: −2.0% is close to noise (round 2 tied at 212.4 for both). The defensible claim is *"12 threads is at best equal, possibly slightly worse"* — which still leaves no case for changing.
+
+### Serving threads: keep 2 (deployment decision, not a local one)
+
+Separate question, separate answer. Local sweep on the i5-12400F (6 physical / 12 logical), single short query, latency-bound:
 
 | threads | en P50 | en P99 | hi P50 |
 |---|---|---|---|
@@ -262,21 +293,13 @@ A clean sweep on the i5-12400F (6 physical cores, 12 logical):
 | 8 | 2.14 ms | 2.98 ms | 2.47 ms |
 | 12 | 2.49 ms | **15.58 ms** | 2.58 ms |
 
-**Build — batches of 32, throughput-bound:**
+6 threads is fastest **locally**, but `ONNX_THREADS_SERVING` **stays at 2** because the deploy target is a 2-vCPU `n2-standard-2`. A local optimum tuned to 6 physical cores does not transfer to a 2-vCPU box, and the published numbers must come from the deployed service anyway (`Latency.md` §6).
 
-| threads | chunks/sec |
-|---|---|
-| 4 | 771.6 |
-| 6 | 872.6 |
-| 8 | 999.9 |
-| **12** | **1115.5** |
+Worth noting for its own sake: 12 threads produces a **P99 of 15.58 ms** — a 6× tail blowup from hyperthread contention, exactly the failure mode that destroys P100.
 
-Two corrections to what I recorded earlier:
+### The lesson worth keeping
 
-1. **My earlier claim that "oversubscription is 3.4× slower" over-generalised.** That measurement used 16 threads on a 12-logical-thread machine, which is genuine oversubscription. Going 8 → 12 *improves* build throughput by 12%. `ONNX_THREADS_BUILD` should be **12, not 8** — worth ~28% on Phase 3's eight index builds.
-2. **Serving is fastest at 6 threads locally (1.97 ms), not 2 (2.49 ms).** But `ONNX_THREADS_SERVING` should **stay at 2**, because the deploy target is a 2-vCPU `n2-standard-2` and a local optimum tuned to 6 physical cores does not transfer. Note also that 12 threads produces a P99 of 15.58 ms — a 6× tail blowup from hyperthread contention, which is exactly the kind of thing that destroys P100.
-
-The general lesson: thread count must be tuned to the *deployment* CPU, and the local box is not it.
+**Benchmark the real workload, not a convenient stand-in.** A synthetic proxy produced a number that was directionally wrong, and the recommendation built on it would have made Phase 3 builds slower while claiming a 28% speedup. Two independent errors — wrong baseline in the arithmetic, wrong workload in the measurement — pointed the same way, which is how a plausible-looking wrong answer survives review.
 
 ---
 

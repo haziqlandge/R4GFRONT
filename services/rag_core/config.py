@@ -114,9 +114,17 @@ HNSW_EF_SEARCH: Final[int] = 64
 DENSE_TOP_K: Final[int] = 50
 DEFAULT_STRATEGY: Final[str] = "c1"
 
-# Rules.md 2.2: set explicitly, never left to the ONNX Runtime default. Measured
-# on a 12-core box: 8 threads = 210 chunks/sec, 16 threads = 61. Oversubscription
-# is 3.4x slower, not marginally worse. The hot path wants 2.
+# Rules.md 2.2: set explicitly, never left to the ONNX Runtime default.
+#
+# BUILD = 8. Measured on an i5-12400F (6 physical / 12 logical) against real C1
+# chunk texts: 8 threads 213.0 chunks/sec, 12 threads 208.7 (-2.0%), 16 threads 61.
+# A synthetic sweep with uniformly short strings showed 12 threads 11.6% FASTER and
+# would have moved this the wrong way. Real chunks are p50 72 tokens, long enough
+# that 8 threads already saturate 6 physical cores. See ISSUES.md I6.
+#
+# SERVING = 2. Six threads is fastest on this local box (1.97ms vs 2.49ms at 2),
+# but the deploy target is a 2-vCPU n2-standard-2 and a local optimum does not
+# transfer. 12 threads also shows a P99 of 15.58ms from hyperthread contention.
 ONNX_THREADS_SERVING: Final[int] = 2
 ONNX_THREADS_BUILD: Final[int] = 8
 
