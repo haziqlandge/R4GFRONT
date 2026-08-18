@@ -2,6 +2,11 @@
 .env
 .env.local
 
+# Machine-generated, per-box. scripts/00_detect_system.py. Never committed - three
+# machines writing to the same tracked file would fight over whose specs "win".
+LOCAL_SYSTEM_INFO.md
+LOCAL_SYSTEM_ADDITIONS.md
+
 # Python
 __pycache__/
 *.py[cod]

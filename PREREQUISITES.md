@@ -8,6 +8,32 @@ Find your box in §2 and read only that section. The three boxes need different 
 
 ---
 
+## 0. Detect this machine first
+
+Right after cloning, before installing anything else:
+
+```bash
+git clone https://github.com/haziqlandge/RAG_OK4T.git
+cd RAG_OK4T
+python scripts/00_detect_system.py
+```
+
+Stdlib only — it runs before any `pip install`. It writes `LOCAL_SYSTEM_INFO.md`
+(this machine's specs: CPU, RAM, GPU, VRAM, compute capability) and
+`LOCAL_SYSTEM_ADDITIONS.md` (a log of local directories it created). **Both are
+gitignored and per-machine** — three boxes writing to the same tracked file would
+fight over whose specs "win", so neither file is ever committed. Re-run it any
+time; it overwrites the info file and appends to the additions log.
+
+It prints a suggested role (BENCH-like / EMBED-like / LLM-like) from what it
+actually finds — real VRAM, real compute capability — not from what you meant to
+install. **`Devices.md` stays the authority; treat the suggestion as a sanity
+check.** If they disagree, say so in the team channel before doing anything else —
+a box that doesn't match its documented role invalidates comparisons across
+machines (`ISSUES.md` I13, I14).
+
+---
+
 ## 1. Which box are you?
 
 | Tag | Hardware | You own | Jobs |
@@ -270,6 +296,7 @@ Per-box cold-session prompts are in [`HANDOFF.md`](HANDOFF.md) §7. Paste yours 
 
 You are ready to start your jobs when all of these are true:
 
+- [ ] `python scripts/00_detect_system.py` ran and `LOCAL_SYSTEM_INFO.md`'s suggested role matches `Devices.md`
 - [ ] `python --version` is 3.12.x inside the venv
 - [ ] base import check prints `base OK`
 - [ ] your box's extra packages installed and smoke-tested (GPU boxes: **the real kernel launch**, not just `is_available()`)
