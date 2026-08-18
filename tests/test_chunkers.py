@@ -10,6 +10,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "services"))
+sys.path.insert(0, str(ROOT))
 
 from rag_core.chunking.base import Chunk, Chunker  # noqa: E402
 from rag_core.chunking.c1_fixed import FixedChunker  # noqa: E402
@@ -114,3 +115,41 @@ def test_params_recorded_for_reproducibility(chunker: FixedChunker) -> None:
     p = chunker.params()
     assert p["window_tokens"] == 96 and p["overlap_tokens"] == 24
     assert p["strategy"] == "c1"
+
+
+# -- parquet serialization --------------------------------------------------
+
+
+def test_chunks_with_empty_meta_are_writable_to_parquet(tmp_path: Path) -> None:
+    """pyarrow cannot write a struct column with no child fields. Every C1 chunk
+    has meta={}, so a naive model_dump() produces exactly that and the write
+    fails - after the embedding work is already done. Found on a 6,000-row smoke
+    test; it would otherwise have surfaced 73 minutes into the C2 build."""
+    import pyarrow.parquet as pq
+
+    from scripts_helpers import chunks_to_table  # type: ignore[import-not-found]
+
+    chunks = [
+        Chunk(chunk_id="a#0", text="x", passage_id="a", parallel_id="a",
+              language="en", ordinal=0, token_count=1),
+    ]
+    out = tmp_path / "chunks.parquet"
+    pq.write_table(chunks_to_table(chunks), out)
+    assert pq.read_table(out).num_rows == 1
+
+
+def test_chunks_with_populated_meta_keep_it(tmp_path: Path) -> None:
+    """C5's whole point is the payload, so a non-empty meta must survive."""
+    import pyarrow.parquet as pq
+
+    from scripts_helpers import chunks_to_table  # type: ignore[import-not-found]
+
+    chunks = [
+        Chunk(chunk_id="a#0", text="x", passage_id="a", parallel_id="a",
+              language="en", ordinal=0, token_count=1,
+              meta={"query_type": "NUMERIC"}),
+    ]
+    out = tmp_path / "chunks.parquet"
+    pq.write_table(chunks_to_table(chunks), out)
+    row = pq.read_table(out).to_pylist()[0]
+    assert row["meta"]["query_type"] == "NUMERIC"

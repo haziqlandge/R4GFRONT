@@ -38,7 +38,11 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "services"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from _progress import Progress  # noqa: E402
+from scripts_helpers import chunks_to_table  # noqa: E402
 from rag_core.chunking import registry  # noqa: E402
 from rag_core.config import (  # noqa: E402
     EMBED_DIM,
@@ -89,17 +93,19 @@ def embed_all(embedder: Embedder, texts: list[str]) -> np.ndarray:
 
     started = time.perf_counter()
     done = 0
+    progress = Progress(total=len(order), label="embed")
     for i in range(0, len(order), BATCH):
         idx = order[i : i + BATCH]
         out[idx] = embedder.encode([texts[j] for j in idx], "passage")
         done += len(idx)
-        if done % (BATCH * 250) == 0 or done == len(order):
-            rate = done / (time.perf_counter() - started)
-            eta = (len(order) - done) / max(rate, 1e-9)
-            print(
-                f"    {done:>7,}/{len(order):,}  {rate:>6.1f}/s  eta {eta / 60:>5.1f} min",
-                flush=True,
-            )
+        # Current sequence length is worth showing: batches are length-sorted, so
+        # this rises through the run and is the reason throughput falls. Without
+        # it a slowing build looks like a hang.
+        progress.report(
+            done,
+            time.perf_counter() - started,
+            extra={"seq": f"{int(lengths[idx[-1]]):>3} tok"},
+        )
     return out
 
 
@@ -197,7 +203,7 @@ def main() -> int:
               f"(canonical {chunker.name}/ untouched)")
     index.save_index(str(out_dir / "index.bin"))
     pq.write_table(
-        pa.Table.from_pylist([c.model_dump() for c in chunks]),
+        chunks_to_table(chunks),
         out_dir / "chunks.parquet",
         compression="zstd",
     )

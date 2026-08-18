@@ -41,7 +41,9 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "services"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from scripts_helpers import chunks_to_table  # noqa: E402
 from rag_core.chunking import registry  # noqa: E402
 from rag_core.chunking.c7_doc2query import ALL_SPLITS  # noqa: E402
 from rag_core.config import (  # noqa: E402
@@ -192,7 +194,7 @@ def main() -> int:
         index.save_index(str(out_dir / "index.bin"))
 
     pq.write_table(
-        pa.Table.from_pylist([c.model_dump() for c in chunks]),
+        chunks_to_table(chunks),
         out_dir / "chunks.parquet",
         compression="zstd",
     )

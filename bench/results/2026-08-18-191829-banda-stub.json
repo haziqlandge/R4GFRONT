@@ -1,0 +1,29 @@
+{
+  "label": "stub",
+  "band": "A",
+  "generated_at": "2026-08-18T19:18:29.288340+00:00",
+  "git_sha": "b6b3980",
+  "environment": {
+    "python": "3.12.5",
+    "platform": "Windows-10-10.0.19045-SP0",
+    "processor": "Intel64 Family 6 Model 151 Stepping 2, GenuineIntel"
+  },
+  "methodology": {
+    "warmup_discarded": 30,
+    "samples": 250,
+    "concurrency": 1,
+    "percentile_method": "nearest",
+    "clock": "time.perf_counter_ns"
+  },
+  "budget_ms": 200.0,
+  "summary_ms": {
+    "p50": 72.543,
+    "p70": 72.555,
+    "p90": 72.579,
+    "p99": 72.653,
+    "p100": 72.697,
+    "mean": 72.552,
+    "stddev": 0.024,
+    "min": 72.53
+  }
+}
