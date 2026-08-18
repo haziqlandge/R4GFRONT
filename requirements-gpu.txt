@@ -1,0 +1,35 @@
+# GPU dependencies for OFFLINE index building only. Phase 3.
+#
+# DO NOT install these on BENCH. Its GT 710 is Kepler-class and below the floor
+# of every current CUDA wheel, and BENCH's environment is the one every number in
+# bench/results/ was measured on (Devices.md 1). Keep it clean.
+#
+# DO NOT pip install -r this file directly - torch needs a per-GPU index URL that
+# a requirements file cannot express. Install torch first with the right URL for
+# your card, then this file for the rest.
+#
+#   EMBED  (RTX 3060 Ti, sm_86 - Ampere):
+#     pip install torch --index-url https://download.pytorch.org/whl/cu124
+#
+#   LLM    (RTX 5070 Ti, sm_120 - Blackwell):
+#     pip install torch --index-url https://download.pytorch.org/whl/cu128
+#
+# sm_120 needs CUDA 12.8 or newer. An older wheel installs cleanly and then dies
+# at the first kernel launch with "no kernel image is available for execution on
+# the device", which reads as a broken install rather than an architecture
+# mismatch. Always smoke-test with a REAL forward pass, not torch.cuda
+# .is_available() - that returns True on a mismatched build. See ISSUES.md I14
+# and PREREQUISITES.md 2.3.
+
+# Offline embedding. Rules.md 3.1 permits sentence-transformers for index
+# building and eval ONLY. It must never appear in services/rag_core: Rules.md
+# 2.1 bans PyTorch at request time, and retrieval/embedder.py stays untouched.
+# GPU code lives in scripts/_gpu_embedder.py (job J1) and nowhere else.
+sentence-transformers>=3.0
+
+# LLM serving for the C4 proposition pass (job J6), LLM box only.
+# Try vllm first for continuous batching - it is what makes C4 an overnight job
+# rather than a multi-day one. If it fights back on cu128, llama-cpp-python with
+# a GGUF is far more forgiving about a new GPU architecture.
+# vllm>=0.6
+# llama-cpp-python>=0.3

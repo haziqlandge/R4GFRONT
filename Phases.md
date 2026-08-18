@@ -78,9 +78,19 @@ The goal is one working query path, end to end, with no voice, one chunking stra
 ---
 
 ## Phase 3: Chunking depth
-**Day: 16 to 17 August | Owner: 2 people, parallelizable | Duration: 1.5 days**
+**Planned day: 16-17 August | Actual: from 18 August | Owner: three machines | Duration: 1.5 days**
+
+> **`Phase3-Parallel.md` is the operative plan for this phase.** It supersedes the
+> two-person task split below, which assumed one machine. Read it with `Devices.md`.
+> The task list here is kept for the record.
 
 Requirement 2 is a scoring category. Eight strategies, each in its own file, each behind the same protocol.
+
+**Three changes forced by the three-machine split (decisions D9-D12):**
+
+- **Build time is no longer a comparison column** (D12). Across three machines and two backends it compares hardware, not strategies. Cost is reported on chunks emitted, tokens embedded, `index.bin` size and projected serving RAM - all hardware-independent. Wall-clock survives as a `meta.json` annotation tagged with `device_tag` and `backend`.
+- **C4 does not use Groq** (D11). ~24M output tokens against a 12,000-token free tier is not slow, it is impossible. It runs on a local model on the LLM box.
+- **The winner must fit 8 GB** alongside the embedder, reranker, BM25 and passage store (`Devices.md` §6). A strategy that wins on recall and does not fit is a README finding, not the default.
 
 **Tasks, splittable across two people**
 

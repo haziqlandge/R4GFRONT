@@ -234,8 +234,12 @@ ok4t-voice-rag/
 ├── Submission.md
 ├── Memory.md
 ├── .env.example
+├── PREREQUISITES.md                   # per-box setup, start here on a new machine
+├── Devices.md                         # machine inventory, what may be published
+├── Phase3-Parallel.md                 # Phase 3 job board J1-J16
 ├── requirements.txt                   # runtime deps for services/
 ├── requirements-dev.txt               # offline build + measurement tooling
+├── requirements-gpu.txt               # offline GPU deps, EMBED/LLM only
 ├── pytest.ini
 ├── deploy/gcp.md                      # host setup, see Memory.md R3
 ├── docker-compose.yml
@@ -284,6 +288,7 @@ ok4t-voice-rag/
 │       │   └── rerank.py             # ONNX cross-encoder
 │       ├── chunking/
 │       │   ├── base.py               # Chunker protocol
+│       │   ├── registry.py           # strategy dispatch, BENCH-owned
 │       │   ├── c1_fixed.py
 │       │   ├── c2_sentence_window.py
 │       │   ├── c3_semantic.py
@@ -307,7 +312,8 @@ ok4t-voice-rag/
 ├── scripts/
 │   ├── 00_download_dataset.py
 │   ├── 01_freeze_slice.py            # writes slice manifest + seed
-│   ├── 02_build_indexes.py           # all 8 strategies
+│   ├── 02_build_indexes.py           # all 8 strategies, --backend/--device-tag
+│   ├── _gpu_embedder.py              # offline GPU embedding (J1), EMBED-owned
 │   ├── 03_export_onnx.py             # fetch ONNX from the Hub + parity gate
 │   ├── 04_bench_latency.py           # P50/P70/P100 harness
 │   ├── 05_eval_retrieval.py          # Recall/MRR/nDCG per strategy
@@ -319,8 +325,10 @@ ok4t-voice-rag/
 │   └── results/                      # committed, dated, immutable
 │
 ├── artifacts/                        # gitignored, built locally
-│   ├── indexes/
+│   ├── indexes/<strategy>/           # index.bin, chunks.parquet, meta.json
 │   ├── onnx/
+│   ├── sentences.parquet             # J2 output, consumed by J3
+│   ├── propositions/shard_NN.parquet # J6 output, consumed by J7
 │   └── slice_manifest.json
 │
 └── tests/

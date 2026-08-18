@@ -1,6 +1,6 @@
 # ISSUES.md
 
-Open problems, measured rather than assumed, as of **18 August 2026** (end of Phase 2).
+Open problems, measured rather than assumed, as of **18 August 2026** (end of Phase 2, start of Phase 3).
 
 Severity is about the submission, not about engineering neatness:
 
@@ -27,6 +27,9 @@ Severity is about the submission, not about engineering neatness:
 | I10 | Two degenerate `-` passages act as attractors | **P2** | Phase 3 |
 | I11 | Schedule: 3 days behind the original plan | **P1** | ongoing |
 | I12 | Non-ASCII through `curl` on Windows silently mangles | **RESOLVED** | — |
+| I13 | Build time is no longer comparable across strategies | **P2** | Phase 3 (J15) |
+| I14 | The 5070 Ti is the only unproven part of the toolchain | **P1** | Phase 3 (J5) |
+| I15 | Amends I7 — the Groq cap also rules out offline use | **P1** | Phase 3 (J6) |
 
 ---
 
@@ -344,6 +347,36 @@ The user has directed that work proceed at full quality rather than compressing,
 A Hindi query sent via `curl -d '{"query":"एंड्रोजेन..."}'` returned unrelated passages and looked exactly like a cross-lingual retrieval bug. It was not — the shell mangled the UTF-8 before it reached the service. The same query through Python `urllib` with explicit UTF-8 encoding returns the correct passage at rank 1, score 0.9050.
 
 Kept here because the false symptom is convincing and someone will hit it again. **Test Indic-language endpoints with a real HTTP client, not shell `curl`.**
+
+---
+
+## I13 — Build time is no longer comparable across strategies
+
+**Severity: P2.** Eight strategies built on three machines across two backends. The build-time column in the Phase 3 comparison table would compare an i5, a 3060 Ti and a 5070 Ti rather than comparing chunking strategies.
+
+Resolved by **D12**: cost is reported on chunks emitted, tokens embedded, `index.bin` size and projected serving RAM — all hardware-independent. Wall-clock survives as a `meta.json` annotation tagged with `device_tag` and `backend`. Lands in job **J15**.
+
+The honest sentence for the README, per `Rules.md` §1: *"index build time is reported per device because the builds were parallelised across three machines; the strategy comparison is made on chunk count, index size and retrieval quality, all of which are hardware-independent."*
+
+---
+
+## I14 — The 5070 Ti is the only unproven part of the toolchain
+
+**Severity: P1 until J5 closes it.** Blackwell is sm_120 and needs CUDA 12.8 or newer. An older PyTorch wheel installs cleanly and then fails at the first kernel launch with `no kernel image is available for execution on the device`, which presents as a broken install rather than an architecture mismatch.
+
+That is the same class of misleading symptom as the Groq 403 Cloudflare block and the Windows `curl` mangling in I12 — a failure whose message points away from its cause. `PREREQUISITES.md` §2.3 therefore requires a **real kernel launch** as the smoke test, not `torch.cuda.is_available()`, which returns `True` on a mismatched build.
+
+It also sits on the critical path (J5 → J6 → J7). 45-minute timebox, then swap the EMBED and LLM roles. Nothing in the plan depends on which GPU runs which job, only on there being two of them.
+
+---
+
+## I15 — Amends I7: the Groq cap also rules out offline use
+
+I7 records the 12,000-token window as capping Band B at roughly 50 queries. It also, and more severely, rules Groq out of the C4 proposition pass entirely: that job needs about **24 million output tokens**.
+
+**C4 through Groq is not slow, it is arithmetically impossible.** See **D11**. C4 moves to a local 3B–7B model on the 5070 Ti, and the Groq quota is reserved for the scored runtime path — the Phase 5 generative fallback and the Band B benchmark.
+
+Standing rule: no offline corpus processing touches Groq.
 
 ---
 

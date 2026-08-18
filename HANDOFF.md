@@ -4,7 +4,9 @@
 
 The repo is the handoff. This file covers only what the repo cannot: what a human has to do by hand, what was decided and why it is not in the code yet, and what is deliberately not committed.
 
-Last updated: 15 August 2026, end of Phase 1.
+Last updated: 18 August 2026, end of Phase 2 / start of Phase 3.
+
+> **On a brand-new machine, read [`PREREQUISITES.md`](PREREQUISITES.md) first.** It takes a bare box to a verified one. This file assumes that is done.
 
 ---
 
@@ -17,11 +19,15 @@ Team OK4T is building **Shruti**, a voice-enabled RAG system for HH Goa 2026 Sho
 Read in this order, and do not skip the first one:
 
 1. `Memory.md` — decisions, reversals, phase log, open assumptions. Carries the *why*, which is the expensive part to reconstruct.
-2. `Rules.md` — HARD and SOFT constraints. HARD ones are not negotiable without the whole team agreeing in writing.
-3. `Phases.md` — find the current phase and its exit criterion.
-4. `Architecture.md`, `Latency.md` — the design and the budget.
+2. `Devices.md` — which of the three machines you are on, and what it may publish.
+3. `Phase3-Parallel.md` — the Phase 3 job board (J1–J16) and who owns what.
+4. `Rules.md` — HARD and SOFT constraints. HARD ones are not negotiable without the whole team agreeing in writing.
+5. `ISSUES.md` — measured open problems.
+6. `Architecture.md`, `Latency.md` — the design and the budget.
 
-**Phases 0 and 1 are complete.** Phase 2 (thin vertical slice, text only) is next and is the most important checkpoint in the project: if its P50 is already over 150 ms, the architecture is wrong with a week left.
+**Phases 0, 1 and 2 are complete.** The pipeline works end to end: Band A P50 **3.31 ms** against a 200 ms budget, en Recall@10 **0.870**, 35 tests green.
+
+**Phase 3 is running across three machines** — see `Phase3-Parallel.md`. Its critical path is J5 → J6 → J7 on the LLM box (CUDA up, then the overnight proposition pass). Everything else has slack.
 
 ---
 
@@ -107,6 +113,8 @@ cd services && ../.venv/Scripts/python -m uvicorn rag_core.main:app --port 8000
 | `GROQ_API_KEY` | LLM fallback, Phase 5 | [console.groq.com/keys](https://console.groq.com/keys) — free tier |
 | `HF_TOKEN` | Optional | huggingface.co settings → Access Tokens. **Read scope.** Only raises download rate limits; the dataset is public. |
 
+**Only BENCH needs the Sarvam and Groq keys.** They are Phase 4/5 runtime concerns. EMBED and LLM run corpus and index jobs against public HuggingFace downloads and need **no keys at all** — see `PREREQUISITES.md` §5. Fewer copies of a secret is strictly better.
+
 **Format matters:** write `KEY=value`. Not `KEY= "value"`. A quote read as part of the secret produces a 401 that looks like a bad key rather than a bad file — this cost us time already. `config.load_env()` now strips them defensively, but other tools will not.
 
 **Do not share keys over chat, or put `.env` in Google Drive** (`Rules.md` §8). Each person makes their own keys — all three services have free tiers, so there is no reason to share.
@@ -164,7 +172,8 @@ Full reasoning lives in `Memory.md`; this is the index.
 | D6 | Publish three latency bands honestly | An honest 340 ms beats a fabricated 190 ms a judge can poke |
 | D7 | Always-on container in India, never serverless | Cold starts destroy P100 |
 | **D8** | **Chunking here is composition, not splitting** | **English passages max out at 205 words. A 256-token chunker is inert on this corpus.** |
-| **A7** | **Oracle Cloud Hyderabad, free** | **Render has no India region and its 512 MB tiers OOM against our ~1.2 GB** |
+| **A7 → R3** | **GCP Compute Engine, `asia-south1` (Mumbai), x86** | Render has no India region and its 512 MB tiers OOM against our ~1.2 GB. Oracle was chosen first, then superseded: GCP is x86, which retired the ARM risk (A11) without an experiment. |
+| **D9-D12** | **Phase 3 splits across three machines** | Split by resource consumed, not strategy count. C4 on Groq is arithmetically impossible (~24M tokens vs a 12k window), so it moves to local hardware. Build time stops being a comparison metric. |
 
 And two reversals — the highest-value entries, because they are the mistakes that would otherwise be repeated:
 
@@ -173,7 +182,7 @@ And two reversals — the highest-value entries, because they are the mistakes t
 
 ### Recommendations on the table, not yet decided
 
-- **Write the Dockerfile in Phase 2, not Phase 7.** It is the entire portability story between Render and Oracle and makes the host switch a non-event.
+- **Write the Dockerfile before Phase 7.** It is the entire portability story between hosts and makes a switch a non-event — which already paid off once, when the target moved from Render to Oracle to GCP.
 - **All eight chunking indexes cannot be resident at once** (~4 GB+). The F13 strategy toggle should load on switch. A deliberate toggle is not the hot path, so this is acceptable — but it changes F13's design.
 - **Cap passage length at the 99.5th percentile** before any whole-passage encoder. One Hindi passage is 4,093 words against a 205-word English source — a translation repetition loop — and a handful of those will dominate index build time.
 
@@ -196,15 +205,29 @@ Do not rediscover these.
 
 ## 7. Starting an AI coding session on this repo
 
-Clone, follow §2, then paste:
+Finish `PREREQUISITES.md` first — the prompts below assume a verified box.
+
+**Shared preamble, every box:**
 
 > You are working on team OK4T's HH Goa 2026 Task 2 submission: a voice-enabled RAG system with a 200 ms latency target on the core pipeline.
 >
-> Read these files first, in order: `HANDOFF.md`, `Memory.md` (context and decisions), `Rules.md` (hard constraints), `Phases.md` (find the current phase), `Architecture.md` (the design), `Latency.md` (the budget).
+> Read these first, in order: `PREREQUISITES.md`, `Memory.md` (decisions and reversals — the *why*), `Devices.md` (what this machine is and what it may publish), `Phase3-Parallel.md` (the job board), `Rules.md` (HARD constraints), `ISSUES.md` (measured open problems), `Architecture.md`, `Latency.md`.
 >
-> Key context: the fast path makes zero network calls. Extractive answering when reranker confidence is high, Groq LLM fallback when moderate, abstention when low. No LangChain. No hosted vector DB. No hosted embeddings. Everything in-process on ONNX int8. Deploy target is Oracle Cloud Ampere A1 in Hyderabad, which is **ARM**.
+> Key context: the fast path makes zero network calls. Extractive answering when reranker confidence is high, Groq LLM fallback when moderate, abstention when low. No LangChain, no hosted vector DB, no hosted embeddings — everything in-process on ONNX int8. Deploy target is **GCP Compute Engine `n2-standard-2` in `asia-south1` (Mumbai), x86** (see `Memory.md` reversal R3; an earlier draft said Oracle ARM and that is superseded).
 >
-> Tell me which phase we are on and what its exit criterion is before writing any code.
+> Phase 2 is complete: Band A P50 3.31 ms, en Recall@10 0.870. Phase 3 is running across three machines.
+
+**Then add your box's line:**
+
+| Box | Add this |
+|---|---|
+| **BENCH** | *"I am on BENCH (i5-12400F, CPU only). I own jobs J9–J16 and the shared files `registry.py`, `02_build_indexes.py`, `05_eval_retrieval.py`. J9 and J10 are already done. Start with J11 (BM25) unless I say otherwise."* |
+| **EMBED** | *"I am on EMBED (Ryzen 7 + RTX 3060 Ti). I own jobs J1–J4. **J1 is blocking — the GPU parity gate must pass before any GPU-built index is trusted** (see `Memory.md` D10 and assumption A13). I add only `scripts/_gpu_embedder.py` and my `chunking/cN_*.py` files; I never edit `registry.py` or the build/eval scripts."* |
+| **LLM** | *"I am on LLM (Core Ultra 9 + RTX 5070 Ti, Blackwell sm_120). I own jobs J5–J8. **J5 is timeboxed to 45 minutes** — if CUDA is not working by then we swap roles with EMBED (`Devices.md` §4.3, `ISSUES.md` I14). J6 is the critical path and starts as soon as J5 closes. I add only my `chunking/cN_*.py` files."* |
+
+**Close with:**
+
+> Tell me which jobs I own and what their exit criteria are before writing any code.
 
 **Two working rules that are easy to get wrong:**
 
@@ -215,6 +238,8 @@ Clone, follow §2, then paste:
 
 ## 8. Splitting the work from here
 
-Phase 2 is one vertical slice and does not parallelise well — one person should own it. Phase 3 splits cleanly across two people (the chunker list in `Phases.md` is already divided). Phases 4 and 5 run in parallel: voice input touches only `stt_gateway` and `apps/web`, while reranking and routing touch only `rag_core`.
+**Phase 3 onward runs across three machines.** `Phase3-Parallel.md` is the operative plan and `Devices.md` says what each box is. The split is by *resource consumed* rather than by strategy count: GPU embedding to EMBED, LLM work to LLM, zero-embedding and CPU-lexical work to BENCH.
+
+The real win there is scheduling, not throughput. Most of Phase 3 is unattended compute, so it runs on the two spare boxes **while Phases 4 and 5 proceed on BENCH** — and those two touch disjoint code (voice is `stt_gateway` + `apps/web`, reranking is `rag_core`). That overlap is the only realistic recovery from the slip recorded in `ISSUES.md` I11.
 
 `Phases.md` also carries the cut order if time runs short. Never cut: the guardrail eval set, the latency benchmark, the deployment, the videos, the posting. Those are scored requirements; everything else is depth.

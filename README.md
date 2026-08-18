@@ -9,7 +9,7 @@ Voice → STT → input guard → embed → hybrid retrieve → fuse → rerank
      → confidence route → [extractive | LLM | abstain] → output guard → response
 ```
 
-**Status: Phase 1 of 9 complete.** Measurement rig and frozen corpus are in place; the retrieval pipeline lands in Phase 2. See [`Phases.md`](Phases.md).
+**Status: Phase 2 of 9 complete, Phase 3 in progress.** The retrieval pipeline works end to end at a Band A P50 of **3.31 ms**; Phase 3 adds seven more chunking strategies, BM25 and fusion across [three machines](Devices.md). See [`Phases.md`](Phases.md) and [`Phase3-Parallel.md`](Phase3-Parallel.md).
 
 ---
 
@@ -84,9 +84,13 @@ Every run writes a dated, immutable JSON to `bench/results/`. Results are never 
 
 ## Joining the project
 
-New to this repo? Read [`HANDOFF.md`](HANDOFF.md) — local setup, which keys you need, the traps already paid for, and what a human still has to do by hand.
+**On a new machine? Start with [`PREREQUISITES.md`](PREREQUISITES.md)** — per-box setup from bare metal to a verified working box.
+
+Then [`HANDOFF.md`](HANDOFF.md) — what a human still has to do by hand, and the traps already paid for.
 
 ## Planning documents
+
+[`Devices.md`](Devices.md) the three build machines · [`Phase3-Parallel.md`](Phase3-Parallel.md) the Phase 3 job board · [`ISSUES.md`](ISSUES.md) measured open problems
 
 [`Project.md`](Project.md) scope and success criteria · [`Architecture.md`](Architecture.md) the design · [`Rules.md`](Rules.md) hard constraints · [`Phases.md`](Phases.md) the schedule · [`Latency.md`](Latency.md) the budget · [`Design.md`](Design.md) the interface system · [`Submission.md`](Submission.md) deliverables · [`Memory.md`](Memory.md) decisions, reversals and what they cost
 

@@ -1,6 +1,11 @@
-"""Build a dense HNSW index for one chunking strategy. Phase 2.
+"""Build a dense HNSW index for one chunking strategy. Phase 2, extended in Phase 3.
 
     python scripts/02_build_indexes.py --strategy c1
+    python scripts/02_build_indexes.py --strategy c2 --backend cuda-fp16 --device-tag EMBED
+
+OWNED BY BENCH. Do not edit on another box - see chunking/registry.py.
+Strategies come from the registry; adding one means adding a chunker file and
+one registry line, never touching this dispatch.
 
 Phase 3 adds seven more strategies; each lands in its own namespace under
 artifacts/indexes/<strategy>/ so nothing here needs restructuring.
@@ -34,7 +39,7 @@ import pyarrow.parquet as pq
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "services"))
 
-from rag_core.chunking.c1_fixed import FixedChunker  # noqa: E402
+from rag_core.chunking import registry  # noqa: E402
 from rag_core.config import (  # noqa: E402
     EMBED_DIM,
     HNSW_EF_CONSTRUCTION,
@@ -50,6 +55,18 @@ from rag_core.config import (  # noqa: E402
 from rag_core.retrieval.embedder import Embedder  # noqa: E402
 
 BATCH = 32
+
+# J10 / ISSUES.md I10: two passages of 295,890 have text "-" and act as
+# attractors for meaningless queries, because a degenerate embedding sits near
+# the centroid of the space and is therefore mildly similar to everything. Filter
+# them at index build time. The frozen slice itself is NOT changed - Rules.md 5 -
+# and the filtered count goes into meta.json so the number is visible.
+MIN_PASSAGE_CHARS = 4
+
+
+def drop_degenerate(passages: list[dict]) -> tuple[list[dict], int]:
+    kept = [p for p in passages if len((p["text"] or "").strip()) >= MIN_PASSAGE_CHARS]
+    return kept, len(passages) - len(kept)
 
 
 def file_sha256(path: Path) -> str:
@@ -88,24 +105,55 @@ def embed_all(embedder: Embedder, texts: list[str]) -> np.ndarray:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--strategy", default="c1")
+    parser.add_argument("--strategy", default="c1",
+                        help=f"one of: {', '.join(registry.ALL_STRATEGIES)}")
+    parser.add_argument("--backend", default="onnx-cpu",
+                        choices=["onnx-cpu", "cuda-fp16"],
+                        help="cuda-fp16 requires scripts/_gpu_embedder.py (J1)")
+    parser.add_argument("--device-tag", default="BENCH",
+                        choices=["BENCH", "EMBED", "LLM"],
+                        help="which box built this; recorded in meta.json")
+    parser.add_argument("--list", action="store_true",
+                        help="show registered strategies and who owns each")
     parser.add_argument("--threads", type=int, default=ONNX_THREADS_BUILD)
     parser.add_argument("--limit", type=int, default=0, help="debug: cap passages")
     args = parser.parse_args()
 
+    if args.list:
+        print("")
+        print(f"  implemented: {', '.join(registry.implemented())}")
+        for name, owner in sorted(registry.pending().items()):
+            print(f"  pending      {name}  {owner}")
+        return 0
+
     model_path = ONNX_DIR / INT8_MODEL
     embedder = Embedder(model_path, ONNX_DIR / TOKENIZER_FILE, threads=args.threads)
 
-    if args.strategy != "c1":
-        raise SystemExit(f"strategy {args.strategy} lands in Phase 3")
-    chunker = FixedChunker(embedder)
+    if args.backend != "onnx-cpu":
+        # The GPU path lives in scripts/_gpu_embedder.py (J1, owned by EMBED) and
+        # is offline-only. Rules.md 2.1 still bans PyTorch at request time, and
+        # retrieval/embedder.py is hot-path code that stays untouched.
+        raise SystemExit(
+            f"backend '{args.backend}' needs scripts/_gpu_embedder.py, which is "
+            "job J1 on EMBED. It must pass its parity gate (D10/A13) before any "
+            "GPU-built index is trusted."
+        )
+
+    # A wrong --strategy is a CLI mistake, not a crash. Print what is wrong and
+    # who owns the missing piece, and exit; a traceback here just buries it.
+    try:
+        chunker = registry.get(args.strategy)(embedder)
+    except (registry.PendingStrategy, KeyError) as exc:
+        raise SystemExit(str(exc).strip('"')) from None
 
     print("")
     print(f"  strategy   {chunker.name}  {chunker.params()}")
+    print(f"  backend    {args.backend}   device {args.device_tag}   threads {args.threads}")
     passages = pq.read_table(PASSAGES_PARQUET).to_pylist()
     if args.limit:
         passages = passages[: args.limit]
-    print(f"  passages   {len(passages):,}")
+    passages, dropped = drop_degenerate(passages)
+    print(f"  passages   {len(passages):,}  ({dropped} degenerate dropped)")
 
     t0 = time.perf_counter()
     chunks = chunker.chunk(passages)
@@ -158,6 +206,16 @@ def main() -> int:
             "passages": len(passages),
             "chunks": len(chunks),
             "truncated": chunker.truncated_count,
+            "degenerate_dropped": dropped,
+            "tokens_embedded": int(sum(c.token_count for c in chunks)),
+        },
+        # Devices.md 3: wall-clock is an annotation, not a comparison metric.
+        # Eight strategies built on three machines across two backends would
+        # otherwise produce a table that compares hardware, not strategies.
+        "build_env": {
+            "device_tag": args.device_tag,
+            "backend": args.backend,
+            "threads": args.threads,
         },
         "build_seconds": {
             "chunk": round(chunk_secs, 1),

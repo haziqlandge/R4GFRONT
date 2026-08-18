@@ -62,6 +62,7 @@ Carry-forward facts a cold session needs immediately.
 | English is free | Every language file carries parallel `English_passages` *and* `Translated_passages`. One download, two corpora. |
 | Frozen slice | English + Hindi, 15,000 queries, 295,890 passages, seed 20260814, dataset revision `bf5cdc1f`. `artifacts/slice_manifest.json`. |
 | Passage length | English passages max out at **205 words**. Nothing needs splitting. See D8. |
+| Build machines | Three. BENCH i5-12400F CPU-only (reference), EMBED 3060 Ti, LLM 5070 Ti. See `Devices.md`. |
 
 ---
 
@@ -128,6 +129,56 @@ So requirement 2 is reframed around choosing the retrieval *unit* rather than cu
 This is a stronger answer to the brief than eight splitters would be, because it demonstrates the strategy was picked against measured corpus properties. It also means C1's parameters changed from 256/40 to 96/24.
 
 **Reversal condition:** if the slice is ever widened to a corpus with genuinely long documents, this argument stops applying and C1 goes back to 256/40.
+
+### D9: Phase 3 splits across three machines, by resource rather than by strategy count
+**Date:** 18 Aug 2026
+
+Three boxes became available: an i5-12400F with a GT 710 (CPU only in practice, the GT 710 is below every current CUDA wheel's floor), a Ryzen 7 with an RTX 3060 Ti, and a Core Ultra 9 with an RTX 5070 Ti.
+
+The obvious split is three strategies each. That is wrong, because the eight strategies do not cost the same thing. C5 and C6 need **no new embeddings at all** (C5 changes the payload and filter over C1's vectors; C6's children are the C1 chunks and its parent layer is a `query_id` lookup table), while C4 needs an LLM pass over 295,890 passages and C2 needs sentence-level embedding of the whole corpus.
+
+So the split is by resource: GPU-embedding jobs to EMBED, LLM and whole-passage-encode jobs to LLM, zero-embedding and CPU-lexical jobs to BENCH. Full board in `Phase3-Parallel.md` §2.
+
+**The larger reason this matters is scheduling, not throughput.** Most of Phase 3 is unattended compute. Running it on two spare boxes lets Phases 4 and 5 start on BENCH before Phase 3 closes, which is the only realistic recovery from the three-day slip in `ISSUES.md` I11.
+
+**Reversal condition:** if the coordination overhead across three branches exceeds the compute saved, collapse back to sequential builds on BENCH. The cost of that fallback is roughly 30 minutes per strategy, which is survivable.
+
+### D10: index vectors may be built on GPU in fp16; query vectors stay ONNX int8 on CPU
+**Date:** 18 Aug 2026
+
+The build bottleneck is embedding: 379,242 C1 chunks took 30.8 minutes at 211 chunks/sec on ONNX int8 CPU. Eight strategies, several with two to three times C1's chunk count, is many hours of CPU that the schedule does not have. A 3060 Ti running the same model in fp16 is roughly an order of magnitude faster.
+
+`Rules.md` §3.1 already allows `sentence-transformers` **for offline index building and eval only**, so this is inside the rules rather than a deviation. The hot path is untouched: `Rules.md` §2.1 still bans PyTorch at request time, `retrieval/embedder.py` is not modified, and the GPU path lives in an offline-only `scripts/_gpu_embedder.py`.
+
+This does mean the index holds fp16 GPU vectors while the served query embedder is int8 CPU. **That pairing is gated, not assumed.** Rebuild C1 on GPU over the identical chunk list, evaluate with the identical int8 CPU query embedder, and compare against the Phase 2 numbers already on disk (en Recall@10 0.870, Hit@1 0.362). Pass is a Recall@10 delta within 0.005 and a Hit@1 delta within 0.010 on both languages.
+
+Same gate shape as the int8-versus-fp32 check in `03_export_onnx.py`, and for the reason recorded in the Phase 2 entry: raw vector cosine is a meaningless test on this corpus because the rank-10 to rank-11 similarity gap is 0.00137, smaller than the perturbation being measured. Compare on retrieval or do not compare.
+
+**Reversal condition:** the gate fails. Fall back to CPU builds on all three boxes.
+
+### D11: no offline corpus processing touches Groq
+**Date:** 18 Aug 2026
+
+`Phases.md` specified C4 as an offline LLM decomposition run overnight on the slice. Sized against the actual corpus: 295,890 passages at roughly 80 output tokens each is about 24 million output tokens. `ISSUES.md` I7 records Groq's free tier at 12,000 tokens per window.
+
+**C4 through Groq is not slow, it is arithmetically impossible.** This was never going to work and would have been discovered mid-phase.
+
+C4 moves to a local 3B to 7B instruct model on the 5070 Ti. The standing rule from here: **Groq tokens are spent on the Phase 5 runtime fallback path and on the roughly 50-query Band B benchmark, and nowhere else.** Any offline job needing an LLM runs on local hardware.
+
+This is the clearest single justification for the three-machine split. It converts C4 from impossible to an overnight job while *preserving* the quota for the part that is actually scored.
+
+**Reversal condition:** none. The arithmetic does not change.
+
+### D12: index build time is demoted from a comparison metric to an annotation
+**Date:** 18 Aug 2026
+
+`Phases.md` Phase 3 lists build time as one of four comparison columns. Across three machines and two backends, that column compares hardware, not strategies.
+
+Cost is reported instead on machine-invariant quantities: chunks emitted, tokens embedded, `index.bin` size, and projected serving RAM. Wall-clock is still recorded, tagged with `device_tag` and `backend` in `meta.json`, and presented as an annotation rather than a ranking.
+
+Stated plainly in the README rather than quietly dropped, per `Rules.md` §1's no-dishonest-measurement rule. A hardware-tagged timing table is a stronger artifact than a uniform one that quietly averages three different machines.
+
+**Reversal condition:** none.
 
 ---
 
@@ -416,12 +467,16 @@ Track these explicitly. An unverified assumption that turns out false late is th
 | A1 | ONNX int8 `multilingual-e5-small` embeds a short query in under 15ms on the target container CPU | Phase 2 | ✓ **TRUE, 2.81 ms median** locally. Re-verify on the GCP box. |
 | A2 | Cross-encoder rerank of 20 candidates fits in 45ms on the same CPU | Phase 5 | ☐ |
 | A3 | Sarvam's realtime endpoint emits partials fast enough and stably enough for speculative prefetch to hit often | Phase 4 | ☐ |
-| A4 | The frozen slice fits in the container RAM budget with all eight indexes loaded | Phase 3 | ✗ **FALSE as stated.** One index is 655 MB; eight will not co-reside in 8 GB alongside the models. Load-on-switch instead. |
+| A4 | The frozen slice fits in the container RAM budget with all eight indexes loaded | Phase 3 | ✗ **FALSE as stated.** One index is 655 MB; eight will not co-reside in 8 GB alongside the models. Load-on-switch instead. **Amended 18 Aug:** several Phase 3 strategies exceed C1's 655 MB, so the F13 toggle's switch pause differs per strategy — the UI should show the actual figure, not a generic spinner. |
 | A5 | C7 (doc2query / query-aligned) outperforms the other seven strategies on this corpus | Phase 3 | ☐ |
 | A6 | Extractive answers are good enough to be the default path rather than a fallback | Phase 5 | ◐ dense-only Hit@1 is 0.362 en / 0.224 hi, so the naive top-passage answer is usually wrong. Rests entirely on the Phase 5 reranker. |
 | A7 | An India-region always-on container is available on the free or cheap tier of the chosen host | Phase 0 | ✓ **TRUE** — GCP Compute Engine `n2-standard-2`, `asia-south1` (Mumbai), on $300 trial credits. See reversal R3. |
 | A11 | ONNX int8 inference on ARM (Ampere A1) hits the same latency as x86 | Phase 2 | ~~open~~ **MOOT.** Retired by R3: GCP is x86, so the question no longer arises. |
 | A12 | $300 of GCP credit outlasts the judging window | Phase 7 | ◐ ~$70/mo projects to ~4 months (mid-Dec) against a mid-Sept judging need. Budget alert required. |
+| A13 | fp16 GPU passage vectors paired with int8 CPU query vectors retrieve equivalently to an all-int8 index | Phase 3, J1 | ☐ **This is the gate the whole split rests on. Verify first, not last.** |
+| A14 | A local 3B to 7B model produces usable propositions from machine-translated Hindi passages | Phase 3, J6 | ☐ Genuine risk of a lossy pass over already-lossy text. Track the parse-reject rate. |
+| A15 | The winning strategy's index fits the 8 GB `n2-standard-2` alongside embedder, reranker, BM25 and passage store | Phase 3, J16 | ☐ Follows from `ISSUES.md` I4. One C1 index already costs ~1.16 GB resident; a strategy at 3x the chunk count may win on recall and still not be servable. |
+| A16 | The 5070 Ti's CUDA stack comes up on this project's toolchain | Phase 3, J5 | ☐ Blackwell is sm_120, needs CUDA 12.8+. Timeboxed to 45 min with a role-swap fallback (`Devices.md` §4.3). |
 | A8 | Sarvam free credits cover the full build plus demo recording | Phase 4 | ◐ key verified live 14 Aug; remaining credit balance not yet checked |
 | A10 | Groq free-tier limits allow a Band B benchmark of useful size | Phase 5 | ✗ **FALSE as stated** — 12,000 tokens/window caps it. Band B must be a ~50-query sample, stated in the methodology. |
 | A9 | The 200ms budget's 25ms reserve is enough to absorb tail jitter | Phase 5 | ◐ early evidence: a do-nothing stub already shows a 2.7ms P99→P100 gap from scheduler jitter alone |
