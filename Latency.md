@@ -142,13 +142,41 @@ Reported statistics: P50, P70 (explicitly required by the brief), P90, P99, P100
 
 ### Band A: Core RAG, extractive path
 
-| Percentile | Target | Measured |
-|---|---|---|
-| P50 | < 90 ms | _pending_ |
-| P70 | < 120 ms | _pending_ |
-| P90 | < 160 ms | _pending_ |
-| P99 | < 190 ms | _pending_ |
-| P100 | < 200 ms | _pending_ |
+**Phase 2 interim, 18 Aug 2026.** Local x86, dense retrieval only — no BM25, no
+reranker, no guardrails. These are not the final published numbers: Latency.md
+section 6 requires measurement against the deployed service, and three stages are
+still missing. They are recorded because they decide whether the architecture is
+sound, and they say it decisively is.
+
+| Percentile | Target | Measured (en) | Measured (hi) |
+|---|---|---|---|
+| P50 | < 90 ms | **3.31 ms** | 3.83 ms |
+| P70 | < 120 ms | 3.53 ms | 4.21 ms |
+| P90 | < 160 ms | 3.85 ms | 4.59 ms |
+| P99 | < 190 ms | 4.41 ms | 5.89 ms |
+| P100 | < 200 ms | 4.72 ms | 119.13 ms |
+
+At concurrency 8 (en): P50 3.50, P100 4.92 — essentially no degradation.
+
+Per-stage medians against their allocation:
+
+| Stage | Allocated | Measured | Headroom |
+|---|---|---|---|
+| `embed_query` | 25 ms | 2.81 ms | 22.2 ms |
+| `dense_search` | 15 ms | 0.42 ms | 14.6 ms |
+| `answer_extractive` | 15 ms | 0.03 ms | 15.0 ms |
+
+**The Hindi P100 is one pathological query, not jitter.** `query_id=156297` is
+7,168 characters of a single Devanagari phrase repeating — a machine-translation
+repetition loop in the source dataset. It fills the embedder's 512-token window
+instead of the ~20 tokens a real query uses, and costs 118 ms every single time
+it runs (verified over 20 repeats).
+
+This makes the Layer 1 input guard a **latency** mechanism as well as a safety
+one. That is the same structural pattern as the reranker score serving both
+routing and abstention: one control, two requirements. The length bound in
+Phase 6 fixes it. The query stays in the frozen benchmark set — Rules.md 5
+forbids editing a benchmark to improve a number.
 
 ### Band B: Core RAG + Groq generation
 

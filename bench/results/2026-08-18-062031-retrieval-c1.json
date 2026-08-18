@@ -1,0 +1,66 @@
+{
+  "strategy": "c1",
+  "split": "dev",
+  "k": 10,
+  "index_meta": {
+    "strategy": "c1",
+    "params": {
+      "strategy": "c1",
+      "window_tokens": 96,
+      "overlap_tokens": 24,
+      "max_passage_tokens": 384,
+      "unit": "sub-passage"
+    },
+    "embedder": {
+      "model": "onnx/model_qint8_avx512_vnni.onnx",
+      "sha256": "dd476dd0c2514e9b9be83aeb3853fac0763e0bdf4a71645407587d77c48a2d88",
+      "dim": 384
+    },
+    "hnsw": {
+      "space": "ip",
+      "M": 32,
+      "ef_construction": 200
+    },
+    "counts": {
+      "passages": 295890,
+      "chunks": 379242,
+      "truncated": 262
+    },
+    "build_seconds": {
+      "chunk": 55.0,
+      "embed": 1850.6,
+      "index": 85.2
+    },
+    "slice_records_sha256": "7f9f7c5978bc2456308669cd071c3ed63d5c774f4b858e9822737b59c5743360"
+  },
+  "results": {
+    "en": {
+      "queries": 500,
+      "recall@10": 0.87,
+      "mrr@10": 0.5254761904761903,
+      "hit@1": 0.362,
+      "by_query_type": {
+        "DESCRIPTION": 0.88,
+        "ENTITY": 0.867,
+        "LOCATION": 1.0,
+        "NUMERIC": 0.849,
+        "PERSON": 0.929
+      },
+      "seconds": 1.4
+    },
+    "hi": {
+      "queries": 500,
+      "recall@10": 0.682,
+      "mrr@10": 0.3672142857142858,
+      "hit@1": 0.224,
+      "by_query_type": {
+        "DESCRIPTION": 0.677,
+        "ENTITY": 0.633,
+        "LOCATION": 0.667,
+        "NUMERIC": 0.693,
+        "PERSON": 0.714
+      },
+      "seconds": 1.6
+    }
+  }
+}
