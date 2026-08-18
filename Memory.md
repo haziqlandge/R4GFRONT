@@ -130,6 +130,22 @@ This is a stronger answer to the brief than eight splitters would be, because it
 
 **Reversal condition:** if the slice is ever widened to a corpus with genuinely long documents, this argument stops applying and C1 goes back to 256/40.
 
+### 18 Aug 2026 (evening) — C1 rebuilt with the J10 filter; degenerate-passage removal confirmed working
+
+The canonical C1 index was accidentally overwritten twice during `--limit` smoke tests of the new registry dispatch (fixed the same day: `--limit` now writes to `<strategy>-smoke/`, never the canonical path). Rebuilt clean, now through J10's degenerate-passage filter for the first time.
+
+| | before (Phase 2) | after (J10 rebuild) |
+|---|---|---|
+| passages | 295,890 | **295,888** (-2, filtered) |
+| chunks | 379,242 | 379,240 |
+| index.bin | 655 MB | 655 MB |
+| en Recall@10 | 0.870 | 0.870 (unchanged) |
+| hi Recall@10 | 0.682 | **0.702** (+0.020) |
+
+English is identical, which is the expected null result. Hindi improved by a small but real margin - one of the two filtered `-` passages was Hindi and had been acting as a low-quality attractor exactly as `ISSUES.md` I10 predicted. Confirms the filter does what it was built for, on real data rather than only in the design doc.
+
+`slice_records_sha256` matches the frozen corpus, so the rebuild is bound to the correct slice despite going through a different code path (registry dispatch) than the original Phase 2 build.
+
 ### D9: Phase 3 splits across three machines, by resource rather than by strategy count
 **Date:** 18 Aug 2026
 
