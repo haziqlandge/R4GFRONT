@@ -322,6 +322,8 @@ _Log here whenever a prior decision is overturned. Include the original reasonin
 
 **Reversal condition:** credits drain faster than projected, or the frontend/judging window extends past the runway. Fall back to Oracle Always Free, which stays $0 — at the cost of re-verifying A11 on ARM.
 
+**Provisioned 15 Aug 2026.** Instance `rag-core`, `asia-south1-a`, `n2-standard-2`, static external IP `34.100.222.236`, reserved address `rag-core-ip`. Firewall rule `allow-rag-core` (tcp:80,443) applied. GCP's firewall is the only one in the path — unlike the Oracle plan this superseded, Ubuntu's image ships with no blocking iptables rules, so there is exactly one gate to open, not two. Project id is the GCP-generated default (`project-bc7a4f5d-...`); cosmetic only, left as is.
+
 ### R1: C5 metadata-aware chunking redefined; the `url` field does not exist
 **Date:** 14 Aug 2026 | **Overturns:** `Architecture.md` §4 as originally written
 
