@@ -190,3 +190,44 @@ def test_parse_event_survives_garbage() -> None:
     kills the socket mid-demo."""
     assert parse_event("not json") is None
     assert parse_event("[1,2,3]") is None
+
+
+# -- the service actually starts --------------------------------------------
+#
+# These exist because the module tests above ALL PASSED while the service could
+# not boot. test_stt_gateway.py imported sarvam, vad and config but never main,
+# and FastAPI resolves Form/UploadFile parameters when it REGISTERS a route, so
+# a missing python-multipart raised at import time and took the whole app down -
+# not just the upload endpoint. 198 green tests said nothing about it.
+#
+# Importing the app is the cheapest possible proxy for "uvicorn can start this".
+
+
+def test_app_imports() -> None:
+    """If this raises, the service cannot boot, whatever the unit tests say."""
+    from stt_gateway.main import app
+
+    assert app is not None
+
+
+def test_every_documented_route_is_registered() -> None:
+    """Architecture.md 9 fixes WS /v1/stt. The upload route is the fallback that
+    keeps requirement 1 non-zero if the socket path fails, so both are pinned."""
+    from stt_gateway.main import app
+
+    paths = {getattr(r, "path", None) for r in app.routes}
+    assert {"/health", "/v1/stt/file", "/v1/stt"} <= paths
+
+
+def test_multipart_is_available() -> None:
+    """Names the dependency explicitly so a failure reads as 'the dep is missing'
+    rather than as an opaque FastAPI RuntimeError during startup."""
+    import python_multipart  # noqa: F401
+
+
+def test_rag_core_app_also_imports() -> None:
+    """Same guarantee for the other service. rag_core has no upload route today,
+    but the class of bug - a route decorator failing at import - is identical."""
+    from rag_core.main import app
+
+    assert app is not None

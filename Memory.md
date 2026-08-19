@@ -349,7 +349,7 @@ still to come.**
 **What happened**
 `services/stt_gateway` built: config, Sarvam client, energy VAD, and a FastAPI
 service exposing a batch endpoint, a frame-streaming WebSocket, and a health check.
-198 tests green, `mypy --strict` clean across both services.
+202 tests green, `mypy --strict` clean across both services.
 
 **Why this approach — a reliable floor before the impressive path**
 Council review (19 Aug) made the case: requirement 1 was scoring zero, it was the
@@ -385,6 +385,20 @@ demo footage:
   starts the Band A clock at the transcript. A judge will time from when they stop
   speaking, so the boundary has to be visible on screen rather than argued in a
   README.
+- **`python-multipart` is a hard runtime dependency of this service and nothing
+  imports it.** `POST /v1/stt/file` takes an upload, and FastAPI resolves
+  `Form`/`UploadFile` parameters when it REGISTERS the route rather than when the
+  route is called - so the missing package did not break one endpoint, it stopped
+  the whole gateway from starting. Found by booting the service; **198 unit tests
+  were green at the time.** The suite imported `sarvam`, `vad` and `config` and
+  never `main`, so nothing it covered could have caught it.
+
+  Two lessons, and the second is the general one. Declare dependencies that only
+  the framework imports - they are the easy ones to omit precisely because no
+  `import` statement points at them. And **a green suite is not evidence a service
+  runs**: `tests/test_stt_gateway.py` now imports both apps and asserts their
+  routes are registered, which is the cheapest available proxy for "uvicorn can
+  start this".
 
 **Open threads**
 - Browser recorder (`getUserMedia` + AudioWorklet, 48 kHz → 16 kHz PCM16) unbuilt.

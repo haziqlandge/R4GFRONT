@@ -17,6 +17,13 @@ numpy>=1.26
 # Service
 fastapi>=0.115
 uvicorn[standard]>=0.30
+
+# Required by stt_gateway's POST /v1/stt/file, which takes an audio upload.
+# FastAPI resolves Form/UploadFile parameters when it REGISTERS the route, not
+# when the route is called, so without this the whole service fails to start -
+# not just that one endpoint. It is a hard runtime dependency despite never
+# being imported by our own code, which is why it is easy to omit.
+python-multipart>=0.0.9
 pydantic>=2.8
 orjson>=3.10
 httpx>=0.27
