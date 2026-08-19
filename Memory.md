@@ -420,7 +420,7 @@ Surveyed hosts against the three constraints in `Architecture.md` §10: India re
 
 ---
 
-### [Phase 3] Chunking depth — the baseline wins
+### [Phase 3] Chunking depth — the baseline holds, and the method was the contribution
 **Date:** 18-19 Aug 2026 | **Who:** BENCH (i5-12400F) | **Branch:** `main`
 
 **What happened**
@@ -428,23 +428,50 @@ Seven strategies evaluated against C1 on 500 dev queries. C4 killed on a cost
 model (D11). C2 and C8 built and measured here; C5, C6, C7, BM25 and RRF fusion
 were already in place. J15 replaced the comparison method itself.
 
-**The result: nothing beats C1.**
+**The result, stated precisely (corrected after council review).** Earlier
+phrasing said "nothing beats C1", which overstates. The accurate statement is:
+**C1 and C8 are statistically tied on English; C1 wins on Hindi; everything else
+is significantly worse.**
 
-| strategy | en R@10 | hi R@10 | chunks | index MB | serving MB |
+**Only 4 of the 6 rows below are independent evidence.** C5 and C6 reuse C1's
+byte-identical `index.bin` *by construction* - they change the payload and the
+parent lookup, not the vectors - so their identical scores are a property of the
+design, not three separate confirmations. Presenting six rows as six results
+inflates the apparent method count and visually pads C1's column. Counted
+honestly: **4 independently measured strategies (C1, C2, C7, C8), 1 reasoned-out
+(C3), 1 killed on a cost model (C4).**
+
+**Independently measured (distinct indexes):**
+
+| strategy | en R@10 | hi R@10 | en Hit@1 | chunks | serving MB |
 |---|---|---|---|---|---|
-| **c1 fixed 96/24** | **0.878** | **0.714** | 379,240 | 655 | 1,080 |
-| c2 sentence-window | 0.354 | 0.416 | 927,069 | 1,602 | 2,029 |
-| c5 metadata | 0.878 | 0.714 | 379,240 | 655 | 1,080 |
-| c6 hierarchical | 0.878 | 0.714 | 379,240 | 655 | 1,080 |
-| c7 doc2query | 0.864 | 0.674 | 403,240 | 697 | 1,122 |
-| c8 late chunking | 0.886 | 0.692 | 379,240 | 655 | 1,080 |
+| **c1 fixed 96/24** | 0.878 | **0.714** | 0.356 | 379,240 | 1,080 |
+| c2 sentence-window | 0.354 | 0.416 | 0.124 | 927,069 | 2,029 |
+| c7 doc2query | 0.864 | 0.674 | 0.352 | 403,240 | 1,122 |
+| **c8 late chunking** | **0.886** | 0.692 | **0.366** | 379,240 | 1,080 |
+
+**Not independent — same index as C1 by construction:**
+
+| strategy | en R@10 | hi R@10 | note |
+|---|---|---|---|
+| c5 metadata | 0.878 | 0.714 | C1's vectors, different payload/filter |
+| c6 hierarchical | 0.878 | 0.714 | C1's chunks, plus a `query_id` parent lookup |
+
+**Hit@1 matters more than Recall@10 for this product** and was missing from the
+first version of this table. A voice assistant speaks ONE passage; the extractive
+path returns the top hit. C8 leads on en Hit@1 (0.366 vs 0.356), though not
+significantly.
 
 Paired deltas vs c1 (same queries, 4,000 resamples): c2 **-0.524 en**, c7 -0.014 en
 / -0.040 hi, all significant and worse. c8 is +0.008 en (not significant) and
 **-0.022 hi (significant, worse)**. c5 and c6 are exactly +0.0000.
 
-**Decision: C1 stays the default.** It is the cheapest index, ties or beats every
-alternative, and comfortably fits the 8 GB serving box at ~1,080 MB.
+**Decision: C1 stays the default** - but as a tie broken on Hindi and on risk,
+not as a win. C8 matches it on English (and edges Hit@1), costs the same 655 MB,
+and is significantly worse only on Hindi (-0.022). C1 is chosen because it holds
+both languages, is the simplest thing that works, and is already the measured
+Phase 2 baseline. **C8 is a live alternative, not a rejected one** - if the Phase 5
+reranker changes the ranking picture, revisit it.
 
 **Why this approach**
 The comparison method mattered more than any strategy. Two of my own reported
@@ -491,15 +518,15 @@ Only genuinely aligned per-query arrays produce an exact zero.
   chunk to gain.
 
 **Open threads**
-- **C3 (semantic breakpoint) skipped, deliberately.** Not merely because it
-  reuses C2's sentence embeddings - C3 *merges* sentences at breakpoints, so its
-  chunks would land between C2's 26 tokens and C1's 70, not at C2's size. The
-  real reason is the pattern across six strategies: 96-token windows are already
-  near-optimal here because passages average ~77 tokens. C8 (identical spans,
-  richer context) did not beat C1, C7 did not, and C2 (smaller units) was far
-  worse. C3 would occupy the same size band C1 already holds, for a ~35 minute
-  build, with no mechanism by which it would win. Revisit only if the slice is
-  widened to a corpus with genuinely long documents, where D8's argument changes.
+- **C3 (semantic breakpoint) NOT BUILT - a time-boxed call, not a measured
+  result.** Council review was right to push on this: the earlier justification
+  ("it would occupy a size band C1 already holds") extrapolates from C2 and C7,
+  which fail by different mechanisms, and states a hypothesis with the confidence
+  of a measurement. The honest version: with three days to freeze and Phases 4-8
+  unbuilt, a ~35 minute build plus eval was not the best use of the time, and the
+  prior - that a ~77-token corpus leaves little room for any segmentation
+  strategy to win - is weak evidence, not proof. **Report Phase 3 as 4 measured +
+  1 reasoned-out + 1 cost-killed, never as "6 strategies tested".**
 - Ranking, not retrieval, is the bottleneck: Hit@1 0.356 against Recall@10 0.878.
   Chunking cannot close that; the Phase 5 reranker is where the headroom is.
 - The en/hi gap persists at ~0.16 and no strategy narrowed it.
