@@ -30,7 +30,8 @@ Severity is about the submission, not about engineering neatness:
 | I13 | Build time is no longer comparable across strategies | **P2** | Phase 3 (J15) |
 | I14 | The 5070 Ti is the only unproven part of the toolchain | **P1** | Phase 3 (J5) |
 | I15 | Amends I7 — the Groq cap also rules out offline use | **P1** | Phase 3 (J6) |
-| I21 | Eval results assembled from runs with different query counts | **P1** | Phase 3 (J15) |
+| I21 | Eval results assembled from runs with different query counts | **RESOLVED** | J15 harness |
+| I22 | Scoring raw chunks biases against fine-grained chunkers | **RESOLVED** | J15 passage dedup |
 | I16 | `tests/test_lexical.py` pushed before J11 exists — collection fails | **RESOLVED** | — |
 | I17 | ~~BM25 widens the en/hi gap~~ — **corrected**: the gap is flat across retrievers | **P2** | Phase 5 |
 | I18 | Lexical P99 breaches its 12 ms stage timeout on English | **P2** | Phase 3 (J12) / Phase 5 |

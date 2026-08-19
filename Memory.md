@@ -491,8 +491,15 @@ Only genuinely aligned per-query arrays produce an exact zero.
   chunk to gain.
 
 **Open threads**
-- C3 (semantic breakpoint) is unimplemented. It reuses C2's sentence embeddings,
-  and C2 scoring 0.354 makes it very unlikely to be worth the build.
+- **C3 (semantic breakpoint) skipped, deliberately.** Not merely because it
+  reuses C2's sentence embeddings - C3 *merges* sentences at breakpoints, so its
+  chunks would land between C2's 26 tokens and C1's 70, not at C2's size. The
+  real reason is the pattern across six strategies: 96-token windows are already
+  near-optimal here because passages average ~77 tokens. C8 (identical spans,
+  richer context) did not beat C1, C7 did not, and C2 (smaller units) was far
+  worse. C3 would occupy the same size band C1 already holds, for a ~35 minute
+  build, with no mechanism by which it would win. Revisit only if the slice is
+  widened to a corpus with genuinely long documents, where D8's argument changes.
 - Ranking, not retrieval, is the bottleneck: Hit@1 0.356 against Recall@10 0.878.
   Chunking cannot close that; the Phase 5 reranker is where the headroom is.
 - The en/hi gap persists at ~0.16 and no strategy narrowed it.
