@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en" data-theme="terminal">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How Shruti works &middot; every requirement, with its measurement</title>
+<meta name="description" content="The six technical requirements, what was built for each, and the measured evidence behind it.">
+<link rel="stylesheet" href="/_shared/base.css">
+<link rel="stylesheet" href="theme.css">
+</head>
+<body class="is-docs">
+
+<div class="shell">
+  <header class="topbar">
+    <span class="brand">Shruti <small>documentation</small></span>
+    <span class="topbar-spacer"></span>
+    <nav class="navlinks">
+      <a class="btn btn-primary" href="index.html">Open the demo</a>
+      <a class="btn" href="https://github.com/haziqlandge/R4GFRONT" target="_blank" rel="noopener">Repository</a>
+    </nav>
+  </header>
+</div>
+
+<main class="doc">
+  <div class="doc-hero">
+    <h1>Every number on this page came from a dated file in the repository.</h1>
+    <p>
+      This is the working record for a voice-enabled RAG system built on AI4Bharat's
+      MSMARCO-XI corpus. It covers the six technical requirements in the order the brief
+      states them, the measurement boundary for each latency figure, and the three
+      assumptions that turned out to be false once we measured them.
+    </p>
+  </div>
+
+  <div id="doc-root"></div>
+
+  <footer class="doc-footer">
+    <span>Team OK4T</span>
+    <span>HH Goa 2026, Task 2</span>
+    <span class="topbar-spacer"></span>
+    <a href="https://github.com/haziqlandge/R4GFRONT" target="_blank" rel="noopener">Repository</a>
+    <span>#RAGInGoa</span>
+  </footer>
+</main>
+
+<script type="module">
+  import { renderDocs } from "/_shared/docs.js";
+  renderDocs(document.getElementById("doc-root"));
+</script>
+</body>
+</html>

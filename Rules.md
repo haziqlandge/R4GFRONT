@@ -69,10 +69,18 @@ The "hot path" is everything inside `rag_core` between receiving a transcript an
 - Any LLM SDK for the offline proposition-chunking pass (C4)
 
 **Frontend**
-- Next.js 15, TypeScript, Tailwind
+- **Amended 20 Aug 2026: no framework at all.** The shipped site is static HTML,
+  two stylesheets and ES modules under `frontends/`, served by
+  `python -m http.server`. Next.js 15 + Tailwind were built first, in `apps/web`,
+  and removed. The reasoning that follows is what survived, and it is what
+  produced the amendment: one screen with no routing, no data layer of its own
+  and no state outliving a reload does not need a build step. See the 20 Aug
+  entry in `Memory.md`. Reintroducing a framework needs a reason this surface
+  does not currently have.
 - No component library. See `Design.md`; shadcn defaults are exactly the "stale and repetitive" look the brief warns against.
-- `zustand` if state gets complicated. Not Redux.
 - No charting library for the latency waterfall. It is four divs and a CSS transform. Adding `recharts` for this is 90 KB for nothing.
+- No API key, ever, anywhere under `frontends/`. The browser talks to
+  `stt_gateway`; the gateway talks to Sarvam. This one is HARD, see section 4.
 
 ### 3.2 Do not use (HARD)
 

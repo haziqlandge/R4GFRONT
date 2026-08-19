@@ -559,8 +559,10 @@ _pending_
 
 ### [Phase 8] Demo surfaces and polish
 **Date:** 19 Aug 2026 | **Who:** BENCH | **Branch:** `p4-p5-voice-rerank`
-**Status: PARTIAL. The surface exists and works; polish, the strategy toggle and
-the failure-injection mode are not built.**
+**Status: SUPERSEDED on 20 Aug. `apps/web` was replaced by the static site in
+`frontends/` and deleted. Kept as the record of what it cost and what it taught,
+particularly the resampler, which survived the change unaltered. The current
+frontend entry is the next one.**
 
 **What happened**
 `apps/web` built: Next.js 15, React 19, TypeScript, no component library. Browser
@@ -623,6 +625,136 @@ reads as cherry-picking - which is worse than being slower.
   failure-injection query param that forces a 429 to demo the circuit breaker, and
   the citation matched-span highlight.
 
+
+### [Phase 8, continued] 20 Aug 2026 — the frontend was replaced, and `apps/web` deleted
+**Date:** 20 Aug 2026 | **Who:** BENCH | **Branch:** `front-v1`
+**Status: DONE. `frontends/` is the site. `apps/web` is gone.**
+
+**What happened**
+The Phase 8 surface above was a Next.js 15 application. It has been replaced by
+`frontends/`: `index.html`, `docs.html`, one stylesheet, one console script and
+a `_shared/` module directory, served by `python -m http.server` on :3000.
+`apps/web` was deleted from the working tree. It is recoverable from git history
+and nothing else in the repo depended on it.
+
+**Why**
+The thing a judge opens is a page, not an application. It has one screen, no
+routing, no authentication, no data layer of its own and no state that outlives
+a reload; every heavy decision already lives in `rag_core`. A framework was
+buying a build step, a `node_modules`, a Node version in the prerequisites table
+and a compile between typing and seeing, in exchange for nothing this surface
+uses. Removing it removed all four. The prerequisites table now says Node is not
+required at all, which is one fewer thing to go wrong on a machine that is not
+this one.
+
+The second reason is honesty about the numbers. `_shared/data.js` holds every
+published figure exactly once and each block names the dated file under
+`bench/results/` it came from, so the demo page, the documentation page and the
+on-page console cannot disagree with each other. That property is worth more
+than any component library.
+
+**How it was built, and what got thrown away**
+Eight complete interface treatments were built over one design pass, sharing a
+single behaviour layer, and one was chosen. Seven were deleted on 20 Aug along
+with the launcher that switched between them; the survivor was promoted to the
+root of `frontends/`. `_backup/03-terminal-v1/` keeps the first draft of the
+survivor, self-contained, so a rollback is a copy.
+
+The split that made this cheap is still in place and should stay: `base.css`
+sets structure and reads a token contract, `theme.css` defines it and holds
+every visual decision. Deleting seven treatments cost nothing because no
+treatment could break the citation expander or the abstention panel.
+
+**The design**
+A session log. Amber on black, monospace throughout, lowercase, regions framed
+like a text user interface with the title on the top rule. Dark only, one
+accent. Under the timing panel is a console you can type into: styling, not a
+shell, nothing executes on your machine, and every figure it prints comes from
+`data.js`. `help` lists the commands, `status` polls both services live,
+`session` prints the percentiles for the queries you have run.
+
+**Verified against both live services on 20 Aug**
+
+| query | result | Band A |
+|---|---|---|
+| English | EXTRACTIVE, 3 citations, confidence 4.23 | 54.6 ms |
+| Hindi | EXTRACTIVE, Devanagari answer and citations | 141.0 ms |
+| gibberish | **ABSTAINED** `LOW_CONFIDENCE`, -4.908 vs the -1.103 floor | 101.0 ms |
+
+Zero console errors. No horizontal page overflow at 375, 768 or 1280; the wide
+tables scroll inside their own wrapper rather than stretching the page.
+
+**Three bugs worth remembering, because each has a general form**
+
+1. **The sticky section nav highlighted the wrong section.** It used an
+   IntersectionObserver and lit the *first* section in document order still
+   touching a band under the nav. At a boundary two sections touch it at once
+   and the outgoing one is always the earlier of the two — so clicking a link
+   left the *previous* entry highlighted, and landing exactly on a boundary is
+   not an edge case, it is precisely what clicking a link does. Replaced with a
+   position test: the last section whose top has passed the reading line. No
+   tie, and correct at both ends of the page. **General form: an intersection
+   test cannot answer a question about ordering.**
+
+2. **Numeric table headers were left-aligned over right-aligned numbers.** It
+   reads as fine at one width and as broken at every other, which is why it
+   survived so long. Fixed with an explicit class on numeric headers, plus a
+   `min-width` inside the scrolling wrapper so a narrow window scrolls the table
+   sideways instead of compressing headers into three-line stacks.
+
+3. **A `flex-basis: 100%` spacer forced the top bar to wrap on every screen
+   under 900px**, whether or not the contents needed it to, which put the brand
+   alone on the first line and every control on the second. The row fits on one
+   line at 375px once the tagline and the repo link are dropped, and both of
+   those are said again elsewhere on the page.
+
+**One correction the site needed, found the same day**
+The chunking table showed four rows and filed C5 and C6 under a prose note, which
+read as though only four strategies had ever been built. Six were: C5 and C6 have
+their own dated result files (`bench/results/2026-08-18-200054-retrieval-c5.json`
+and `-200059-retrieval-c6.json`), their own index builds, their own rows in the
+J15 paired comparison the table already cites, and 20 dedicated tests in
+`tests/test_derived_chunkers.py`. The Phase 3 honesty note — that only four rows
+are *independent evidence*, because C5 and C6 reuse C1's byte-identical index by
+construction — is about the strength of the evidence, not about how much work was
+done, and the page had collapsed the two. All six rows are now in the table, with
+the two derived ones carrying a `reuses C1` marker and dimmed figures. Dropping
+the rows hid work; showing them unmarked would have padded C1's column with its
+own reflection. Both failures are avoidable at once.
+
+**Rules that carried over and are still HARD**
+No API key anywhere under `frontends/` (`Rules.md` 4): the browser talks to
+`stt_gateway`, the gateway talks to Sarvam. Every number mono and tabular. The
+abstention panel weighted equally to an answer and never styled as an error.
+The measurement boundary on screen, with `speech` as its own readout beside
+`pipeline` — a 200 ms claim that quietly excludes speech-to-text reads as
+cherry-picking, which is worse than being slower.
+
+**`Design.md` is now partly superseded** and carries a banner saying so. Its
+thesis survived; its type stack, colour tokens and component names described
+`apps/web` and do not describe this. The surviving rules are restated in
+`HANDOFF.md` 5A.
+
+**Port 3000 is still load bearing.** `stt_gateway` allows CORS from
+`localhost:3000` only. On any other port typing works and speaking fails, with a
+CORS rejection that reads exactly like a broken microphone. `run-dev.bat`,
+`frontends/serve.bat` and the VS Code `web` task all now serve `frontends/` on
+3000 instead of running `npm run dev`.
+
+**Open threads, unchanged by this work**
+- **The microphone path has still never run against real audio.** No mic on this
+  box. `getUserMedia` -> AudioWorklet -> resampler is the unexercised stretch and
+  it is still the first thing to test on a machine that has one.
+- The realtime socket (`/v1/stt/live`) is still unwired; partials and the
+  `Latency.md` 5 prefetch remain hypothetical and must not be claimed.
+- Not built: the live strategy toggle (F13), the failure-injection query param
+  that forces a 429 to demo the circuit breaker, and the citation matched-span
+  highlight.
+
+**Where to continue.** Phase 6 guardrails is the top priority and has not
+started — `ISSUES.md` I26 makes the output guard load-bearing rather than
+decorative. Then Phase 7 deploy to the GCP Mumbai box, then Phase 9. The
+frontend needs nothing further to be submittable.
 
 ### [Phase 9] Videos, posting, submission
 _pending_
@@ -975,5 +1107,7 @@ Paste this when starting a fresh AI coding session on this project:
 > Read these files first, in order: `Memory.md` (context and decisions), `Rules.md` (hard constraints), `Phases.md` (find the current phase), `Architecture.md` (the design), `Latency.md` (the budget).
 >
 > Key context: the fast path makes zero network calls. Extractive answering when reranker confidence is high, Groq LLM fallback when moderate, abstention when low. No LangChain. No hosted vector DB. No hosted embeddings. Everything in-process on ONNX int8.
+>
+> The website is `frontends/`: static HTML, two stylesheets and ES modules, no build step and no Node. It is served by `python -m http.server` on port 3000, which is fixed because `stt_gateway` allows CORS from that origin only. Its own `README.md` is the frontend handoff. The Next.js app that used to be in `apps/web` was removed on 20 Aug.
 >
 > Tell me which phase we are on and what its exit criterion is before writing any code.

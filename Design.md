@@ -2,6 +2,16 @@
 
 Visual and interaction system for the voice RAG interface. Team OK4T.
 
+> **Status, 20 August 2026: partly superseded.** This document was written for
+> `apps/web`, the Next.js surface that has since been removed. The *thesis*
+> below still governs the shipped site — instrumentation rather than a chat app,
+> every number mono and tabular, the abstention panel weighted equally to an
+> answer, the measurement boundary on screen — and those rules are restated in
+> `HANDOFF.md` 5A. The specific type stack, colour tokens, component names and
+> `tokens.css` file references describe a surface that no longer exists. The
+> shipped design is documented in `frontends/README.md` and its decisions live
+> in `frontends/theme.css`.
+
 ---
 
 ## 1. Design thesis

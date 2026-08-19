@@ -9,7 +9,7 @@ Voice → STT → input guard → embed → hybrid retrieve → fuse → rerank
      → confidence route → [extractive | LLM | abstain] → output guard → response
 ```
 
-**Status: Phase 3 of 9 complete.** Band A P50 **3.31 ms**, en Recall@10 **0.878**. Chunking explored and settled ([`Memory.md`](Memory.md) Phase 3); the reranker, guardrails, voice and deploy remain. See [`HANDOFF.md`](HANDOFF.md) to pick up.
+**Status: Phases 0-5 and 8 complete.** Band A P50 **59.99 ms** English / **73.77 ms** Hindi against a 200 ms budget, en Recall@10 **0.878**, 202 tests green, `mypy --strict` clean. Voice input, reranking, routing, abstention and the site all work end to end. **Phase 6 guardrails is the top priority**, then Phase 7 deploy and Phase 9 videos. See [`HANDOFF.md`](HANDOFF.md) to pick up, and read [`ISSUES.md`](ISSUES.md) I24-I26 before quoting any Phase 5 number.
 
 ---
 
@@ -19,9 +19,11 @@ The brief asks for sub-200ms. We publish three bands and state the boundary for 
 
 | Band | Boundary | Target | Measured |
 |---|---|---|---|
-| **A — Core RAG** | Transcript in → response serialized. Guardrails, embedding, dense + lexical search, fusion, reranking, routing, extractive answering, groundedness. No STT, no LLM network call. | < 200 ms | _pending Phase 5_ |
-| **B — Core RAG + generation** | Band A routed through the Groq LLM fallback. | reported honestly | _pending Phase 5_ |
-| **C — Full wall clock** | User stops speaking → answer painted. | reported honestly | _pending Phase 7_ |
+| **A — Core RAG** | Transcript in → response serialized. Guardrails, embedding, dense + lexical search, fusion, reranking, routing, extractive answering, groundedness. No STT, no LLM network call. | < 200 ms | **59.99 ms P50 en, 73.77 ms hi.** P100 118.79 / 155.92 |
+| **B — Core RAG + generation** | Band A routed through the Groq LLM fallback. | reported honestly | **643.83 ms P50.** Over budget, published anyway |
+| **C — Full wall clock** | User stops speaking → answer painted. | reported honestly | Sarvam alone 527-911 ms. Reported separately |
+
+250 frozen queries, 30 warmup runs discarded, on an i5-12400F at 2 serving threads. The full table with P70 and P90, the per-stage breakdown and the boundary for each band are on the site's documentation page and in [`Latency.md`](Latency.md).
 
 A pipeline containing a hosted LLM call cannot reliably finish in 200 ms — time-to-first-token alone consumes the budget before retrieval starts. So the fast path contains no LLM call: when reranker confidence is high the answer is a verbatim span from a cited passage, which is both faster and structurally incapable of hallucinating. Full reasoning in [`Latency.md`](Latency.md).
 
@@ -69,6 +71,24 @@ Every run writes a dated, immutable JSON to `bench/results/`. Results are never 
 
 ---
 
+## Running it
+
+Three processes: the pipeline, the speech gateway, and a static server for the site.
+
+```bash
+run-dev.bat
+```
+
+Then open <http://localhost:3000>. `frontends\serve.bat` does the same and opens the browser for you.
+
+**Port 3000 is not a preference.** `stt_gateway` allows CORS from `localhost:3000` only, because it is the process holding the Sarvam key. On any other port typing works and speaking fails with a CORS error that reads like a broken microphone. Use `localhost` rather than a LAN IP for the same class of reason: `getUserMedia` needs a secure origin and `192.168.x.x` is not one, so the mic silently never prompts.
+
+The site is `frontends/` — plain HTML, one stylesheet and ES modules, served by `python -m http.server`. **There is no build step and no `node_modules`.** It replaced the Next.js app that used to live in `apps/web`, which has been removed; see [`frontends/README.md`](frontends/README.md) and the 20 August entry in [`Memory.md`](Memory.md).
+
+Check <http://localhost:8000/health> before testing. It reports which capabilities actually came up — a dense-only process and a fully reranked one are both "ok" and answer differently.
+
+---
+
 ## Repository layout
 
 | Path | What |
@@ -78,7 +98,7 @@ Every run writes a dated, immutable JSON to `bench/results/`. Results are never 
 | `services/rag_core/chunking/` | Eight strategies, one per file, one shared protocol |
 | `services/rag_core/guardrails/` | Four layers: input, retrieval, generation, output |
 | `services/stt_gateway/` | WebSocket relay to Sarvam. Holds the key; the browser never sees it. |
-| `apps/web/` | Next.js single screen. Mic orb, transcript, answer, latency waterfall. |
+| `frontends/` | **The site.** Static HTML, one stylesheet, ES modules. No build step. Served on :3000. |
 | `scripts/` | Offline: download, freeze, index build, ONNX export, benchmarks, evals |
 | `bench/` | Frozen query sets and dated results |
 

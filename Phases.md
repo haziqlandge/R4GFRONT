@@ -122,7 +122,7 @@ Then together:
 **Day: 17 to 18 August | Owner: 2 people | Duration: 1 day**
 
 **Tasks**
-- `apps/web`: Next.js scaffold, single page, design tokens from `Design.md` wired in
+- `apps/web`: Next.js scaffold, single page, design tokens from `Design.md` wired in _(built, then replaced on 20 Aug by the static site in `frontends/`; `apps/web` has been removed)_
 - `lib/audio/recorder.ts`: `getUserMedia`, AudioWorklet, downsample to 16kHz mono PCM16. This is fiddlier than it looks; budget real time for it.
 - `services/stt_gateway`: FastAPI WebSocket endpoint, relays frames to Sarvam `saaras:v3-realtime`, holds the key
 - Sarvam config: `stream_type=vad`, `language_code=auto`, VAD tuned via `silence_duration_ms`
@@ -201,6 +201,18 @@ Deploy early enough that deployment problems are not deadline problems. This is 
 **Day: 21 August | Owner: whole team | Duration: 1 day**
 
 Everything in this phase exists to make requirements 2, 3, 4 and 6 *visible* in a two-minute video. Work already done that a judge cannot see scores zero.
+
+> **Done, 20 August 2026, and not the way this task list describes.** The surface
+> is `frontends/`: a static demo page and a documentation page, no framework and
+> no build step, replacing the `apps/web` scaffold Phase 4 stood up. The
+> component names below are from that scaffold and no longer exist. What did get
+> built: the latency waterfall scaled to the budget rather than to the total,
+> citations that expand in place, the abstention panel with the calibrated floor
+> drawn on the same axis as the score, live session percentiles alongside the
+> published 250-query figures, and a documentation page carrying every
+> requirement with the measurement behind it. Still not built from this list:
+> the strategy toggle (F13) and the failure-injection mode. See `HANDOFF.md` 5A
+> and the 20 Aug entry in `Memory.md`.
 
 **Tasks**
 - `LatencyWaterfall.tsx`: per-stage timing bars from the returned trace. This is the money shot of Video 2.

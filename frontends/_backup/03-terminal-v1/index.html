@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en" data-theme="terminal">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>shruti · voice rag, measured</title>
+<meta name="description" content="Speak a question, get a cited answer from MSMARCO-XI in under 200ms, or an honest refusal.">
+<link rel="stylesheet" href="/_shared/base.css">
+<link rel="stylesheet" href="theme.css">
+</head>
+<body>
+<div class="shell">
+  <header class="topbar">
+    <span class="brand">shruti <small>voice rag, measured</small></span>
+    <span class="topbar-spacer"></span>
+    <span class="sh-health" data-sh="health"></span>
+    <span class="seg" role="group" aria-label="Answer mode">
+      <button data-mode="fast" type="button">fast</button>
+      <button data-mode="accurate" type="button">accurate</button>
+    </span>
+    <nav class="navlinks">
+      <a class="btn" href="docs.html">docs</a>
+      <a class="btn" href="https://github.com/haziqlandge/R4GFRONT" target="_blank" rel="noopener">repo</a>
+    </nav>
+  </header>
+
+  <!-- One column of framed regions, read top to bottom like a session log. -->
+  <main class="stack">
+    <section class="win win-input">
+      <h2 class="win-title">input</h2>
+      <div class="win-body inputrow">
+        <button class="mic" data-sh="mic" data-state="idle" aria-label="Start recording">
+          <span class="mic-ring" data-sh="orb"></span>
+          <span class="mic-label">rec</span>
+        </button>
+        <div class="inputcol">
+          <p class="sh-state" data-sh="state">Ready</p>
+          <p class="sh-transcript" data-sh="transcript"></p>
+          <form class="sh-form" data-sh="form">
+            <span class="prompt">&gt;</span>
+            <input class="sh-input" data-sh="input" type="text"
+                   placeholder="type a question in english or hindi"
+                   aria-label="Type a question">
+            <button class="btn btn-primary" type="submit">run</button>
+          </form>
+          <div class="sh-samples" data-sh="samples"></div>
+        </div>
+      </div>
+    </section>
+
+    <p class="sh-error" data-sh="error" role="alert" hidden></p>
+
+    <section class="win">
+      <h2 class="win-title">output</h2>
+      <div class="win-body" data-sh="answer"></div>
+    </section>
+
+    <div class="cols">
+      <section class="win">
+        <h2 class="win-title">timing</h2>
+        <div class="win-body">
+          <div class="readout">
+            <span class="readout-k">pipeline</span>
+            <span class="sh-num readout-v" data-sh="total">-</span>
+            <span class="readout-k">speech</span>
+            <span class="sh-num readout-v readout-v-dim" data-sh="stt">-</span>
+          </div>
+          <p class="boundary">
+            pipeline is the 200 ms claim. speech is a network call and is timed apart,
+            because a judge times from when they stop speaking.
+          </p>
+          <div data-sh="waterfall"></div>
+        </div>
+      </section>
+
+      <section class="win">
+        <h2 class="win-title">analytics</h2>
+        <div class="win-body" data-sh="analytics"></div>
+      </section>
+    </div>
+  </main>
+
+  <footer class="doc-footer">
+    <span>team ok4t</span>
+    <span>ai4bharat msmarco-xi, en + hi slice</span>
+    <span class="topbar-spacer"></span>
+    <span>#RAGInGoa</span>
+  </footer>
+</div>
+
+<script type="module">
+  import { boot } from "/_shared/app.js";
+  boot();
+</script>
+</body>
+</html>

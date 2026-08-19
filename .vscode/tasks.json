@@ -1,0 +1,64 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "shruti: all three",
+      "dependsOn": ["rag_core", "stt_gateway", "web"],
+      "dependsOrder": "parallel",
+      "problemMatcher": [],
+      "group": { "kind": "build", "isDefault": true }
+    },
+    {
+      "label": "rag_core",
+      "type": "shell",
+      "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+      "args": ["-m", "uvicorn", "rag_core.main:app", "--port", "8000"],
+      "options": {
+        "cwd": "${workspaceFolder}/services",
+        // Printing a Hindi transcript to a cp1252 console raises
+        // UnicodeEncodeError and kills the request. Not optional on Windows.
+        "env": { "PYTHONIOENCODING": "utf-8" }
+      },
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": { "group": "shruti", "panel": "dedicated" }
+    },
+    {
+      "label": "stt_gateway",
+      "type": "shell",
+      "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+      "args": ["-m", "uvicorn", "stt_gateway.main:app", "--port", "8001"],
+      "options": {
+        "cwd": "${workspaceFolder}/services",
+        "env": { "PYTHONIOENCODING": "utf-8" }
+      },
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": { "group": "shruti", "panel": "dedicated" }
+    },
+    {
+      // The site is static HTML and ES modules served from frontends/. It
+      // replaced the Next.js app in apps/web, which has been removed, so
+      // there is no build step and no node_modules to install.
+      //
+      // Port 3000 is fixed: stt_gateway allows CORS from :3000 only.
+      "label": "web",
+      "type": "shell",
+      "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+      "args": ["-m", "http.server", "3000"],
+      "options": { "cwd": "${workspaceFolder}/frontends" },
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": { "group": "shruti", "panel": "dedicated" }
+    },
+    {
+      "label": "tests",
+      "type": "shell",
+      "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+      "args": ["-m", "pytest", "-q"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": [],
+      "group": "test"
+    }
+  ]
+}

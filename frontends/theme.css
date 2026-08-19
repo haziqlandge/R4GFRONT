@@ -1,0 +1,315 @@
+/**
+ * The stylesheet.
+ *
+ * A session log. Amber on black, everything monospaced, everything lowercase,
+ * regions framed like a text user interface with the title sitting on the top
+ * rule. Read top to bottom: input, output, then timing and analytics side by
+ * side with a console panel filling the space under the timing.
+ *
+ * Dark only. One accent, amber.
+ *
+ * This began as one of eight interface treatments and is the one that shipped;
+ * the other seven were removed on 20 Aug. It holds every visual decision on the
+ * site. base.css underneath it sets structure and reads the token block below,
+ * and never sets a colour, a font or a border of its own.
+ */
+
+:root {
+  --bg: #0A0A0A;
+  --bg-2: #101010;
+  --bg-3: #1A1814;
+  --line: #2A2620;
+  --line-strong: #443C2E;
+
+  --fg: #F0E6D2;
+  --fg-2: #BFB199;
+  --fg-3: #7E7462;
+
+  --accent: #FFB000;
+  --accent-fg: #140E00;
+  --ok: #9BE35B;
+  --warn: #FFB000;
+  --halt: #FF5F56;
+
+  --font: ui-monospace, "Cascadia Mono", "JetBrains Mono", "SF Mono", Consolas, monospace;
+  --font-mono: var(--font);
+  --display-weight: 700;
+  --answer-weight: 400;
+  --answer-size: clamp(17px, 2vw, 22px);
+  --side-w: 224px;
+
+  --r: 0px;
+  --r-sm: 0px;
+  --r-pill: 0px;
+  --r-tl: 0px;
+  --maxw: 1180px;
+  --maxw-doc: 940px;
+  --orb: 96px;
+
+  color-scheme: dark;
+}
+
+body { font-size: 15px; }
+
+/* Selection was the browser default blue, which is the one colour in the whole
+   palette that does not belong to it. */
+::selection { background: var(--accent); color: var(--accent-fg); }
+::-moz-selection { background: var(--accent); color: var(--accent-fg); }
+
+.topbar { border-bottom: 1px dashed var(--line-strong); }
+.brand { text-transform: lowercase; letter-spacing: 0; text-decoration: none; }
+a.brand:hover { color: var(--accent); }
+a.brand:hover small { color: var(--fg-3); }
+
+.btn { text-transform: lowercase; }
+.seg { display: inline-flex; border: 1px solid var(--line-strong); }
+.seg button { padding: 5px 11px; font-size: 12px; color: var(--fg-3); }
+.seg button[data-on="true"] { background: var(--accent); color: var(--accent-fg); }
+
+/* min-width:0 all the way down. Every one of these is a grid item, and a grid
+   item that refuses to shrink below its content is how one wide table drags the
+   whole page past the viewport edge on a phone. */
+.stack { padding: 26px 0 40px; display: grid; gap: 18px; min-width: 0; }
+.stack > * { min-width: 0; }
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; min-width: 0; }
+.cols > * { min-width: 0; }
+.col { display: grid; gap: 18px; align-content: start; min-width: 0; }
+.col > * { min-width: 0; }
+.win, .win-body { min-width: 0; }
+
+/* The title sits ON the top rule, which is what makes the frame read as a
+   labelled region rather than as a card. */
+.win { position: relative; border: 1px solid var(--line-strong); }
+.win-title {
+  position: absolute; top: -8px; left: 14px;
+  background: var(--bg); padding: 0 8px;
+  font-size: 11px; font-weight: 400; letter-spacing: .18em;
+  text-transform: uppercase; color: var(--accent);
+}
+.win-body { padding: 24px 18px 18px; }
+
+.inputrow { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 22px; align-items: start; }
+.inputcol { display: grid; gap: 14px; }
+.miccol { display: grid; justify-items: center; gap: 8px; }
+
+.mickey { font-size: 10px; color: var(--fg-3); }
+.mickey kbd {
+  font: inherit;
+  border: 1px solid var(--line-strong);
+  padding: 1px 6px;
+  color: var(--fg-2);
+}
+
+.mic {
+  background: transparent;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  border-radius: 0;
+}
+.mic[data-state="listening"] { background: var(--accent); color: var(--accent-fg); }
+.mic-ring { border-radius: 0; inset: -8px; }
+.mic-label { letter-spacing: .2em; }
+
+.sh-form { align-items: center; }
+.prompt { color: var(--accent); font-size: 16px; }
+.sh-input { border-radius: 0; background: var(--bg-2); text-transform: none; }
+.sh-input::placeholder { color: var(--fg-3); }
+
+.sh-transcript { font-size: clamp(16px, 2vw, 20px); }
+.sh-state { color: var(--accent); }
+
+/* A blinking caret on the idle transcript, which is the one place a terminal
+   convention communicates state rather than decorating. */
+.sh-transcript:empty::after {
+  content: "_";
+  color: var(--accent);
+  animation: blink 1.05s steps(2, start) infinite;
+}
+@keyframes blink { to { visibility: hidden; } }
+
+/* Output. The answer takes the measure it needs and the readout fills what used
+   to be an empty right hand third.
+
+   base.css caps the lead at 40ch and the passage at 64ch, which is the right
+   measure for a proportional display face. In a monospace column at this size
+   it left roughly a third of the card empty between the text and the side rail,
+   so the text read as crammed into the left edge of a half empty box. The card
+   is already the measure here, so the cap comes off and the answer fills it. */
+.win-output .win-body { padding-bottom: 22px; }
+.win-output .sh-answer-text, .win-output .sh-answer-rest { max-width: none; }
+/* Same for the refusal, whose typed reason is one short sentence that was
+   breaking across two lines in a card wide enough for four of them. */
+.win-output .sh-reason-text { max-width: none; }
+.sh-answer-rest { color: var(--fg-2); }
+.sh-answer-side { border-left: 1px dashed var(--line-strong); }
+.sh-side-k { color: var(--fg-3); }
+.sh-side-v { color: var(--accent); }
+.sh-side-dim { color: var(--fg-3); }
+
+.readout { display: grid; grid-template-columns: auto 1fr auto 1fr; gap: 6px 12px; align-items: baseline; }
+.readout-k { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--fg-3); }
+.readout-v { font-size: 30px; line-height: 1; letter-spacing: -0.03em; color: var(--accent); }
+.readout-v[data-over="true"] { color: var(--halt); }
+.readout-v-dim { color: var(--fg-2); }
+.boundary { margin: 14px 0 18px; font-size: 11.5px; line-height: 1.6; color: var(--fg-3); }
+
+/* This theme puts the readout and the waterfall in one region, so the
+   waterfall's own headline number would state the same figure twice. */
+.win .sh-wf-total { display: none; }
+.win .sh-wf-rows { margin-top: 0; }
+
+.sh-cite-head, .sh-badge, .doc-code, .sh-sample { border-radius: 0; text-transform: lowercase; }
+.sh-table tr[data-shipped="true"] { background: var(--bg-3); }
+
+/* ------------------------------------------------------------------ */
+/* Console panel                                                       */
+/* ------------------------------------------------------------------ */
+
+.win-console .win-body { padding: 20px 14px 14px; }
+
+/* Collapsed, this strip IS the prompt, and it is the only prompt on screen.
+   It does not take an accent on hover: a dashed amber rectangle drawn around a
+   whole region reads as a selected window rather than as a control, which is
+   the opposite of what a hover state is for. The affordance is the hint text
+   and the pointer. */
+.term-open {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  text-align: left;
+  font-size: 13px;
+  color: var(--fg-2);
+  transition: background .16s, color .16s;
+}
+.term-open:hover { background: var(--bg-3); color: var(--fg); }
+/* Set while console.js hands focus back after a close. See collapse(). */
+.term-open[data-quiet="true"]:focus-visible { outline: none; }
+/* Expanded, the strip leaves the layout entirely. Keeping it visible put a
+   second `ok4t\ragfront>` above the live one, which read as two terminals
+   stacked on top of each other rather than as one that is open. */
+[data-open="true"] .term-open { display: none; }
+
+.term-prompt { color: var(--accent); white-space: nowrap; }
+.term-open-hint { margin-left: auto; font-size: 10.5px; color: var(--fg-3); letter-spacing: .04em; }
+
+.term-panel { border: 1px solid var(--line); background: var(--bg-2); padding: 12px 10px 10px; }
+
+.term-out {
+  max-height: 260px;
+  overflow-y: auto;
+  display: grid;
+  gap: 1px;
+  margin-bottom: 10px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+.term-line {
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--fg-2);
+}
+.term-line.echo { color: var(--fg-3); }
+.term-line.hd { color: var(--accent); }
+.term-line.ok { color: var(--ok); }
+.term-line.bad { color: var(--halt); }
+.term-line.warn { color: var(--warn); }
+.term-line.dim { color: var(--fg-3); }
+
+@media (prefers-reduced-motion: no-preference) {
+  .term-line-in { animation: term-in .18s ease-out both; }
+}
+@keyframes term-in { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; transform: none; } }
+
+.term-form { display: flex; align-items: center; gap: 8px; }
+.term-field { position: relative; flex: 1; min-width: 0; }
+
+/* The native caret is painted out and ours is drawn instead, one glyph wide, at
+   the exact pixel the next character will occupy. */
+.term-in {
+  display: block;
+  width: 100%;
+  background: transparent;
+  border: 0;
+  color: var(--fg);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.55;
+  padding: 4px 0;
+  caret-color: transparent;
+}
+.term-in:focus { outline: none; }
+.term-in::placeholder { color: var(--fg-3); }
+/* Once it has focus the caret is the invitation, and a placeholder sitting
+   underneath it reads as text that is already there. */
+.term-in:focus::placeholder { color: transparent; }
+
+/* Same font, same size, same padding as the input, so the box it sits in is the
+   input's box and the two share a baseline. --cx is written by console.js from
+   the width of the mirror span. */
+.term-caret,
+.term-mirror {
+  position: absolute;
+  top: 0;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.55;
+  padding: 4px 0;
+  white-space: pre;
+  pointer-events: none;
+}
+.term-caret { left: var(--cx, 0px); color: var(--accent); display: none; }
+.term-mirror { left: 0; visibility: hidden; }
+
+/* No focus, no caret. An unfocused terminal window does not blink, and a caret
+   blinking in a pane nobody is typing into is the thing that made this panel
+   look like a second, live terminal. */
+[data-active="true"] .term-caret { display: block; animation: blink 1.05s steps(2, start) infinite; }
+
+/* Once the string is wider than the field, the input scrolls its own text and a
+   measured caret would be drawn in the wrong place, so the browser's comes
+   back for the rest of that line. */
+.term-field[data-overflow="true"] .term-caret { display: none; }
+.term-field[data-overflow="true"] .term-in { caret-color: var(--accent); }
+
+.term-esc { font-size: 10px; letter-spacing: .04em; color: var(--fg-3); white-space: nowrap; }
+
+
+.footprompt { color: var(--accent); }
+
+/* ------------------------------------------------------------------ */
+/* Docs                                                                */
+/* ------------------------------------------------------------------ */
+
+.doc-hero h1 { text-transform: lowercase; letter-spacing: -0.02em; }
+.doc-h2, .doc-h3 { text-transform: lowercase; }
+.doc-req, .doc-band, .doc-harness, .doc-stat, .doc-threshold, .doc-quote { border-radius: 0; }
+.doc-tl-phase { border-radius: 0; }
+.doc-toc { background: var(--bg); border-bottom: 1px dashed var(--line-strong); }
+.doc-toc a { border-radius: 0; }
+/* Where you are gets the same treatment as what is switched on, so the two
+   readings share one visual idea. Restated here rather than left to base.css
+   because this theme also restyles the nav. */
+.doc-toc a[aria-current="true"] { background: var(--accent); color: var(--accent-fg); }
+.flow-zone, .flow-card { border-radius: 0; }
+.flow-zone-name { text-transform: lowercase; }
+
+@media (max-width: 900px) {
+  .cols { grid-template-columns: 1fr; }
+}
+@media (max-width: 620px) {
+  .inputrow { grid-template-columns: 1fr; gap: 16px; }
+  .miccol { justify-items: start; }
+
+  /* A phone gets the essentials. Each of these is a second reading of something
+     already on screen, or a hint about a key the device does not have, and
+     stacking all of them is what made the page feel crammed rather than dense.
+     Nothing measured is hidden: the waterfall still prints the band it is
+     reporting, and the boundary is stated in full on the documentation page. */
+  .boundary, .sh-side-note, .term-esc, .mickey { display: none; }
+}

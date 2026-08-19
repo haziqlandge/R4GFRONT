@@ -10,7 +10,7 @@ Three deployable units. Keep them separate so the latency-critical one can be tu
 
 ```
 ┌────────────────────────────────────────────────────────────┐
-│  BROWSER (Next.js, Vercel edge, ap-south)                   │
+│  BROWSER (static HTML + ES modules, no build step)          │
 │  mic capture -> PCM16 16kHz -> WS -> render answer + trace  │
 └───────────────┬─────────────────────────┬──────────────────┘
                 │ WSS (audio frames)      │ HTTPS (query)
@@ -271,26 +271,20 @@ ok4t-voice-rag/
 ├── deploy/gcp.md                      # host setup, see Memory.md R3
 ├── docker-compose.yml
 │
-├── apps/
-│   └── web/                          # Next.js 15, App Router
-│       ├── app/
-│       │   ├── layout.tsx
-│       │   ├── page.tsx              # the single screen
-│       │   └── api/health/route.ts
-│       ├── components/
-│       │   ├── MicOrb.tsx            # the central affordance
-│       │   ├── TranscriptStream.tsx  # partials, live
-│       │   ├── AnswerCard.tsx
-│       │   ├── CitationChip.tsx
-│       │   ├── LatencyWaterfall.tsx  # F12, the demo money shot
-│       │   ├── AbstentionPanel.tsx   # F15
-│       │   └── StrategyToggle.tsx    # F13
-│       ├── lib/
-│       │   ├── audio/recorder.ts     # getUserMedia -> PCM16 16k
-│       │   ├── audio/resampler.ts    # AudioWorklet downsample
-│       │   ├── ws/sttClient.ts
-│       │   └── api/ragClient.ts
-│       └── styles/tokens.css         # see Design.md
+├── frontends/                        # THE SITE. static, no build step
+│   ├── index.html                    # the demo, the single screen
+│   ├── docs.html                     # documentation page, shell over renderDocs()
+│   ├── theme.css                     # every visual decision
+│   ├── console.js                    # the on-page console panel
+│   ├── serve.bat                     # all three processes, then opens it
+│   └── _shared/
+│       ├── pcm-worklet.js            # 48k -> 16k PCM16, low pass then resample
+│       ├── core.js                   # getUserMedia, both service clients, analytics
+│       ├── data.js                   # every published number, once, with its source
+│       ├── ui.js                     # answer, citations, abstention, waterfall
+│       ├── docs.js                   # F12 waterfall, F15 abstention, the doc page
+│       ├── app.js                    # binds the markup to all of the above
+│       └── base.css                  # structure only, reads theme.css tokens
 │
 ├── services/
 │   ├── stt_gateway/
@@ -446,10 +440,10 @@ Abstention is never silent. It returns a typed reason (`OFF_TOPIC`, `LOW_CONFIDE
 
 | Layer | Choice | Locked reason |
 |---|---|---|
-| Frontend | Next.js 15, App Router, TypeScript | Team has shipped Vercel projects already |
-| Styling | Tailwind + CSS custom properties | Token system in `Design.md` |
+| Frontend | Static HTML + ES modules, no framework | **Changed 20 Aug**, was Next.js 15. One screen, no routing, no data layer of its own: the build step was buying nothing. See the 20 Aug entry in `Memory.md` |
+| Styling | Two plain stylesheets, CSS custom properties | `base.css` sets structure and reads a token contract; `theme.css` defines it and owns every visual decision |
 | Audio | Web Audio API + AudioWorklet | Only reliable way to get 16kHz PCM16 in-browser |
-| Frontend host | Vercel, `bom1` / India region | Team has an account; edge close to judges |
+| Frontend host | **Open, Phase 7.** The site is static files, so anything serves it, including the GCP box itself | Whatever origin is chosen must be added to `stt_gateway`'s CORS allow list, which is `localhost:3000` only today. Serving it from the same box as the services removes the cross-origin question entirely |
 | Backend | Python 3.11, FastAPI, uvicorn | Ecosystem for ONNX, hnswlib, bm25s |
 | Backend host | **GCP Compute Engine `n2-standard-2`, `asia-south1` (Mumbai), always-on** | Serverless cold starts are fatal to P100; `e2` burst throttling is fatal to it too |
 | STT | Sarvam `saaras:v3-realtime` | Requirement 1; Indic-native; partial transcripts |
@@ -517,8 +511,8 @@ Client sends binary PCM16 16kHz mono frames. Server sends:
 ## 10. Deployment topology
 
 ```
-Vercel (bom1)  ──────►  GCP Compute Engine (asia-south1 Mumbai, always-on)
-   Next.js                 n2-standard-2, 2 vCPU, 8 GB, x86
+static site  ────────►  GCP Compute Engine (asia-south1 Mumbai, always-on)
+(host open, Phase 7)      n2-standard-2, 2 vCPU, 8 GB, x86
                            ├─ stt_gateway  (thin, async, low CPU)
                            └─ rag_core     (warm indexes in RAM)
                                   │

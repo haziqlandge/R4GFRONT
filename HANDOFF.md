@@ -4,7 +4,7 @@
 
 The repo is the handoff. This file covers only what the repo cannot: what a human has to do by hand, what was decided and why it is not in the code yet, and what is deliberately not committed.
 
-Last updated: 19 August 2026, after Phases 4, 5 and a partial 8.
+Last updated: 20 August 2026, after Phases 4, 5 and 8. The frontend was replaced and `apps/web` removed - see section 5A.
 
 > **On a brand-new machine, read [`PREREQUISITES.md`](PREREQUISITES.md) first.** It takes a bare box to a verified one. This file assumes that is done.
 
@@ -28,13 +28,19 @@ Read in this order, and do not skip the first one:
 **Phases 0-3 are complete.** Band A P50 **3.31 ms** against a 200 ms budget,
 en Recall@10 **0.878**, `mypy --strict` clean.
 
-**Phases 4, 5 and part of 8 are also complete**, on branch `p4-p5-voice-rerank`.
+**Phases 4, 5 and 8 are also complete**, on branch `p4-p5-voice-rerank`.
 Band A P50 **59.99 ms** en / **73.77 ms** hi with the reranker in the path, Band B
 **653.6 ms**, 202 tests green, `mypy --strict` clean. Voice input, routing,
-abstention and the web UI all work end to end. See `Memory.md` Phase 4, 5 and 8
+abstention and the site all work end to end. See `Memory.md` Phase 4, 5 and 8
 entries, and **read `ISSUES.md` I24, I25 and I26 before trusting any Phase 5
 number** - I26 in particular corrects a claim an earlier draft made about
 abstention.
+
+**The frontend was replaced on 20 Aug.** The site is now `frontends/`: static
+HTML, one stylesheet and ES modules, no build step, served by
+`python -m http.server` on :3000. `apps/web` has been deleted; it is recoverable
+from git history if anyone wants it back. Section 5A below is the current
+frontend handoff and the 20 Aug entry in `Memory.md` records why.
 
 **START HERE.** The order a council recommended on 19 Aug given a 21 Aug code
 freeze, with what has since been done marked. Items 2, 3 and 5 are done; **1, 4,
@@ -60,7 +66,10 @@ freeze, with what has since been done marked. Items 2, 3 and 5 are done; **1, 4,
    `HANDOFF.md` 5A).
 6. **Phase 7 deploy** to the idle GCP Mumbai VM (`34.100.222.236`). Start early;
    do not let day 3 be the first deploy.
-7. **Phase 8 frontend**, then **Phase 9 videos + social posting by every member.**
+7. ~~**Phase 8 frontend**~~ **DONE.** Replaced on 20 Aug: `frontends/`, static,
+   no build step. Demo page and a documentation page carrying every published
+   number with its source file named. Section 5A.
+8. **Phase 9 videos + social posting by every member.**
 
 Never cut (own planning docs): guardrail eval, latency benchmark, deployment,
 videos, posting.
@@ -75,7 +84,7 @@ videos, posting.
 |---|---|---|
 | **Python** | **3.12** | Not 3.13/3.14. `onnxruntime`, `hnswlib` and `bm25s` have no wheels above 3.12. On Windows, `py -3.12` selects it. |
 | Git | any recent | |
-| Node | 20+ | Required. `apps/web` is built and needs it. Verified on Node 22. |
+| Node | - | **No longer required.** The site is static and served by Python. It was needed for `apps/web`, which has been removed. |
 
 ### 2.2 Clone and build
 
@@ -226,12 +235,29 @@ And two reversals — the highest-value entries, because they are the mistakes t
 
 ## 5A. The frontend, for whoever picks it up next
 
-`apps/web`. Next.js 15 + React 19 + TypeScript, **no component library and no
-Tailwind** (see the Phase 8 `Memory.md` entry for why, and overturn it freely).
+**`frontends/` is the site.** Static HTML, one stylesheet and ES modules, served
+by `python -m http.server` on port 3000. No build step, no `node_modules`, no
+framework. A change is visible on reload.
+
+It replaced `apps/web` (Next.js 15 + React 19 + TypeScript) on 20 Aug 2026.
+`apps/web` has been **deleted from the working tree** and is recoverable from git
+history if anyone wants it back. The 20 Aug entry in `Memory.md` records the
+reasoning; the short version is that the surface a judge sees is a page, not an
+application, and the build step was buying nothing.
+
+Read `frontends/README.md` before touching it. It is longer than this section
+and it carries the parts a diff cannot explain.
 
 ### Running the whole stack locally
 
-Three processes. The web app is useless without the other two.
+Three processes. The site is useless without the other two.
+
+```bash
+run-dev.bat                 # all three, each in its own window
+frontends\serve.bat         # the same, and opens the browser
+```
+
+Or by hand:
 
 ```bash
 # 1. rag_core - the 200ms pipeline
@@ -240,58 +266,84 @@ cd services && ../.venv/Scripts/python -m uvicorn rag_core.main:app --port 8000
 # 2. stt_gateway - holds the Sarvam key, browser never talks to Sarvam directly
 cd services && ../.venv/Scripts/python -m uvicorn stt_gateway.main:app --port 8001
 
-# 3. the web app
-cd apps/web && npm install && npm run dev
+# 3. the site
+cd frontends && ../.venv/Scripts/python -m http.server 3000
 ```
 
-Then open `http://localhost:3000`. **Use localhost, not a LAN IP** - `getUserMedia`
-requires a secure origin, and `localhost` counts while `192.168.x.x` does not. On
-the deployed box this means HTTPS is mandatory or the microphone silently never
-prompts.
+Then open `http://localhost:3000`.
 
-Check `http://localhost:8000/health` first. It reports which capabilities actually
-came up (`reranker`, `generative`, `passage_store`); a dense-only process and a
-fully-reranked one are both "ok" and answer differently.
+**Port 3000 is load bearing, not a habit.** `services/stt_gateway/config.py`
+allows CORS from `localhost:3000` and `127.0.0.1:3000` only, because that is the
+process holding the Sarvam key and a wildcard origin on a credential-holding
+service is not acceptable (`Rules.md` 4). `rag_core` holds no key and is
+permissive, which makes the failure confusing: on any other port **typing works
+and speaking fails**, with a CORS rejection that reads exactly like a broken
+microphone.
+
+**Use localhost, not a LAN IP** - `getUserMedia` requires a secure origin, and
+`localhost` counts while `192.168.x.x` does not. On the deployed box this means
+HTTPS is mandatory or the microphone silently never prompts.
+
+Check `http://localhost:8000/health` first. It reports which capabilities
+actually came up (`reranker`, `generative`, `passage_store`); a dense-only
+process and a fully-reranked one are both "ok" and answer differently.
 
 ### What is where
 
 | file | what it is |
 |---|---|
-| `public/pcm-worklet.js` | 48 kHz -> 16 kHz PCM16 with a windowed-sinc low-pass. **The riskiest file in the frontend.** Read its header before touching it. |
-| `lib/audio/recorder.ts` | getUserMedia, the worklet graph, and the RMS the orb ring reads |
-| `lib/api.ts` | typed clients for both services. Architecture.md 9 is the contract |
-| `app/globals.css` | the whole design system, from `Design.md` 10. No hex appears in a component |
-| `components/MicOrb.tsx` | the amplitude ring, driven through a ref inside rAF |
-| `components/LatencyWaterfall.tsx` | the signature component, plus the confidence readout |
-| `components/AnswerCard.tsx` | answer, citation chips, and the abstention panel |
+| `frontends/index.html` | the demo page. Bespoke markup carrying `data-sh` hooks |
+| `frontends/docs.html` | the documentation page. A thin shell over `renderDocs()` |
+| `frontends/theme.css` | every visual decision: palette, type, layout, ornament, motion |
+| `frontends/console.js` | the on-page console panel. Styling, not a shell |
+| `_shared/pcm-worklet.js` | 48 kHz -> 16 kHz PCM16 with a windowed-sinc low-pass. **The riskiest file in the frontend.** Read its header before touching it. |
+| `_shared/core.js` | getUserMedia, the worklet graph, both service clients, the session analytics store |
+| `_shared/data.js` | **every published number, once.** Each block names the dated file under `bench/results/` it came from |
+| `_shared/ui.js` | answer, citations, abstention panel, waterfall, analytics renderers |
+| `_shared/docs.js` | the documentation page renderer and its sticky section bar |
+| `_shared/app.js` | the controller that binds the markup to all of the above |
+| `_shared/base.css` | structure only. Sets no colour, no font and no border of its own |
+
+The split between `base.css` and `theme.css` is the one piece of the eight-theme
+experiment worth keeping. Structure reads a token contract; the theme defines it.
+That is why a full visual redirection costs a stylesheet rather than a rewrite,
+and it is why deleting seven treatments cost nothing.
 
 ### Rules that are not negotiable in this directory
 
-- **`Design.md` is the brief, not a suggestion.** Two font families, six type
-  steps, four signal colours with fixed meanings, one accent. Never Inter - the
-  brief names it as the stale default to avoid. Signal colours are never
-  decorative; if a colour appears where it carries no meaning the interface stops
-  being readable.
-- **Every number on screen is mono and tabular.** `Design.md` 3.2. This is the one
-  typographic rule that makes it feel like an instrument rather than a web page.
-- **Never hide the instrument column on mobile.** It collapses beneath the stage.
-  It is the only genuinely unusual thing on the screen and it is what makes the
-  submission identifiable at thumbnail size.
+- **Every number on screen is mono and tabular.** `Design.md` 3.2. This is the
+  one typographic rule that makes it feel like an instrument rather than a web
+  page.
 - **The abstention panel gets equal visual weight to an answer**, and is never
   styled as an error. It is a correct outcome, and it is the single most
   convincing shot in Video 2.
-- **No API key may appear anywhere under `apps/web`.** `Rules.md` 4 is HARD. The
-  browser talks to `stt_gateway`; the gateway talks to Sarvam.
+- **The measurement boundary is stated on screen**, not only in the README.
+  `pipeline` and `speech` are separate readouts. A judge times from when they
+  stop speaking, and a 200 ms claim that quietly excludes speech reads as
+  cherry-picking, which is worse than being slower.
+- **No API key may appear anywhere under `frontends/`.** `Rules.md` 4 is HARD.
+  The browser talks to `stt_gateway`; the gateway talks to Sarvam.
+- **No figure is typed into markup.** Everything measured comes from
+  `_shared/data.js`, which names its source file. Two different P50s in one
+  submission costs the reader's trust in every other number on the page.
+
+`Design.md` was written for `apps/web` and its type and colour specifics no
+longer describe this surface. The rules above are the parts of it that survived
+the change and they still hold; the rest of that document is now history.
 
 ### Known gaps, in priority order
 
 1. **The microphone path has never run against real audio.** No mic on the build
-   box. Test this before anything else.
-2. F16's text input reads as co-equal to voice rather than as a fallback.
-   Collapsing it behind a "No microphone? Type instead" link is the likely fix.
+   box. The gateway was proven by feeding Sarvam TTS back through STT, so
+   `getUserMedia` -> AudioWorklet -> resampler is the unexercised stretch. Test
+   this before anything else on a machine that has a microphone.
+2. The realtime socket (`/v1/stt/live`) is still unwired, so partials and the
+   `Latency.md` 5 prefetch remain hypothetical and must not be claimed.
 3. Not built: the live strategy toggle (F13), the failure-injection param that
-   forces a 429 to demo the circuit breaker, the citation matched-span highlight,
-   and the realtime partial-transcript socket.
+   forces a 429 to demo the circuit breaker, and the citation matched-span
+   highlight.
+4. `frontends/_backup/03-terminal-v1/` is the previous version of this design,
+   kept self-contained so a rollback is a copy. Delete it once nobody wants it.
 
 ---
 
@@ -347,6 +399,6 @@ Finish `PREREQUISITES.md` first — the prompts below assume a verified box.
 
 **Phase 3 onward runs across three machines.** `Phase3-Parallel.md` is the operative plan and `Devices.md` says what each box is. The split is by *resource consumed* rather than by strategy count: GPU embedding to EMBED, LLM work to LLM, zero-embedding and CPU-lexical work to BENCH.
 
-The real win there is scheduling, not throughput. Most of Phase 3 is unattended compute, so it runs on the two spare boxes **while Phases 4 and 5 proceed on BENCH** — and those two touch disjoint code (voice is `stt_gateway` + `apps/web`, reranking is `rag_core`). That overlap is the only realistic recovery from the slip recorded in `ISSUES.md` I11.
+The real win there is scheduling, not throughput. Most of Phase 3 is unattended compute, so it runs on the two spare boxes **while Phases 4 and 5 proceed on BENCH** — and those two touch disjoint code (voice was `stt_gateway` + the frontend, reranking is `rag_core`). That overlap is the only realistic recovery from the slip recorded in `ISSUES.md` I11.
 
 `Phases.md` also carries the cut order if time runs short. Never cut: the guardrail eval set, the latency benchmark, the deployment, the videos, the posting. Those are scored requirements; everything else is depth.
