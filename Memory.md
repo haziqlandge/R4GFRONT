@@ -420,6 +420,85 @@ Surveyed hosts against the three constraints in `Architecture.md` §10: India re
 
 ---
 
+### [Phase 3] Chunking depth — the baseline wins
+**Date:** 18-19 Aug 2026 | **Who:** BENCH (i5-12400F) | **Branch:** `main`
+
+**What happened**
+Seven strategies evaluated against C1 on 500 dev queries. C4 killed on a cost
+model (D11). C2 and C8 built and measured here; C5, C6, C7, BM25 and RRF fusion
+were already in place. J15 replaced the comparison method itself.
+
+**The result: nothing beats C1.**
+
+| strategy | en R@10 | hi R@10 | chunks | index MB | serving MB |
+|---|---|---|---|---|---|
+| **c1 fixed 96/24** | **0.878** | **0.714** | 379,240 | 655 | 1,080 |
+| c2 sentence-window | 0.354 | 0.416 | 927,069 | 1,602 | 2,029 |
+| c5 metadata | 0.878 | 0.714 | 379,240 | 655 | 1,080 |
+| c6 hierarchical | 0.878 | 0.714 | 379,240 | 655 | 1,080 |
+| c7 doc2query | 0.864 | 0.674 | 403,240 | 697 | 1,122 |
+| c8 late chunking | 0.886 | 0.692 | 379,240 | 655 | 1,080 |
+
+Paired deltas vs c1 (same queries, 4,000 resamples): c2 **-0.524 en**, c7 -0.014 en
+/ -0.040 hi, all significant and worse. c8 is +0.008 en (not significant) and
+**-0.022 hi (significant, worse)**. c5 and c6 are exactly +0.0000.
+
+**Decision: C1 stays the default.** It is the cheapest index, ties or beats every
+alternative, and comfortably fits the 8 GB serving box at ~1,080 MB.
+
+**Why this approach**
+The comparison method mattered more than any strategy. Two of my own reported
+findings turned out to be measurement artifacts, both caught by fixing the
+harness rather than by re-running:
+
+1. **Query-count artifact (I21).** The old table was assembled from separately
+   dated eval JSONs whose runs used different `--limit` values. c1 at 250 queries
+   scored 0.896, c8 at 500 scored 0.870, which read as C8 being 0.026 worse. On
+   identical settings both score 0.870. The table compared sample sizes.
+2. **Granularity artifact.** Scoring raw top-k CHUNKS penalises fine chunkers:
+   chunks-per-passage varies 2.4x (c1 1.28, c2 3.13), so at k=10 chunks c2 can
+   surface only ~3 distinct passages where c1 surfaces ~8. Under fair
+   passage-level dedup, C8's apparent "+0.040 significant nDCG win" collapses to
+   +0.009, not significant.
+
+So J15 hoists everything shared out of the per-strategy loop - query list,
+embedder, **query vectors**, k, language handling, gold-id logic - and scores
+distinct passages. A strategy cannot be scored under different conditions than
+its neighbours because no per-strategy conditions remain.
+
+**Pairing is verified, not asserted.** c5 and c6 reuse c1's byte-identical
+`index.bin` and return a paired delta of exactly `+0.0000 [+0.0000, +0.0000]`.
+Only genuinely aligned per-query arrays produce an exact zero.
+
+**Numbers**
+- C8 build: 295,888 passages -> 379,240 chunks in 61.6 min, matching C1's count exactly (same spans, different context).
+- C2 build: 927,069 chunks (3.13/passage) in ~17 min at 878 chunks/sec.
+- C8 vector check before committing an hour: cosine 0.976 vs independent embedding, 0/11 identical, L2 norms exactly 1.0.
+
+**Surprises and gotchas**
+- **A pyarrow write broke every rebuild.** `Chunk.meta` was added for C5; every
+  other strategy leaves it empty, and pyarrow refuses `struct<>` with no child
+  fields. Builds failed *at the write*, after all embedding work was spent. The
+  existing c1 index hid it by predating the field. Found on an 8,000-row smoke;
+  it would otherwise have surfaced 73 minutes into C2.
+- **C2 is genuinely weak, not broken.** Its chunks are real sentences averaging
+  26 tokens against C1's 70.6. A single sentence carries too little signal here,
+  and it costs 2.4x the index for -0.52 recall.
+- **C5 and C6 are C1.** Both reuse its vectors by construction, so identical
+  scores are the expected result and the exact zeros are the evidence.
+- Late chunking is a real technique that simply does not pay on this corpus:
+  passages average ~77 tokens, so there is little surrounding context for a
+  chunk to gain.
+
+**Open threads**
+- C3 (semantic breakpoint) is unimplemented. It reuses C2's sentence embeddings,
+  and C2 scoring 0.354 makes it very unlikely to be worth the build.
+- Ranking, not retrieval, is the bottleneck: Hit@1 0.356 against Recall@10 0.878.
+  Chunking cannot close that; the Phase 5 reranker is where the headroom is.
+- The en/hi gap persists at ~0.16 and no strategy narrowed it.
+
+---
+
 ## Reversals and corrections
 
 _Log here whenever a prior decision is overturned. Include the original reasoning, what changed, and the new decision. These are the highest-value entries in the file._
