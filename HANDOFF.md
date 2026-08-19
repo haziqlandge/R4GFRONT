@@ -4,7 +4,7 @@
 
 The repo is the handoff. This file covers only what the repo cannot: what a human has to do by hand, what was decided and why it is not in the code yet, and what is deliberately not committed.
 
-Last updated: 18 August 2026, end of Phase 2 / start of Phase 3.
+Last updated: 19 August 2026, end of Phase 3.
 
 > **On a brand-new machine, read [`PREREQUISITES.md`](PREREQUISITES.md) first.** It takes a bare box to a verified one. This file assumes that is done.
 
@@ -25,9 +25,31 @@ Read in this order, and do not skip the first one:
 5. `ISSUES.md` — measured open problems.
 6. `Architecture.md`, `Latency.md` — the design and the budget.
 
-**Phases 0, 1 and 2 are complete.** The pipeline works end to end: Band A P50 **3.31 ms** against a 200 ms budget, en Recall@10 **0.870**, 35 tests green. (Phase 3 in progress on BENCH: 90 tests green, C1/C5/C6/C7 + BM25 built.)
+**Phases 0-3 are complete.** Band A P50 **3.31 ms** against a 200 ms budget,
+en Recall@10 **0.878**, 132 tests green, `mypy --strict` clean.
 
-**Phase 3 is running across three machines** — see `Phase3-Parallel.md`. Its critical path is J5 → J6 → J7 on the LLM box (CUDA up, then the overnight proposition pass). Everything else has slack.
+**START HERE, PHASE 4 ONWARD.** Remaining work, in the order a council recommended
+on 19 Aug given a 21 Aug code freeze:
+
+1. **Input guard (1 hr, designed not built).** 64-token bound. A 7,168-char
+   pathological query costs 118 ms today; this fixes it. `ISSUES.md` I1.
+2. **Phase 5 reranker - the highest-value work left.** Hit@1 is **0.356** against
+   Recall@10 0.878: the right passage is retrieved but ranked first only a third
+   of the time, and the extractive path returns the top hit, so the naive answer
+   is wrong ~2/3 of the time. Chunking cannot fix this (Phase 3 proved that);
+   the cross-encoder can.
+3. **Calibrate abstention on RERANKER scores, never retrieval scores.** Dense
+   cosine cannot separate gibberish (0.862) from a correct answer (0.919) - a
+   0.05 margin. `ISSUES.md` I3.
+4. **Phase 6 guardrails + 60-case adversarial set.** Explicitly scored: "show
+   your system knows when NOT to answer."
+5. **Phase 4 voice**, scoped to mic -> transcript -> existing pipeline.
+6. **Phase 7 deploy** to the idle GCP Mumbai VM (`34.100.222.236`). Start early;
+   do not let day 3 be the first deploy.
+7. **Phase 8 frontend**, then **Phase 9 videos + social posting by every member.**
+
+Never cut (own planning docs): guardrail eval, latency benchmark, deployment,
+videos, posting.
 
 ---
 

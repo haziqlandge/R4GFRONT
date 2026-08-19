@@ -9,7 +9,7 @@ Voice → STT → input guard → embed → hybrid retrieve → fuse → rerank
      → confidence route → [extractive | LLM | abstain] → output guard → response
 ```
 
-**Status: Phase 2 of 9 complete, Phase 3 in progress.** The retrieval pipeline works end to end at a Band A P50 of **3.31 ms**; Phase 3 adds seven more chunking strategies, BM25 and fusion across [three machines](Devices.md). See [`Phases.md`](Phases.md) and [`Phase3-Parallel.md`](Phase3-Parallel.md).
+**Status: Phase 3 of 9 complete.** Band A P50 **3.31 ms**, en Recall@10 **0.878**. Chunking explored and settled ([`Memory.md`](Memory.md) Phase 3); the reranker, guardrails, voice and deploy remain. See [`HANDOFF.md`](HANDOFF.md) to pick up.
 
 ---
 
