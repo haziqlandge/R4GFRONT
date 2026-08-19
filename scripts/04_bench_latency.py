@@ -42,6 +42,9 @@ from rag_core.config import (  # noqa: E402
     ONNX_THREADS_SERVING,
     PERCENTILE_METHOD,
     PERCENTILES,
+    RERANK_MODEL_FILE,
+    RERANK_TOKENIZER_FILE,
+    RERANKER,
     RESULTS_DIR,
     TOKENIZER_FILE,
     WARMUP_RUNS,
@@ -100,25 +103,51 @@ async def stub_pipeline() -> Trace:
 # ---------------------------------------------------------------------------
 
 
-def load_pipeline(strategy: str = DEFAULT_STRATEGY):
+def load_pipeline(strategy: str = DEFAULT_STRATEGY, rerank: bool = True):
     """Build the in-process pipeline exactly as main.py does.
 
     Deliberately not going through HTTP: Band A is defined in Latency.md 1 as
     transcript-received to response-serialized inside rag_core. Adding a loopback
     HTTP hop would measure uvicorn and the kernel, not the pipeline. `--url`
     exists separately for the deployed end-to-end measurement.
+
+    `rerank=False` builds the Phase 2 dense-only pipeline. It is kept as a flag
+    rather than deleted because the reranker's cost is the single largest change
+    to Band A since Phase 2, and the honest way to report that cost is to measure
+    both configurations on the same box in the same run rather than to difference
+    two numbers taken weeks apart.
+
+    Groq is deliberately NOT attached. This is a Band A harness: Latency.md 3
+    publishes the generative path separately, and a benchmark whose numbers depend
+    on whether a network call happened to be routed is not a benchmark.
     """
     from rag_core.harness.stages import Runtime, build_pipeline
     from rag_core.retrieval.dense import DenseIndex
     from rag_core.retrieval.embedder import Embedder
+    from rag_core.retrieval.rerank import CrossEncoder
 
     embedder = Embedder(
         ONNX_DIR / INT8_MODEL, ONNX_DIR / TOKENIZER_FILE, threads=ONNX_THREADS_SERVING
     )
     index = DenseIndex(strategy)
     index.load()
-    rt = Runtime(embedder, index)
-    rt.build_passage_map(index.chunks)
+
+    reranker = None
+    if rerank:
+        d = ONNX_DIR / f"rerank-{RERANKER}"
+        if (d / RERANK_MODEL_FILE).exists():
+            reranker = CrossEncoder(
+                d / RERANK_MODEL_FILE,
+                d / RERANK_TOKENIZER_FILE,
+                threads=ONNX_THREADS_SERVING,
+            )
+        else:
+            print(f"  WARNING reranker missing at {d}, benching dense-only")
+
+    rt = Runtime(embedder, index, reranker=reranker)
+    # Same store the service uses, or the benchmark measures a different pipeline.
+    if not rt.load_passage_store():
+        rt.build_passage_map(index.chunks)
     return build_pipeline(rt)
 
 
@@ -289,9 +318,10 @@ async def main_async(args: argparse.Namespace) -> int:
     elif args.pipeline:
         field = "query_en" if args.lang == "en" else "query_hi"
         queries = load_bench_queries(field)
-        pipeline = load_pipeline(args.strategy)
+        pipeline = load_pipeline(args.strategy, rerank=not args.no_rerank)
         fn = make_pipeline_runner(pipeline, queries)
-        label = f"{args.strategy}-{args.lang}"
+        suffix = "-dense" if args.no_rerank else f"-rr{RERANKER}"
+        label = f"{args.strategy}-{args.lang}{suffix}"
         print(f"  benching {len(queries)} frozen queries ({args.lang})")
     else:
         print("Pass --stub or --pipeline.", file=sys.stderr)
@@ -329,6 +359,8 @@ def main() -> int:
     parser.add_argument("--pipeline", action="store_true",
                         help="bench the real in-process rag_core pipeline")
     parser.add_argument("--strategy", default=DEFAULT_STRATEGY)
+    parser.add_argument("--no-rerank", action="store_true",
+                        help="bench the Phase 2 dense-only path, for the before/after")
     parser.add_argument("--lang", default="en", choices=["en", "hi"],
                         help="which frozen query set to bench")
     parser.add_argument("--runs", type=int, default=250,

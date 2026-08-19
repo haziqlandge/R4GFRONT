@@ -1,0 +1,188 @@
+{
+  "generated_utc": "2026-08-19T01:31:45.629504+00:00",
+  "measurement": "rerank stage latency sweep, Phase 5",
+  "git_sha": "b3c8a89",
+  "device_tag": "BENCH",
+  "machine": {
+    "cpu": "i5-12400F (6 physical / 12 logical)",
+    "platform": "Windows-10-10.0.19045-SP0"
+  },
+  "reranker": "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1 (int8 avx512_vnni)",
+  "serving_threads": 2,
+  "queries": 50,
+  "warmup": 8,
+  "language": "en",
+  "conditions": "idle box, nothing else running; percentile method=nearest",
+  "note": "Devices.md 2: latency does NOT transfer between machines and is never published from a dev box. Latency.md 6 requires published figures come from the deployed GCP instance. This sweep exists to choose depth and batch size, which is a RELATIVE comparison and survives being local. The GCP target n2-standard-2 is 2 vCPU = 1 physical core + hyperthread, so absolute numbers there will be worse than these.",
+  "results": [
+    {
+      "depth": 5,
+      "max_tokens": 256,
+      "batch": 1,
+      "p50": 59.3,
+      "p90": 85.2,
+      "p99": 102.4,
+      "p100": 102.4
+    },
+    {
+      "depth": 5,
+      "max_tokens": 256,
+      "batch": 16,
+      "p50": 61.9,
+      "p90": 118.7,
+      "p99": 149.8,
+      "p100": 149.8
+    },
+    {
+      "depth": 5,
+      "max_tokens": 192,
+      "batch": 1,
+      "p50": 59.4,
+      "p90": 83.9,
+      "p99": 106.5,
+      "p100": 106.5
+    },
+    {
+      "depth": 5,
+      "max_tokens": 192,
+      "batch": 16,
+      "p50": 60.4,
+      "p90": 108.8,
+      "p99": 120.3,
+      "p100": 120.3
+    },
+    {
+      "depth": 5,
+      "max_tokens": 128,
+      "batch": 1,
+      "p50": 54.8,
+      "p90": 67.8,
+      "p99": 76.5,
+      "p100": 76.5
+    },
+    {
+      "depth": 5,
+      "max_tokens": 128,
+      "batch": 16,
+      "p50": 62.4,
+      "p90": 70.5,
+      "p99": 80.5,
+      "p100": 80.5
+    },
+    {
+      "depth": 10,
+      "max_tokens": 256,
+      "batch": 1,
+      "p50": 113.8,
+      "p90": 135.8,
+      "p99": 191.4,
+      "p100": 191.4
+    },
+    {
+      "depth": 10,
+      "max_tokens": 256,
+      "batch": 16,
+      "p50": 166.3,
+      "p90": 243.7,
+      "p99": 335.4,
+      "p100": 335.4
+    },
+    {
+      "depth": 10,
+      "max_tokens": 192,
+      "batch": 1,
+      "p50": 114.0,
+      "p90": 135.2,
+      "p99": 184.9,
+      "p100": 184.9
+    },
+    {
+      "depth": 10,
+      "max_tokens": 192,
+      "batch": 16,
+      "p50": 161.8,
+      "p90": 237.5,
+      "p99": 242.8,
+      "p100": 242.8
+    },
+    {
+      "depth": 10,
+      "max_tokens": 128,
+      "batch": 1,
+      "p50": 111.4,
+      "p90": 128.8,
+      "p99": 151.1,
+      "p100": 151.1
+    },
+    {
+      "depth": 10,
+      "max_tokens": 128,
+      "batch": 16,
+      "p50": 139.1,
+      "p90": 142.2,
+      "p99": 157.2,
+      "p100": 157.2
+    },
+    {
+      "depth": 20,
+      "max_tokens": 256,
+      "batch": 1,
+      "p50": 249.1,
+      "p90": 278.6,
+      "p99": 339.2,
+      "p100": 339.2
+    },
+    {
+      "depth": 20,
+      "max_tokens": 256,
+      "batch": 16,
+      "p50": 376.6,
+      "p90": 504.9,
+      "p99": 620.0,
+      "p100": 620.0
+    },
+    {
+      "depth": 20,
+      "max_tokens": 192,
+      "batch": 1,
+      "p50": 232.2,
+      "p90": 268.2,
+      "p99": 322.7,
+      "p100": 322.7
+    },
+    {
+      "depth": 20,
+      "max_tokens": 192,
+      "batch": 16,
+      "p50": 392.1,
+      "p90": 480.9,
+      "p99": 563.5,
+      "p100": 563.5
+    },
+    {
+      "depth": 20,
+      "max_tokens": 128,
+      "batch": 1,
+      "p50": 239.5,
+      "p90": 264.8,
+      "p99": 294.5,
+      "p100": 294.5
+    },
+    {
+      "depth": 20,
+      "max_tokens": 128,
+      "batch": 16,
+      "p50": 302.0,
+      "p90": 319.7,
+      "p99": 330.5,
+      "p100": 330.5
+    }
+  ],
+  "conclusions": [
+    "batch=1 beats batch=16 at every depth: depth 10 is 113.8ms vs 166.3ms P50. Two threads extract little parallelism from a batch while padding to the longest member wastes compute on every shorter passage. Same effect as the 1.46x length-sorted batching win measured for the offline embedder in Phase 2.",
+    "This makes the reproducible configuration (ISSUES.md I24) also the fast one, so there is no accuracy-vs-speed trade to make on batch size.",
+    "max_tokens is not a useful lever: 256 -> 128 saves ~2% at depth 10 because passages are p50 ~77 tokens and truncation rarely binds. Kept at 256 to avoid truncating the long tail for no measurable gain.",
+    "Cost is roughly linear in depth: ~11.4ms per candidate at batch=1.",
+    "Assumption A2 ('cross-encoder rerank of 20 candidates fits in 45ms') is FALSE. Depth 20 costs 249.1ms P50, 5.5x the assumption, on a faster CPU than the deploy target."
+  ]
+}

@@ -93,10 +93,26 @@ The "hot path" is everything inside `rag_core` between receiving a transcript an
 | Role | Model | Alternate if it underperforms |
 |---|---|---|
 | Embedder | `intfloat/multilingual-e5-small` | `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` |
-| Reranker | `cross-encoder/ms-marco-MiniLM-L-6-v2` | `BAAI/bge-reranker-base` (slower, better) |
+| Reranker | **`cross-encoder/mmarco-mMiniLMv2-L12-H384-v1`** — changed in Phase 5, see below | `BAAI/bge-reranker-base` (slower, no int8 build published) |
 | LLM | Groq `llama-3.3-70b-versatile` | Groq `llama-3.1-8b-instant` if TTFT matters more than quality |
 | Toxicity | a small distilled ONNX classifier | keyword list plus the LLM path only |
 | STT | Sarvam `saaras:v3-realtime` | Sarvam `saaras:v3` legacy WS. **Not** ElevenLabs, we picked one. |
+
+**Reranker deviation, taken under this rule's own "benchmark before deviating"
+clause.** The original entry was `cross-encoder/ms-marco-MiniLM-L-6-v2`, which is
+English-only, and half the frozen slice is Hindi. Both were measured on 300 dev
+queries through an identical path (`scripts/05d_eval_rerank.py`):
+
+| | en Hit@1 | hi Hit@1 |
+|---|---|---|
+| dense, no rerank | 0.360 | 0.233 |
+| `ms-marco-MiniLM-L-6-v2` | 0.447 | **0.120** |
+| `mmarco-mMiniLMv2-L12-H384-v1` | 0.417 | **0.307** |
+
+The English-only model wins English and takes Hindi *below the no-rerank baseline*.
+The replacement is the only arm that significantly improves both languages. Cost of
+the change: 113 MB int8 instead of 22 MB, and English gives up ~0.03 Hit@1.
+Recorded in `Memory.md`, 19 Aug.
 
 **HARD:** The brief says pick one STT provider. We picked Sarvam. Do not add ElevenLabs "as a fallback"; it reads as indecision and it doubles the integration surface.
 

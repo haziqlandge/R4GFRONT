@@ -117,13 +117,40 @@ Tokenization must be language-aware. Use `indic-nlp-library` tokenizers for Indi
 
 RRF over score normalization, because dense cosine scores and BM25 scores live on incomparable scales and normalizing them well requires per-query calibration we do not have time for. RRF is rank-based and needs no calibration.
 
-### 3.6 Reranker: cross-encoder, ONNX int8, top-20 only
+### 3.6 Reranker: cross-encoder, ONNX int8, top-5 only
 
-Model: `cross-encoder/ms-marco-MiniLM-L-6-v2`, ONNX int8.
+**Corrected in Phase 5 against measurement. This section previously specified
+`cross-encoder/ms-marco-MiniLM-L-6-v2` at top-20, with a cost of "~25 to 45ms".
+All three parts were wrong on this corpus and the numbers below replace them.**
 
-Rerank exactly 20 candidates. This is a tuned number: 20 costs ~25 to 45ms on CPU and captures nearly all the recall benefit. Reranking 50 doubles the cost for a marginal gain. Reranking 10 saves 15ms and loses meaningful accuracy.
+Model: `cross-encoder/mmarco-mMiniLMv2-L12-H384-v1`, ONNX int8, 113 MB.
 
-The reranker score is also the **confidence signal** that drives routing and abstention. This is the key structural insight in the design: one mechanism serves latency routing (requirement 3) and guardrails (requirement 6) simultaneously.
+The original choice is English-only BERT and half this corpus is Hindi. Measured on
+300 dev queries at depth 10, it scores en Hit@1 0.447 — the best English number
+of any arm — and hi Hit@1 **0.120**, against a dense baseline of 0.233. It is
+*worse than not reranking at all* in Hindi, and gets worse with depth. The
+replacement is XLM-R trained on mMARCO (MS MARCO machine-translated into 13
+languages, Hindi included); MSMARCO-XI is the same construction, so training
+distribution and corpus match.
+
+**Rerank exactly 5 candidates**, and depth is a measured choice, not a tuned
+assertion. Quality is flat between 5 and 10 (+0.004 en, +0.006 hi — inside noise)
+and *falls* by depth 50 on both languages: reranking deeper gives the cross-encoder
+more opportunities to promote something above the right passage, and the dense
+ordering it is overriding already carries real signal. Depth then costs 59.3 ms P50
+at 5 against 113.8 ms at 10 and 249.1 ms at 20 (idle BENCH, 2 threads, one pair at
+a time). Depth 20 alone would consume more than the entire 200 ms budget.
+
+Scoring is **one pair at a time**, not batched. Batching is both less reproducible
+(`ISSUES.md` I24 — dynamic int8 activation scales make a pair's score depend on its
+batch neighbours) and slower at 2 threads, because padding to the longest member
+wastes more compute than the batch parallelism recovers.
+
+The reranker score is also the **confidence signal** that drives routing and
+abstention. This is the key structural insight in the design: one mechanism serves
+latency routing (requirement 3) and guardrails (requirement 6) simultaneously. What
+Phase 5 added is that the score has to be *reproducible* for that second job to
+mean anything, which is why I24 is a correctness issue and not a tidiness one.
 
 ### 3.7 Answer generation: dual path
 
@@ -390,8 +417,15 @@ Four layers. Requirement 6 asks the system to know when *not* to answer.
 - PII detection with regex plus `presidio`-style rules; redact before logging, never before retrieval
 
 ### Layer 2: retrieval guard (post-rerank, < 1ms)
-- Confidence floor. If `rerank_top1 < 0.35`, abstain. This is the out-of-distribution and off-topic detector.
-- Score-gap check. If top1 and top2 are within 0.02 and both are low, the retrieval is ambiguous. Abstain rather than pick arbitrarily.
+- Confidence floor. ~~If `rerank_top1 < 0.35`, abstain.~~ **Superseded in Phase 5.**
+  That figure was written for a normalised 0-1 score. The chosen cross-encoder
+  emits **raw logits** on roughly a -11 to +11 scale, so 0.35 is not a low
+  threshold on it — it sits mid-range and would abstain on a large share of correct
+  answers. The floor is fitted by `scripts/06_calibrate_routing.py` against the dev
+  partition and lives in `config.ROUTE_TAU_LOW`. `ISSUES.md` I3 records why this
+  floor cannot be placed on the dense score at all.
+- Score-gap check. Likewise: 0.02 is a dense-cosine quantity and does not transfer
+  to a logit scale. Re-derive from the calibration output before relying on it.
 - Language mismatch. If the query language and the retrieved passage languages disagree entirely, flag it.
 
 ### Layer 3: generation guard (LLM path only)

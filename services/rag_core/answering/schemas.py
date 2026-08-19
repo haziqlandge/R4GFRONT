@@ -24,10 +24,33 @@ AbstainReason = Literal[
 ]
 
 
+AnswerMode = Literal["fast", "accurate"]
+
+
 class AnswerRequest(BaseModel):
+    """Request contract. Architecture.md 9.
+
+    `mode` is D2's recorded reversal condition, made real. Assumption A6 -
+    "extractive answers are good enough to be the default" - measured false in
+    Phase 5: reranked top-1 is the correct passage only ~40% of the time, and D2
+    said that if this happened, keep the fast path but expose it as a mode rather
+    than silently defaulting to it.
+
+    fast      never calls the network. Extractive above the abstention floor.
+              Band A, ~60 ms.
+    accurate  lets the router send the middle confidence band to the LLM.
+              Band B, ~650 ms, and outside the 200 ms budget by construction.
+
+    The default is "fast" because that is the configuration the 200 ms claim is
+    measured on, and because Groq's free tier serves roughly 12 calls per window
+    (ISSUES.md I7) - defaulting to a path that cannot serve traffic would be a
+    worse dishonesty than defaulting to a fast one whose limits are published.
+    """
+
     query: str = Field(min_length=1, max_length=2000)
     language: str = "auto"
     strategy: str = "c1"
+    mode: AnswerMode = "fast"
     trace: bool = True
 
 

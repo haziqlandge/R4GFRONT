@@ -34,6 +34,7 @@ class Context(BaseModel):
     query: str
     language: str = "auto"
     strategy: str = "c1"
+    mode: str = "fast"
     trace: Trace
     # Populated progressively by stages. `data` holds intermediate artifacts
     # (query vector, candidates, answer) keyed by stage name.

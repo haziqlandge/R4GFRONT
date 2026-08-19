@@ -1,0 +1,37 @@
+{
+  "label": "c1-hi-rrmulti",
+  "band": "A",
+  "generated_at": "2026-08-19T06:54:02.746357+00:00",
+  "git_sha": "b3c8a89",
+  "environment": {
+    "python": "3.12.5",
+    "platform": "Windows-10-10.0.19045-SP0",
+    "processor": "Intel64 Family 6 Model 151 Stepping 2, GenuineIntel"
+  },
+  "methodology": {
+    "warmup_discarded": 30,
+    "samples": 250,
+    "concurrency": 1,
+    "percentile_method": "nearest",
+    "clock": "time.perf_counter_ns"
+  },
+  "budget_ms": 200.0,
+  "summary_ms": {
+    "p50": 73.774,
+    "p70": 80.854,
+    "p90": 95.607,
+    "p99": 135.497,
+    "p100": 155.923,
+    "mean": 75.907,
+    "stddev": 16.982,
+    "min": 45.606
+  },
+  "stage_median_ms": {
+    "embed_query": 3.369,
+    "dense_search": 0.457,
+    "rerank": 69.763,
+    "route": 0.039,
+    "answer_extractive": 0.027,
+    "answer_generative": 0.006
+  }
+}

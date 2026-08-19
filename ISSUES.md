@@ -40,6 +40,9 @@ Severity is about the submission, not about engineering neatness:
 | I21 | C5 and C6 are retrieval-identical to C1 by construction | **P2** | Phase 3 (J15) |
 | I22 | C4 killed on a costed impossibility, not deferred | **RESOLVED (decision)** | — |
 | I23 | Strategy deltas need PAIRED tests; unpaired CIs hide real effects | **P1** | Phase 3 (J15) |
+| I24 | int8 cross-encoder scores shift with batch composition | **RESOLVED** | Phase 5 |
+| I25 | Stage timeouts do not fire for synchronous stages | **P0** | Phase 5 / Phase 6 |
+| I26 | The abstention floor detects off-topic input, NOT ungrounded answers | **P0** | Phase 6 |
 
 ---
 
@@ -848,6 +851,194 @@ forces two of them to be comparable.
 
 Paired bootstrap deltas belong in that table too. Unpaired confidence intervals
 on 250-500 queries are wide enough to hide every effect measured in this phase.
+
+---
+
+## I24 — int8 cross-encoder scores depend on batch composition
+
+**Severity: P1.** Found in Phase 5 by a test that was written to check something
+else (that `attention_mask` was being fed correctly). It was, and the drift is
+real anyway.
+
+### What was measured
+
+Seven passages of differing lengths, scored by the same model at batch size 1 and
+batch size 7:
+
+| build | max abs score delta |
+|---|---|
+| fp32 | **0.000000** |
+| int8 | **0.279366** |
+| int8, all passages the same length | **0.000000** |
+
+The pattern identifies the cause exactly. It is not attention masking — the mask is
+declared, fed, and correct. ONNX Runtime's dynamic quantization derives activation
+scales **per tensor at run time**, so padding rows change the tensor the scale is
+computed from, which perturbs the quantized values of the *real* tokens alongside
+the padding. Equal-length batches need no padding and are bit-exact; fp32 has no
+activation scales to derive and is bit-exact at any batch shape.
+
+### Why it matters here, beyond tidiness
+
+The median adjacent-rank logit gap for this model is **0.364** (measured in the
+`03b_export_reranker.py` tau diagnostic). A perturbation of 0.279 is **77% of the
+gap between neighbouring candidates**, which is large enough to reorder them. Two
+consequences:
+
+1. **Reproducibility.** The same (query, passage) pair scores differently depending
+   on which passages happen to share its batch. Top-1 becomes batch-dependent, and
+   top-1 is the extractive answer.
+2. **Calibration.** Phase 6 sets the abstention floor on the top-1 rerank score
+   (this is the whole point of I3 — the dense score cannot carry that signal). A
+   threshold is only meaningful against a score that is a function of the pair,
+   not of its batch neighbours.
+
+### Resolution
+
+The hot path scores **one pair at a time**. That makes the score a pure function of
+(query, passage) and costs whatever batch parallelism was worth — measured in the
+Phase 5 depth sweep rather than assumed, since the alternative (length-sorted
+batching, as used for the embedder in Phase 2) only *reduces* padding rather than
+eliminating it, and a partially-reproducible score is not a category worth having.
+
+**This is the same class of bug as the Phase 2 int8 parity gate**, and the opposite
+outcome. There, ordering instability turned out to be noise below the tie gap and
+the gate was wrong. Here the perturbation sits just under the tie gap and is
+consequential. The lesson is not "ordering tests are bad", it is **measure the
+perturbation against the gap it has to survive** — which is now a documented step
+in `03b_export_reranker.py` rather than an instinct.
+
+---
+
+## I25 — a stage's `timeout_ms` cannot interrupt a synchronous stage
+
+**Severity: P0.** It invalidates a claim `Latency.md` makes about the whole design.
+
+### What was measured
+
+One pipeline, one stage, `timeout_ms=50`, two implementations of the same 120 ms of
+work:
+
+| stage body | wall clock | span status | stage completed |
+|---|---|---|---|
+| CPU spin (what ONNX inference is) | **123.7 ms** | **`ok`** | **yes** |
+| `await asyncio.sleep` (what an HTTP call is) | 47.4 ms | `failed` | no |
+
+The timeout is enforced with `asyncio.wait_for`, which can only fire when the
+awaited coroutine yields to the event loop. `embed_query`, `dense_search` and
+`rerank` are all synchronous ONNX or C++ calls that never yield, so their declared
+timeouts are unreachable — and the overrun is reported as a clean `ok`, not as a
+degradation.
+
+### Why this is P0 rather than a curiosity
+
+`Latency.md` §4.1 says of the budget mechanism: *"This is what makes the 200ms
+figure a guarantee rather than an average."* Half of that mechanism does not exist
+for the stages that consume the budget. What genuinely works is only the
+**pre-stage gate**, which compares `remaining_ms` against the stage's allocation
+and can decline to *start* it. Once a stage starts, nothing outside it can stop it.
+
+Before Phase 5 this was harmless — every Band A stage measured single-digit
+milliseconds, so no stage could plausibly overrun. The reranker changes that: it is
+the first stage whose cost is a meaningful fraction of the whole budget, which is
+what made this visible.
+
+### Resolution, and its limit
+
+`CrossEncoder.rerank()` takes a `deadline_ms` and checks it **between pairs**. This
+is only possible because I24 already forced batch-size-1 scoring for
+reproducibility, which leaves a yield point every ~11 ms. On expiry the unscored
+candidates are demoted below the scored ones rather than dropped, and the method
+returns `n_scored` so the trace can distinguish a partial rerank from a complete
+one instead of presenting one as the other.
+
+**The limit is real and worth stating:** this fixes the one stage that needed it.
+`embed_query` still cannot be interrupted, which is exactly the mechanism behind
+I1's 118 ms pathological query — it is not that the timeout was too generous, it is
+that the timeout could never have fired. The Phase 6 input guard bounds that case
+at the input instead, which is the correct layer for it and is now the *only* thing
+protecting it.
+
+A general fix would mean running sync stages in a thread pool. That buys a bounded
+*response* time but not bounded CPU — Python cannot kill a running thread, so the
+work continues burning a core after the caller gives up. On a 2 vCPU box that
+trades a slow request for a degraded process, which is the wrong trade. Deadlines
+checked inside the work are better where the work can be chunked.
+
+---
+
+## I26 — the abstention floor detects OFF-TOPIC input, not UNGROUNDED answers
+
+**Severity: P0.** It corrects a claim the Phase 5 entry made about its own best result,
+and it changes what Phase 6 has to build.
+
+### The claim that was made
+
+The Phase 5 calibration reported that `tau_low = -1.103` catches **100% of
+genuinely-unanswerable queries and 100% of gibberish** at a 5% false-abstention
+cost, and that this "vindicates Architecture.md 3.6" and makes requirement 6 real.
+
+Both numbers are true. The conclusion drawn from them was not.
+
+### What a council review forced, and what the data says
+
+The challenge: *"100% abstention catch at 5% false-abstention cannot coexist with
+'the LLM says INSUFFICIENT_CONTEXT on 50% of queries' and 'top-1 is right 40% of
+the time'. Your floor is probably detecting out-of-distribution input rather than
+absence of grounding."*
+
+Re-analysed from the existing calibration file, no new run needed:
+
+| measurement | value |
+|---|---|
+| mismatched pool caught (query vs a different query's candidates) | **100.0%** |
+| gibberish caught | **100.0%** |
+| **wrong top-1 that scores ABOVE the floor and is answered anyway** | **92.5%** |
+| correct top-1 wrongly abstained on | 0.6% |
+| **share of everything we ANSWER that is wrong** | **62.1%** (295 of 475) |
+
+### The distinction that was being collapsed
+
+The two negative populations used for calibration are not the same difficulty:
+
+- **mismatched / gibberish** — the candidate pool is *topically unrelated* to the
+  query. The cross-encoder scores this at a median of -7.28 against +8.30 for a
+  correct hit. Enormous separation, trivially caught.
+- **topically related but wrong** — the pool is about the right subject and the top
+  passage simply does not answer the question. The cross-encoder scores these at a
+  median of **+5.89**, barely below the +8.30 of a correct answer, and far above
+  the floor.
+
+Only the first was measured. The claim "the system knows when not to answer" was
+then made on the strength of it.
+
+**So: `tau_low` is an excellent out-of-domain detector and a poor grounding
+detector.** Requirement 6 is genuinely satisfied for off-topic, gibberish and
+unanswerable-from-corpus input — which is three of Phase 6's five adversarial
+categories — and is genuinely NOT satisfied for the most common real case, where
+retrieval returns something plausible and wrong.
+
+### Why this is the same mistake as Phase 3, again
+
+Phase 3's write-up claimed "nothing beats C1" and had to be corrected to "C1 and C8
+are statistically tied on English". Both errors have the same shape: a real
+measurement generalised past what it measured. The Phase 3 fix was to count only
+independently-measured arms; the fix here is to name the population a number was
+measured on whenever the number is quoted.
+
+### What follows
+
+1. **Never quote the 100% figure without its population.** The honest sentence is
+   "100% of off-topic and unanswerable-from-corpus queries", not "100% of queries
+   it should refuse".
+2. **Phase 6's output guard is now load-bearing, not a nicety.** Groundedness has
+   to be checked against the *answer*, not inferred from the retrieval score - term
+   overlap plus a cheap entailment check is the intended mechanism and it is the
+   only thing that addresses the 62.1%.
+3. **The `is_selected` caveat is real but does not rescue this.** MS MARCO labels
+   are sparse, so some passages counted wrong are genuinely useful. That inflates
+   the 62.1% somewhat. It does not change the shape: the floor cannot tell the two
+   cases apart, whatever the true rate is.
 
 ---
 

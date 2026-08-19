@@ -1,0 +1,46 @@
+{
+  "generated_utc": "2026-08-19T06:54:35.282627+00:00",
+  "band": "B",
+  "model": "llama-3.1-8b-instant",
+  "reranker": "multi",
+  "strategy": "c1",
+  "language": "en",
+  "runs": 18,
+  "warmup": 2,
+  "forced_generative": true,
+  "production_tau_high": 1.877,
+  "summary_ms": {
+    "p50": 56.71729997266084,
+    "p70": 58.94449999323115,
+    "p90": 70.02010004362091,
+    "p99": 98.29029999673367,
+    "p100": 98.29029999673367,
+    "mean": 60.63287778265981
+  },
+  "path_distribution": {
+    "ABSTAIN": 2,
+    "EXTRACTIVE": 16
+  },
+  "breaker_opened_at_query": 1,
+  "samples_ms": [
+    98.29029999673367,
+    70.02010004362091,
+    51.72609997680411,
+    65.00399997457862,
+    53.9668999845162,
+    58.94449999323115,
+    49.32740004733205,
+    53.83760004770011,
+    52.71720001474023,
+    56.93630001042038,
+    49.862799991387874,
+    58.722599991597235,
+    85.08970000548288,
+    54.58490003366023,
+    62.07330001052469,
+    57.87469999631867,
+    56.71729997266084,
+    55.69609999656677
+  ],
+  "note": "Sample size is capped by Groq's 12,000-token free-tier window (ISSUES.md I7, assumption A10). Not comparable to Band A, which is in-process and deterministic."
+}

@@ -342,10 +342,200 @@ Per-stage medians: `embed_query` 2.81 ms, `dense_search` 0.42 ms, `answer_extrac
 _pending_
 
 ### [Phase 4] Voice input
-_pending_
+**Date:** 19 Aug 2026 | **Who:** BENCH | **Branch:** `main` (uncommitted)
+**Status: gateway built and verified against live Sarvam. Browser recorder and UI
+still to come.**
+
+**What happened**
+`services/stt_gateway` built: config, Sarvam client, energy VAD, and a FastAPI
+service exposing a batch endpoint, a frame-streaming WebSocket, and a health check.
+198 tests green, `mypy --strict` clean across both services.
+
+**Why this approach — a reliable floor before the impressive path**
+Council review (19 Aug) made the case: requirement 1 was scoring zero, it was the
+only remaining item with a genuine unknown, and the realtime socket is the riskiest
+part of it. So the order was inverted deliberately. The BATCH path (one buffered
+utterance, one documented HTTPS POST) went in first, and server-side VAD segments
+utterances so the browser still gets a hands-free experience without betting
+requirement 1 on the realtime socket behaving. The realtime relay layers on top.
+
+**Verified against the live API, without a microphone.** Sarvam TTS was used to
+synthesize speech and feed it straight back through our own STT path — a real
+round trip in both languages, repeatable in CI-less conditions and reusable as
+demo footage:
+
+| | said | heard | conf | STT |
+|---|---|---|---|---|
+| en-IN | "How tall is Mount Everest?" | exact match | 0.991 | 911 ms |
+| hi-IN | "एफिल टॉवर कितना ऊंचा है?" | "Eiffel Tower कितना ऊंचा है?" | 0.851 | 527 ms |
+
+**Surprises and gotchas**
+- **Sarvam authenticates with `api-subscription-key`, not a bearer token.** An
+  `Authorization: Bearer` header returns a 401 that reads like a bad key.
+- **`input_audio_codec` is REQUIRED for raw PCM.** The endpoint sniffs container
+  formats; raw samples have nothing to sniff, and omitting the tag produces a
+  decode error that looks like corrupt audio rather than a missing parameter.
+- **Sarvam transliterates proper nouns into Latin script inside Hindi output** —
+  "एफिल टॉवर" came back as "Eiffel Tower". This is correct code-mixed behaviour and
+  it is a RETRIEVAL concern, not a transcription one: our Hindi passages are
+  Devanagari throughout, so a spoken Hindi question can arrive carrying Latin-script
+  entities that the indexed text never contains. Worth measuring against the Hindi
+  index before the demo; `multilingual-e5-small` may absorb it, or may not.
+- STT costs 527–911 ms. That is **Band C** and is reported separately: Latency.md 1
+  starts the Band A clock at the transcript. A judge will time from when they stop
+  speaking, so the boundary has to be visible on screen rather than argued in a
+  README.
+
+**Open threads**
+- Browser recorder (`getUserMedia` + AudioWorklet, 48 kHz → 16 kHz PCM16) unbuilt.
+  This is the remaining unknown in requirement 1.
+- The realtime relay (`/v1/stt/live`) is specified in `sarvam.py` but not wired;
+  the batch and frame-streaming paths cover the requirement without it.
+- Latency.md 5's speculative prefetch depends on realtime partials and is therefore
+  still hypothetical. It should not be claimed until it is measured.
+
 
 ### [Phase 5] Reranking, routing and calibration
-_pending_
+**Date:** 19 Aug 2026 | **Who:** BENCH (i5-12400F) | **Branch:** `main` (uncommitted)
+
+**What happened**
+Cross-encoder reranking, confidence routing, a Groq fallback with a circuit
+breaker, and calibrated thresholds. Both candidate rerankers were fetched with a
+parity gate, compared on en+hi, and the depth chosen off a measured curve. Two new
+issues found (I24, I25), one closed (I9). 158 tests green, `mypy --strict` clean.
+
+**Why this approach**
+Every number below came from a comparison run in ONE process over ONE query list,
+because Phase 3 taught that a table assembled from separate runs compares run
+settings rather than the thing under test (I21/I22). The reranker harness reuses
+that discipline wholesale.
+
+**Numbers**
+
+Retrieval quality, 300 dev queries, paired bootstrap vs the same candidates in
+dense order:
+
+| arm | en Hit@1 | Δ en | hi Hit@1 | Δ hi |
+|---|---|---|---|---|
+| dense, no rerank | 0.360 | — | 0.233 | — |
+| mono (English-only) d10 | 0.447 | +0.087 * | **0.120** | **−0.113** * |
+| **multi d5 (shipped)** | 0.393 | +0.033 | 0.307 | **+0.073** * |
+| multi d10 | 0.397 | +0.037 | 0.313 | **+0.080** * |
+
+`*` = 95% CI excludes zero.
+
+Band A, 250 frozen queries, 30 warmup discarded, BENCH:
+
+| | P50 | P90 | P99 | P100 |
+|---|---|---|---|---|
+| en, dense only | 3.25 | 3.81 | 4.37 | 4.66 |
+| **en, reranked** | **59.99** | 75.10 | 113.96 | 118.79 |
+| **hi, reranked** | **73.77** | 95.61 | 135.50 | 155.92 |
+
+Band B (generative path forced), 12 queries: P50 **653.6 ms**, P100 815 ms.
+
+**Surprises and gotchas**
+
+- **The Rules.md default reranker is actively harmful here.** English-only
+  `ms-marco-MiniLM-L-6-v2` wins English outright and drives Hindi to 0.120 against
+  a 0.233 no-rerank baseline — worse than not reranking, monotonically worse with
+  depth. Replaced with `mmarco-mMiniLMv2-L12-H384-v1` (XLM-R, mMARCO-trained).
+  Rules.md 3.3 updated under its own "benchmark before deviating" clause.
+- **Depth 20 was wrong; depth 5 ships.** Quality is flat 5→10 and *falls* by 50,
+  while cost is linear: 59 / 114 / 249 ms P50. Deeper reranking gives the model
+  more chances to promote something above the right passage.
+- **Batching is slower AND less reproducible.** I24: int8 activation scales are
+  derived per tensor at run time, so padding makes a pair's score depend on its
+  batch neighbours (0.279 logits against a 0.364 adjacent-rank gap). Batch size 1
+  removes that — and is 32% faster at 2 threads, because padding waste exceeds the
+  batch parallelism. The reproducible configuration and the fast one coincided.
+- **Stage timeouts do not work for synchronous stages (I25, P0).** Measured: a sync
+  stage with a 50 ms timeout ran 123.7 ms and reported `ok`; an awaiting stage was
+  cut at 47.4 ms. `asyncio.wait_for` only fires at an await point and ONNX never
+  yields. `Latency.md` 4.1's "guarantee rather than an average" rests entirely on
+  the pre-stage gate. The reranker now takes a deadline it checks between pairs —
+  possible only because I24 already forced one-pair-at-a-time scoring.
+- **Groq retired both models this project had verified.** `llama-3.3-70b-versatile`
+  and `llama-3.1-8b-instant` now 404 with `model_not_found`; the 14 Aug entry
+  recording them as live is stale. Re-check a provider's model list at the start of
+  any phase that depends on it. Now on `openai/gpt-oss-20b`, measured correct and
+  cited in both languages.
+- **A reasoning model broke the abstention check.** `qwen/qwen3.6-27b` opens with a
+  `<think>` block that eats the whole 160-token cap, and quotes the abstention
+  sentinel while reasoning — which `if INSUFFICIENT in text` read as a refusal.
+  The check is now anchored to the start of the cleaned response.
+
+**The finding that matters most, stated carefully**
+
+The reranker **closed most of the Hindi gap and left English roughly where it
+was.** Hindi is +0.073 and significant; English is +0.033 with a CI spanning zero.
+It is not "the reranker fixed ranking".
+
+Calibration then split the same way. `tau_low = -1.103` catches **100% of
+genuinely-unanswerable queries and 100% of gibberish** at a 5% false-abstention
+cost, with answerable-correct at median +8.30 against unanswerable at -7.28.
+
+**CORRECTED after council review, same day — see ISSUES.md I26.** The first
+version of this entry called that signal "excellent" and said it vindicated
+Architecture.md 3.6. Both numbers are true; the conclusion was not, and it is the
+Phase 3 mistake repeated: a real measurement generalised past the population it
+was measured on.
+
+Re-analysed from the same calibration file: **92.5% of WRONG top-1 answers score
+above the floor and are answered anyway, and 62.1% of everything the system
+answers is wrong.** The two negative populations differ enormously in difficulty -
+a topically *unrelated* pool scores a median -7.28 and is trivially caught, while a
+topically *related but wrong* pool scores +5.89, just under a correct answer's
++8.30 and far above the floor. Only the easy population was measured.
+
+**So `tau_low` is an excellent out-of-domain detector and a poor grounding
+detector.** Requirement 6 is genuinely satisfied for off-topic, gibberish and
+unanswerable-from-corpus input - three of Phase 6's five adversarial categories -
+and genuinely NOT satisfied for the common case where retrieval returns something
+plausible and wrong. Quote the 100% figure only with its population attached.
+
+It remains a real answer to I3, where dense cosine separated gibberish from a
+correct answer by 0.05 and this separates them by ~15 logits. That claim was about
+out-of-distribution input and survives intact. The broader claim does not.
+
+The extractive signal is **poor**. Top-1 precision never reaches the 0.75 target —
+it peaks at 0.508 at 37% coverage and falls after. **Assumption A6 is false and
+D2's reversal condition is triggered**, not narrowly avoided. `tau_high` was set to
+1.877 (85% extractive / 10% generative / 5% abstain) as a deliberate judgement:
+buying precision with coverage would route the majority of traffic to a free tier
+that serves ~12 calls per window (I7), which is the same arithmetic that killed C4.
+
+Corroboration from an independent direction: on Band B, `gpt-oss-20b` given the
+top-3 passages returns `INSUFFICIENT_CONTEXT` on **50%** of queries. Our own LLM,
+reading the retrieved context, agrees it usually does not contain the answer.
+**Retrieval, not ranking, is the remaining ceiling** — which is the opposite of
+what Phase 3 concluded and should be stated that way rather than smoothed over.
+
+**Open threads**
+- **A6 / D2 resolved 19 Aug by council review: build the mode toggle (D2's own
+  named fallback), and reframe the product as "cited evidence with calibrated
+  confidence" rather than "answers".** The toggle is one request enum plus one UI
+  control because the router already carries both bands; it also becomes the
+  requirement 3/4 demo, since a judge can flip it and watch 654 ms collapse to
+  60 ms. Rejected: routing more traffic to the LLM, which is incoherent on our own
+  evidence (40% top-1 and 50% INSUFFICIENT_CONTEXT are one measurement seen twice)
+  and inoperable on a 12-call window.
+- **I26 makes Phase 6's OUTPUT guard load-bearing rather than decorative.** The
+  retrieval-score floor cannot catch the 62.1%; only checking groundedness against
+  the answer text can. Do not skip it on the assumption requirement 6 is banked.
+- `Latency.md` 4.1's guarantee now rests on the pre-stage gate plus one in-stage
+  deadline. `embed_query` is still uninterruptible, which is the real mechanism
+  behind I1 — the Phase 6 input guard is now the *only* thing bounding it.
+- Hindi P100 is 155.92 ms against a 200 ms budget on a 6-core box. The GCP target
+  is 2 vCPU (one core plus a hyperthread). **This may not fit there.** Re-measure
+  before publishing (I8), and depth 3 is the lever if it does not.
+- Groq's `meta-llama/llama-prompt-guard-2-86m` is available and is purpose-built
+  for prompt-injection detection — directly relevant to Phase 6 Layer 1, though it
+  is a network call and so cannot sit on the hot path.
+- BM25 and RRF fusion are still not wired into the pipeline. I19 said fusion does
+  not pay for itself at the reranker's depth; at depth 5 that argument is stronger,
+  not weaker, and the decision should be recorded rather than left implicit.
+
 
 ### [Phase 6] Guardrails
 _pending_
@@ -531,6 +721,92 @@ Only genuinely aligned per-query arrays produce an exact zero.
   Chunking cannot close that; the Phase 5 reranker is where the headroom is.
 - The en/hi gap persists at ~0.16 and no strategy narrowed it.
 
+### 19 Aug 2026 — Phase 5 mid-phase: A2 is false, A6 is not rescued, and the reranker is a Hindi fix
+
+Logged mid-phase rather than at the end, per this file's own rule: an assumption
+turned out false and a benchmark number moved materially. **Phase 5 is NOT
+complete** — see "what is left" at the bottom. Work is on disk, uncommitted.
+
+**The model choice was made on measurement, not on the default.** `Rules.md` §3.3
+names `cross-encoder/ms-marco-MiniLM-L-6-v2`, which is an English-only BERT, and
+half this corpus is Hindi. Both candidates were fetched and scored on the same
+candidate lists in both languages (`scripts/03b_export_reranker.py`,
+`scripts/05d_eval_rerank.py`). Neither needed torch or optimum — both publish
+pre-built AVX512-VNNI int8 ONNX, the same situation the embedder was in.
+
+| reranker, 300 dev queries, depth 10 | en Hit@1 | hi Hit@1 |
+|---|---|---|
+| dense baseline, no rerank | 0.360 | 0.233 |
+| `ms-marco-MiniLM-L-6-v2` (the Rules.md default) | **0.447** | **0.120** |
+| `mmarco-mMiniLMv2-L12-H384-v1` (chosen) | 0.417 | **0.307** |
+
+The English-only model wins English by a clear margin and takes Hindi from 0.233
+to 0.120 — **worse than not reranking at all**, and monotonically worse with depth
+(0.120 → 0.073 → 0.043 at depths 10/20/50) as it gets more Devanagari to mis-rank.
+The multilingual model is trained on mMARCO, MS MARCO machine-translated into 13
+languages including Hindi; MSMARCO-XI is the same construction. Training
+distribution and corpus match, and it is the only arm that improves both languages.
+
+**Depth is 5, not the 20 that `Architecture.md` §3.6 specifies.** Quality is flat
+from depth 5 to 10 (+0.004 en, +0.006 hi — noise) and *falls* by depth 50. Deeper
+reranking hands the cross-encoder more chances to promote something above the
+right passage, and the dense ordering it is overriding already carries real signal.
+Latency then decides: depth 5 is 59.3 ms P50 / 102.4 ms P100 against depth 10's
+113.8 / 191.4. The deploy target is `n2-standard-2` — 2 vCPU is one physical core
+plus a hyperthread, against this box's six cores — so depth 10 has no room to
+survive the move and depth 5 does.
+
+**A2 is FALSE.** "Cross-encoder rerank of 20 candidates fits in 45 ms" was the
+assumption. Measured on an idle BENCH at 2 serving threads, depth 20 costs
+**249.1 ms P50** — 5.5x the assumption, on a faster CPU than the deploy target.
+Full sweep in `bench/results/2026-08-19-013500-rerank-latency-sweep.json`.
+
+**A6 is NOT rescued, and this is the finding to be careful about.** At the shipping
+configuration (batch=1), the reranker's English gain is **+0.037, CI [-0.013,
++0.090] — not significant at n=300**. Hindi is +0.080 and significant. English
+Hit@1 is 0.397, so the extractive path still returns the wrong passage about 60% of
+the time in English.
+
+The honest sentence is: **the reranker substantially closed the Hindi gap and left
+English roughly where it was.** It is not "the reranker fixed ranking". `I2` said
+the entire extractive-answer story rests on a large Hit@1 lift; that lift did not
+arrive in English, so **D2's reversal condition is live** — the fallback is to
+present extractive as a "fast mode" toggle rather than the default. That decision
+is not taken yet and should be taken with Phase 6's numbers in hand, not now.
+
+**Band A's headline number is gone, and that is the correct trade.** Phase 2's
+3.31 ms P50 becomes roughly 63 ms at depth 5, because rerank costs 30-75x its
+neighbours (`embed_query` 2.81 ms, `dense_search` 0.42 ms). Still inside the 200 ms
+budget, and a 3.31 ms wrong answer was worth nothing.
+
+**Two issues from this phase:**
+- **I24, new.** int8 cross-encoder scores shift with batch composition — 0.279
+  logits against a 0.364 median adjacent-rank gap — because dynamic quantization
+  derives activation scales per tensor at run time and padding changes the tensor.
+  fp32 is bit-exact; equal-length int8 batches are bit-exact. Resolved by scoring
+  one pair at a time, which measurement then showed is *also* 32% faster at depth
+  10 (padding waste exceeds any batch parallelism at 2 threads). The reproducible
+  configuration and the fast one turned out to be the same configuration.
+- **I9, closed.** `build_passage_map` reconstructed passages from their longest
+  chunk. Once a cross-encoder is *reading* those passages and the eval scores
+  against the real text from `passages.parquet`, an approximate store means the
+  measured lift is not the lift the service delivers. `Runtime.load_passage_store()`
+  loads the real text, ~162 MB against the 8 GB box.
+
+**What is left before Phase 5 can be called done:**
+1. Set `RERANK_TOP_K = 5` and rebalance `STAGE_BUDGET_MS`/`STAGE_TIMEOUT_MS`
+   for `rerank`. They are still 60/70 ms against a measured 59.3/102.4, so **the
+   stage would time out and silently fall back to dense ordering**, discarding the
+   phase's entire contribution while the trace reports a tidy fallback. This is the
+   one item that must not ship as-is.
+2. Run `scripts/06_calibrate_routing.py` (written, never run). `ROUTE_TAU_LOW` and
+   `ROUTE_TAU_HIGH` are still 0.0 placeholders, which collapses the generative band
+   to nothing.
+3. Band A re-bench with and without the reranker; Band B via
+   `scripts/04b_bench_bandb.py`, capped at ~40 queries by the Groq token window.
+4. `Latency.md` §4 rebalance, `Architecture.md` §3.6 (depth 20 → 5) and §7 Layer 2
+   (the 0.35 floor is on a dense scale and cannot apply), and the Phase 5 entry.
+
 ---
 
 ## Reversals and corrections
@@ -594,11 +870,11 @@ Track these explicitly. An unverified assumption that turns out false late is th
 | # | Assumption | Verify in | Status |
 |---|---|---|---|
 | A1 | ONNX int8 `multilingual-e5-small` embeds a short query in under 15ms on the target container CPU | Phase 2 | ✓ **TRUE, 2.81 ms median** locally. Re-verify on the GCP box. |
-| A2 | Cross-encoder rerank of 20 candidates fits in 45ms on the same CPU | Phase 5 | ☐ |
+| A2 | Cross-encoder rerank of 20 candidates fits in 45ms on the same CPU | Phase 5 | ✗ **FALSE.** Depth 20 measures **249.1 ms P50** on an idle BENCH at 2 threads - 5.5x, on a faster CPU than the deploy target. Depth is 5, not 20. See the 19 Aug mid-phase entry. |
 | A3 | Sarvam's realtime endpoint emits partials fast enough and stably enough for speculative prefetch to hit often | Phase 4 | ☐ |
 | A4 | The frozen slice fits in the container RAM budget with all eight indexes loaded | Phase 3 | ✗ **FALSE as stated.** One index is 655 MB; eight will not co-reside in 8 GB alongside the models. Load-on-switch instead. **Amended 18 Aug:** several Phase 3 strategies exceed C1's 655 MB, so the F13 toggle's switch pause differs per strategy — the UI should show the actual figure, not a generic spinner. |
 | A5 | C7 (doc2query / query-aligned) outperforms the other seven strategies on this corpus | Phase 3 | ☐ |
-| A6 | Extractive answers are good enough to be the default path rather than a fallback | Phase 5 | ◐ dense-only Hit@1 is 0.362 en / 0.224 hi, so the naive top-passage answer is usually wrong. Rests entirely on the Phase 5 reranker. |
+| A6 | Extractive answers are good enough to be the default path rather than a fallback | Phase 5 | ◐ **still open, and the reranker did not settle it.** en Hit@1 0.360 -> 0.397 (+0.037, CI [-0.013,+0.090], NOT significant); hi 0.233 -> 0.313 (+0.080, significant). English top-1 is still wrong ~60% of the time, so D2's reversal condition is live. Decide with Phase 6 numbers. |
 | A7 | An India-region always-on container is available on the free or cheap tier of the chosen host | Phase 0 | ✓ **TRUE** — GCP Compute Engine `n2-standard-2`, `asia-south1` (Mumbai), on $300 trial credits. See reversal R3. |
 | A11 | ONNX int8 inference on ARM (Ampere A1) hits the same latency as x86 | Phase 2 | ~~open~~ **MOOT.** Retired by R3: GCP is x86, so the question no longer arises. |
 | A12 | $300 of GCP credit outlasts the judging window | Phase 7 | ◐ ~$70/mo projects to ~4 months (mid-Dec) against a mid-Sept judging need. Budget alert required. |

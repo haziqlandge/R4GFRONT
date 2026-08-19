@@ -1,0 +1,39 @@
+{
+  "generated_utc": "2026-08-19T06:58:38.930767+00:00",
+  "band": "B",
+  "model": "openai/gpt-oss-20b",
+  "reranker": "multi",
+  "strategy": "c1",
+  "language": "en",
+  "runs": 10,
+  "warmup": 2,
+  "forced_generative": true,
+  "production_tau_high": 1.877,
+  "summary_ms": {
+    "p50": 643.826799991075,
+    "p70": 671.8723999802023,
+    "p90": 806.7772000213154,
+    "p99": 971.4543000445701,
+    "p100": 971.4543000445701,
+    "mean": 586.4881300018169
+  },
+  "path_distribution": {
+    "ABSTAIN:LOW_CONFIDENCE": 2,
+    "GENERATIVE": 3,
+    "ABSTAIN:UNGROUNDED_OUTPUT": 5
+  },
+  "breaker_opened_at_query": null,
+  "samples_ms": [
+    106.60880000796169,
+    971.4543000445701,
+    602.1222000126727,
+    661.6234999964945,
+    54.06370002310723,
+    671.8723999802023,
+    710.1677999598905,
+    643.826799991075,
+    636.3645999808796,
+    806.7772000213154
+  ],
+  "note": "Sample size is capped by Groq's 12,000-token free-tier window (ISSUES.md I7, assumption A10). Not comparable to Band A, which is in-process and deterministic."
+}

@@ -105,6 +105,71 @@ FP32_MODEL: Final[str] = "onnx/model.onnx"
 TOKENIZER_FILE: Final[str] = "onnx/tokenizer.json"
 EMBED_DIM: Final[int] = 384
 
+# --------------------------------------------------------------------------
+# Reranker. Architecture.md 3.6, Phase 5.
+# --------------------------------------------------------------------------
+
+# Rules.md 3.3 lists the reranker as SOFT - "benchmark before deviating" - with
+# ms-marco-MiniLM-L-6-v2 as the default. Both candidates are declared here so the
+# choice is made on measured en+hi numbers rather than on the default, because
+# half this corpus is Hindi and the default is an English-only BERT.
+#
+# Both publish pre-built ONNX including an AVX512-VNNI int8 quantization, so
+# neither needs torch or optimum - the same situation 03_export_onnx.py found for
+# the embedder.
+RERANKERS: Final[dict[str, dict[str, object]]] = {
+    "mono": {
+        "repo": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+        "int8_mb": 22.1,
+        "note": "English-only BERT, 22.7M params, 6 layers",
+    },
+    "multi": {
+        "repo": "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1",
+        "int8_mb": 113.1,
+        "note": "XLM-R, mMARCO-trained, Hindi supported, 12 layers x 384",
+    },
+}
+
+# Set by the Phase 5 comparison. See Memory.md.
+RERANKER: Final[str] = "multi"
+RERANK_MODEL_FILE: Final[str] = "onnx/model_qint8_avx512_vnni.onnx"
+RERANK_TOKENIZER_FILE: Final[str] = "tokenizer.json"
+
+# Cross-encoder pair truncation. Query plus passage, jointly. C1 chunks are p50 72
+# tokens and passages max at 205 words, so 256 covers the pair with headroom while
+# keeping the quadratic attention cost bounded - the rerank stage's latency scales
+# with sequence length squared, and this is the dial that matters most for it.
+RERANK_MAX_TOKENS: Final[int] = 256
+
+# Candidates reranked per query. Architecture.md 3.6 specifies top-20; measurement
+# says 5, and the doc is corrected rather than the number bent to it.
+#
+# Quality (300 dev queries, paired, vs the same candidates in dense order):
+#     depth   en Hit@1   hi Hit@1
+#         5      0.393      0.307
+#        10      0.397      0.313
+#        20      0.410      0.290   (batch-16 run)
+#        50      0.410      0.280   (batch-16 run)
+# Depth 5 and 10 are indistinguishable (+0.004 en, +0.006 hi) and quality FALLS by
+# depth 50: reranking deeper gives the cross-encoder more chances to promote
+# something above the right passage, and the dense ordering it overrides already
+# carries real signal.
+#
+# Latency then decides (idle BENCH, 2 threads, batch 1):
+#     depth 5   59.3 ms P50 / 102.4 ms P100
+#     depth 10  113.8 ms P50 / 191.4 ms P100
+# Depth 10 leaves no reserve at P100 against a 200 ms budget, and the deploy target
+# n2-standard-2 is 2 vCPU = one physical core plus a hyperthread against this box's
+# six cores. Depth 5 has room to survive that move; depth 10 does not.
+RERANK_TOP_K: Final[int] = 5
+
+# Wall clock held back from the reranker's deadline for the work that must still
+# happen after it: the argsort, routing, building the answer and serializing. Those
+# measure well under a millisecond combined (answer_extractive was 0.03 ms in Phase
+# 2); 10 ms is deliberate slack, because overrunning the budget to save 9 ms of
+# reranking would be a bad trade.
+RERANK_DEADLINE_MARGIN_MS: Final[float] = 10.0
+
 # Architecture.md 3.3. ef_search is the primary latency dial and is tuned against
 # the budget in Phase 5; lower trades recall for speed close to linearly.
 HNSW_M: Final[int] = 32
@@ -160,6 +225,114 @@ ONNX_THREADS_SERVING: Final[int] = 2
 ONNX_THREADS_BUILD: Final[int] = 8
 
 # --------------------------------------------------------------------------
+# Routing thresholds. Architecture.md 3.6, answering/router.py.
+# --------------------------------------------------------------------------
+
+# These are RAW CROSS-ENCODER LOGITS from the model named in RERANKER, roughly on
+# a -11..+11 scale. They are not comparable to a dense cosine and they are not
+# comparable across rerankers - changing RERANKER invalidates both and requires
+# re-running the calibration.
+#
+# Architecture.md 7 Layer 2 names a confidence floor of 0.35. That figure was
+# written for a normalised score and is superseded here; ISSUES.md I3 records why
+# no dense-scale threshold can work at all.
+#
+# What calibrated these (Rules.md 6): scripts/06_calibrate_routing.py, over the DEV
+# partition only (Rules.md 5), against three populations - answerable queries
+# labelled by whether the reranked top-1 is actually gold, real queries scored
+# against another query's candidate pool (genuinely unanswerable), and the I3
+# gibberish probe. Placeholder values below are overwritten by that run; see the
+# Memory.md Phase 5 entry for the fitted numbers and the curve they came off.
+# Fitted 19 Aug 2026 on 250 dev queries, depth 5, reranker "multi".
+# bench/results/2026-08-19-064809-routing-calibration.json.
+#
+# TAU_LOW = -1.103. Chosen as the 5th percentile of the answerable population, so
+# at most 5% of answerable queries are abstained on. At that cut it catches
+# **100% of genuinely-unanswerable queries and 100% of gibberish**. The populations
+# barely touch: answerable-correct has a median of +8.30, unanswerable -7.28. This
+# is the number that makes requirement 6 real, and it is the vindication of
+# Architecture.md 3.6 - ISSUES.md I3 measured dense cosine separating the same two
+# cases by 0.05, which no threshold could have used.
+ROUTE_TAU_LOW: Final[float] = -1.103   # below: ABSTAIN
+
+# TAU_HIGH = 1.877. This one is a judgement call made against a bad curve, and the
+# honest description is a floor, not an optimum.
+#
+# Top-1 precision NEVER reaches the 0.75 the calibration targeted. It peaks at
+# 0.508 (37.4% coverage) and then falls again - the rerank score is only weakly
+# predictive of whether top-1 is the gold passage:
+#
+#     cut     precision   coverage
+#     1.88        0.400      85.0%   <- here
+#     4.99        0.433      65.6%
+#     8.09        0.508      37.4%   (peak)
+#     9.65        0.485      20.6%
+#
+# So assumption A6 is false: the extractive path is not reliably right, and D2's
+# reversal condition is triggered rather than narrowly avoided.
+#
+# Given that, precision is not worth buying with coverage. Two reasons:
+#   1. ISSUES.md I7 - Groq's free tier is 12,000 tokens per window, about 12 calls.
+#      Routing 58-70% of queries to it (which the higher cuts imply) is not slow,
+#      it is inoperable, the same arithmetic that killed C4 in Phase 3.
+#   2. The extractive path does not assert "this is the answer". It returns a
+#      retrieved passage WITH its citation, and Hit@1 asks whether that passage is
+#      the one MS MARCO happened to label is_selected. A topically-correct but
+#      unlabelled passage scores zero here and is still useful to a reader.
+#
+# Resulting distribution over answerable dev queries: 85% extractive, 10%
+# generative, 5% abstain. Revisit if the reranker or the corpus changes; these
+# numbers are not transferable to either.
+ROUTE_TAU_HIGH: Final[float] = 1.877   # at or above: EXTRACTIVE, no network call
+
+# --------------------------------------------------------------------------
+# Generative fallback. Architecture.md 3.7, Phase 5. FALLBACK PATH ONLY.
+# --------------------------------------------------------------------------
+
+GROQ_URL: Final[str] = "https://api.groq.com/openai/v1/chat/completions"
+
+# FORCED CHANGE, 19 Aug 2026. Rules.md 3.3 named llama-3.3-70b-versatile with
+# llama-3.1-8b-instant as the alternate. BOTH now 404 with model_not_found -
+# Groq retired the entire Llama chat lineup for this account between 14 and 19
+# August. Memory.md's 14 Aug entry recording them as verified-available is
+# therefore stale, which is a good argument for re-checking a provider's model
+# list at the start of any phase that depends on it rather than trusting a note.
+#
+# Measured on the three chat models actually available (grounded prompt, one
+# passage, en and hi):
+#
+#   openai/gpt-oss-20b     680 / 563 ms   correct both languages, clean [1] cites
+#   openai/gpt-oss-120b    458 / 656 ms   correct, but emits fullwidth cites U+3010
+#   qwen/qwen3.6-27b      1385 / 562 ms   UNUSABLE - see below
+#
+# qwen is a reasoning model: it opens with a <think> block that consumes the whole
+# 160-token cap before producing any answer, so the response is truncated
+# reasoning and never reaches a citation. Worse, while reasoning it quotes the
+# abstention sentinel from the system prompt, which used to trip a false
+# abstention - the substring check in generative.py was tightened because of it.
+#
+# gpt-oss-20b over the 120b: both are correct, the 20b's citation format needs no
+# normalisation, and this is the FALLBACK path where the floor is already ~500ms.
+GROQ_MODEL: Final[str] = "openai/gpt-oss-20b"
+
+# Temperature 0 and a short cap: this path paraphrases retrieved passages, it does
+# not compose. Anything longer invites the model to pad beyond its sources, which
+# is exactly what the Phase 6 groundedness check would then have to catch.
+GROQ_TEMPERATURE: Final[float] = 0.0
+GROQ_MAX_TOKENS: Final[int] = 160
+
+# Hard ceiling on the call. Generous relative to the 352ms floor and deliberately
+# finite: an unbounded wait on the fallback path turns a slow answer into a hung
+# request, and the extractive answer is already in hand by the time this runs.
+GROQ_TIMEOUT_MS: Final[float] = 4000.0
+GROQ_CONNECT_TIMEOUT_MS: Final[float] = 1500.0
+
+# Passages handed to the model as context. Three is what the extractive path
+# already cites (answering/extractive.py MAX_CITATIONS), so both paths ground on
+# the same evidence and a citation index means the same thing on either.
+GROQ_CONTEXT_PASSAGES: Final[int] = 3
+
+# --------------------------------------------------------------------------
 # Latency contract. Latency.md section 4.
 # --------------------------------------------------------------------------
 
@@ -167,26 +340,47 @@ BUDGET_MS: Final[float] = 200.0
 
 # Per-stage allocation, hard timeout. Allocated total is 175ms; the remaining 25ms
 # is reserve for GC pauses and scheduler jitter that show up at P99/P100.
+# Rebalanced in Phase 5 against measurement rather than estimate. The Phase 0 table
+# was written before anything existed; three stages have now been measured and two
+# of them were over-provisioned by an order of magnitude while rerank was under-
+# provisioned by two.
+#
+# Measured medians on BENCH: embed_query 2.81, dense_search 0.42,
+# answer_extractive 0.03, rerank (depth 5) 59.3 P50 / 102.4 P100.
+#
+# embed_query keeps 20 ms rather than dropping to its 2.81 ms median because
+# ISSUES.md I1's pathological query costs 118 ms in that stage and the Phase 6
+# input guard that bounds it is not built yet.
 STAGE_BUDGET_MS: Final[dict[str, float]] = {
     "input_guard": 12.0,
-    "embed_query": 25.0,
-    "dense_search": 15.0,
+    "embed_query": 20.0,
+    "dense_search": 8.0,
     "lexical_search": 10.0,
     "fuse": 3.0,
-    "rerank": 60.0,
+    "rerank": 90.0,
     "route": 2.0,
-    "answer_extractive": 15.0,
+    "answer_extractive": 5.0,
     "output_guard": 25.0,
     "serialize": 8.0,
 }
 
+# READ ISSUES.md I25 BEFORE TRUSTING THESE. A stage timeout is enforced with
+# asyncio.wait_for, which can only fire at an await point - and every Band A stage
+# is synchronous ONNX or C++ work that never yields. Measured directly: a sync
+# stage with a 50 ms timeout ran 123.7 ms and reported status "ok", while an
+# awaiting stage with the same timeout was cut off at 47.4 ms.
+#
+# So for the sync stages these values are ADVISORY. The two mechanisms that do
+# work are the pre-stage budget gate (which can decline to start a stage) and, for
+# rerank specifically, the deadline it checks between pairs. The generative stage
+# is the one place a timeout here is genuinely load-bearing, because it awaits.
 STAGE_TIMEOUT_MS: Final[dict[str, float]] = {
     "input_guard": 15.0,
     "embed_query": 30.0,
     "dense_search": 20.0,
     "lexical_search": 12.0,
     "fuse": 5.0,
-    "rerank": 70.0,
+    "rerank": 130.0,
     "route": 3.0,
     "answer_extractive": 20.0,
     "output_guard": 30.0,

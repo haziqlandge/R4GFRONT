@@ -20,19 +20,27 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import ORJSONResponse
 
 from .answering.schemas import (
+    AbstainReason,
+    AnswerPath,
     AnswerRequest,
     AnswerResponse,
+    AnswerStatus,
     Confidence,
     StageSpan,
     TraceView,
 )
+from .answering.generative import GroqClient
 from .config import (
     BUDGET_MS,
     DEFAULT_STRATEGY,
     INT8_MODEL,
     ONNX_DIR,
     ONNX_THREADS_SERVING,
+    RERANK_MODEL_FILE,
+    RERANK_TOKENIZER_FILE,
+    RERANKER,
     TOKENIZER_FILE,
+    load_env,
 )
 from .harness.errors import InvalidQuery, RagCoreError
 from .harness.pipeline import Context, Pipeline
@@ -40,6 +48,7 @@ from .harness.stages import Runtime, build_pipeline
 from .harness.trace import Trace
 from .retrieval.dense import DenseIndex
 from .retrieval.embedder import Embedder
+from .retrieval.rerank import CrossEncoder
 
 STATE: dict[str, object] = {"ready": False}
 
@@ -47,6 +56,7 @@ STATE: dict[str, object] = {"ready": False}
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     started = time.perf_counter()
+    load_env()
 
     embedder = Embedder(
         ONNX_DIR / INT8_MODEL,
@@ -56,22 +66,49 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     index = DenseIndex(DEFAULT_STRATEGY)
     index.load()
 
-    rt = Runtime(embedder, index)
-    rt.build_passage_map(index.chunks)
+    # The reranker is what turns retrieval into a correct answer (ISSUES.md I2),
+    # but a missing file must not take the service down - dense-only is a degraded
+    # mode, not a broken one, and /health reports which one is running.
+    rerank_dir = ONNX_DIR / f"rerank-{RERANKER}"
+    reranker: CrossEncoder | None = None
+    if (rerank_dir / RERANK_MODEL_FILE).exists():
+        reranker = CrossEncoder(
+            rerank_dir / RERANK_MODEL_FILE,
+            rerank_dir / RERANK_TOKENIZER_FILE,
+            threads=ONNX_THREADS_SERVING,
+        )
+
+    groq = GroqClient()
+    await groq.start()
+
+    rt = Runtime(embedder, index, reranker=reranker, groq=groq)
+    # Real passage text where the slice is present, the derived approximation
+    # otherwise. ISSUES.md I9: the reranker and the extractive answer both consume
+    # this, so the difference is now user-visible rather than cosmetic.
+    exact = rt.load_passage_store()
+    if not exact:
+        rt.build_passage_map(index.chunks)
     pipeline = build_pipeline(rt)
 
     STATE["runtime"] = rt
     STATE["pipeline"] = pipeline
     STATE["strategy"] = DEFAULT_STRATEGY
     STATE["chunks"] = len(index.chunks)
+    STATE["reranker"] = RERANKER if reranker is not None else None
+    STATE["passage_store"] = "exact" if exact else "derived"
+    STATE["generative"] = groq.configured
 
-    # Warmup: a real query through the real pipeline, discarded.
+    # Warmup: a real query through the real pipeline, discarded. Now covers the
+    # cross-encoder too, whose first inference is far slower than its steady state.
     warm = Context(query="what is a warmup query", trace=Trace(budget_ms=BUDGET_MS))
     await pipeline.run(warm)
 
     STATE["ready"] = True
     STATE["startup_seconds"] = round(time.perf_counter() - started, 2)
-    yield
+    try:
+        yield
+    finally:
+        await groq.close()
 
 
 app = FastAPI(title="Shruti rag_core", default_response_class=ORJSONResponse,
@@ -99,6 +136,12 @@ async def health() -> ORJSONResponse:
             "strategy": STATE.get("strategy"),
             "chunks": STATE.get("chunks"),
             "startup_seconds": STATE.get("startup_seconds"),
+            # Which capabilities actually came up. A dense-only process and a
+            # fully-reranked one are both healthy but answer differently, and
+            # that difference should be visible without reading the logs.
+            "reranker": STATE.get("reranker"),
+            "generative": STATE.get("generative"),
+            "passage_store": STATE.get("passage_store"),
         },
     )
 
@@ -121,15 +164,29 @@ def _to_response(ctx: Context, want_trace: bool) -> AnswerResponse:
             ],
         )
 
+    # The router owns the decision; this only reports it. Reading it back off
+    # `answer` would lose the distinction between "abstained on low confidence"
+    # and "retrieval returned nothing", which is exactly what AbstentionPanel.tsx
+    # has to tell the user apart.
+    decision = ctx.data.get("route")
+    status: AnswerStatus
+    path: AnswerPath
+    abstain_reason: AbstainReason | None
+    if decision is not None:
+        status = "ABSTAINED" if decision.decision == "ABSTAIN" else "ANSWERED"
+        path = decision.path
+        abstain_reason = decision.abstain_reason
+    else:
+        status = "ANSWERED" if answer else "ABSTAINED"
+        path = "EXTRACTIVE" if answer else "NONE"
+        abstain_reason = None if answer else "LOW_CONFIDENCE"
+
     return AnswerResponse(
         trace_id=trace.trace_id,
-        # Phase 2 has no confidence floor yet - routing and abstention arrive in
-        # Phase 5 and 6. Until then an empty retrieval is the only ABSTAIN case,
-        # and it is reported honestly rather than dressed up as an answer.
-        status="ANSWERED" if answer else "ABSTAINED",
-        path="EXTRACTIVE" if answer else "NONE",
+        status=status,
+        path=path,
         answer=answer,
-        abstain_reason=None if answer else "LOW_CONFIDENCE",
+        abstain_reason=abstain_reason,
         citations=citations,
         confidence=Confidence(
             rerank_top1=ctx.data.get("top1"), score_gap=ctx.data.get("score_gap")
@@ -148,6 +205,7 @@ async def answer(req: AnswerRequest) -> AnswerResponse:
         query=req.query,
         language=req.language,
         strategy=req.strategy,
+        mode=req.mode,
         trace=Trace(budget_ms=BUDGET_MS),
     )
     ctx = await pipeline.run(ctx)

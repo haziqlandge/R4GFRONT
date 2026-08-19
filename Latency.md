@@ -81,19 +81,32 @@ Total budget 200ms. Allocated with headroom, because P100 is what fails, not P50
 | Stage | Allocated | Expected | Hard timeout | On timeout |
 |---|---|---|---|---|
 | `input_guard` | 12 ms | 3 to 8 | 15 ms | Pass through, log |
-| `embed_query` | 25 ms | 5 to 15 | 30 ms | Fail request |
-| `dense_search` | 15 ms | 2 to 8 | 20 ms | Fall back to lexical only |
+| `embed_query` | 20 ms | **2.81 measured** | 30 ms † | Fail request |
+| `dense_search` | 8 ms | **0.42 measured** | 20 ms † | Fall back to lexical only |
 | `lexical_search` | 10 ms | 1 to 5 | 12 ms | Fall back to dense only |
 | `fuse` | 3 ms | < 1 | 5 ms | Use dense order |
-| `rerank` | 60 ms | 20 to 45 | 70 ms | **Skip, use RRF order** |
+| `rerank` | 90 ms | **59 P50 / 102 P100** | 130 ms † | **Deadline-bounded, partial rerank** |
 | `route` | 2 ms | < 1 | 3 ms | Default to abstain |
-| `answer_extractive` | 15 ms | 2 to 6 | 20 ms | Return top passage whole |
+| `answer_extractive` | 5 ms | **0.03 measured** | 20 ms † | Return top passage whole |
 | `output_guard` | 25 ms | 5 to 15 | 30 ms | Downgrade to extractive |
 | `serialize` | 8 ms | 1 to 3 | 10 ms | Fail request |
-| **Allocated total** | **175 ms** | **40 to 100 ms** | | |
-| **Reserve** | 25 ms | | | |
+| **Allocated total** | **183 ms** | | | |
+| **Reserve** | 17 ms | | | |
 
-The 25ms reserve absorbs GC pauses, scheduler jitter and network buffer effects that show up at P99 and P100 but never at P50.
+Bold figures are measured on BENCH (i5-12400F, 2 serving threads, idle) in Phase 5
+and replace the Phase 0 estimates. `Devices.md` §2 and §6 still apply: these do not
+transfer, and the published figures come from the deployed GCP instance.
+
+The reserve absorbs GC pauses and scheduler jitter that show up at P99 and P100 but
+never at P50. It shrank from 25 ms to 17 ms because the reranker is genuinely
+expensive; three stages that were over-provisioned by an order of magnitude paid
+for most of it, but not all.
+
+**† The hard-timeout column is aspirational for every synchronous stage.** See
+`ISSUES.md` I25: timeouts are enforced with `asyncio.wait_for`, which only fires at
+an await point, and ONNX inference never yields. Measured directly — a synchronous
+stage with a 50 ms timeout ran 123.7 ms and reported status `ok`. Only
+`answer_generative` awaits, so only its timeout is genuinely load-bearing.
 
 ### 4.1 The remaining-budget counter
 
@@ -101,7 +114,18 @@ The pipeline carries a countdown. Before each stage runs, the harness checks whe
 
 The practical effect: if dense search had a slow run and consumed 40ms, the reranker is skipped automatically and RRF order is used. Quality degrades; latency is protected. Every skip is recorded in the returned trace and rendered as a hatched bar in the UI waterfall.
 
-This is what makes the 200ms figure a guarantee rather than an average.
+This is what makes the 200ms figure a guarantee rather than an average — **with one
+correction made in Phase 5.** The gate described above is checked *before* a stage
+starts and works exactly as written. The per-stage hard timeout, which was meant to
+bound a stage that had already started, does **not** work for synchronous stages
+(`ISSUES.md` I25). Until Phase 5 no Band A stage cost more than single-digit
+milliseconds, so nothing could plausibly overrun and the gap was invisible.
+
+The reranker is the first stage large enough for this to matter, and it closes the
+gap for itself: `CrossEncoder.rerank()` takes a deadline and checks it between
+pairs, returning a partial rerank rather than overrunning. So the guarantee holds,
+but it rests on the pre-stage gate plus that in-stage deadline — not on the timeout
+column.
 
 ---
 
