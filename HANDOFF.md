@@ -4,7 +4,7 @@
 
 The repo is the handoff. This file covers only what the repo cannot: what a human has to do by hand, what was decided and why it is not in the code yet, and what is deliberately not committed.
 
-Last updated: 19 August 2026, end of Phase 3.
+Last updated: 19 August 2026, after Phases 4, 5 and a partial 8.
 
 > **On a brand-new machine, read [`PREREQUISITES.md`](PREREQUISITES.md) first.** It takes a bare box to a verified one. This file assumes that is done.
 
@@ -26,24 +26,38 @@ Read in this order, and do not skip the first one:
 6. `Architecture.md`, `Latency.md` — the design and the budget.
 
 **Phases 0-3 are complete.** Band A P50 **3.31 ms** against a 200 ms budget,
-en Recall@10 **0.878**, 132 tests green, `mypy --strict` clean.
+en Recall@10 **0.878**, `mypy --strict` clean.
 
-**START HERE, PHASE 4 ONWARD.** Remaining work, in the order a council recommended
-on 19 Aug given a 21 Aug code freeze:
+**Phases 4, 5 and part of 8 are also complete**, on branch `p4-p5-voice-rerank`.
+Band A P50 **59.99 ms** en / **73.77 ms** hi with the reranker in the path, Band B
+**653.6 ms**, 202 tests green, `mypy --strict` clean. Voice input, routing,
+abstention and the web UI all work end to end. See `Memory.md` Phase 4, 5 and 8
+entries, and **read `ISSUES.md` I24, I25 and I26 before trusting any Phase 5
+number** - I26 in particular corrects a claim an earlier draft made about
+abstention.
 
-1. **Input guard (1 hr, designed not built).** 64-token bound. A 7,168-char
-   pathological query costs 118 ms today; this fixes it. `ISSUES.md` I1.
-2. **Phase 5 reranker - the highest-value work left.** Hit@1 is **0.356** against
-   Recall@10 0.878: the right passage is retrieved but ranked first only a third
-   of the time, and the extractive path returns the top hit, so the naive answer
-   is wrong ~2/3 of the time. Chunking cannot fix this (Phase 3 proved that);
-   the cross-encoder can.
-3. **Calibrate abstention on RERANKER scores, never retrieval scores.** Dense
-   cosine cannot separate gibberish (0.862) from a correct answer (0.919) - a
-   0.05 margin. `ISSUES.md` I3.
-4. **Phase 6 guardrails + 60-case adversarial set.** Explicitly scored: "show
-   your system knows when NOT to answer."
-5. **Phase 4 voice**, scoped to mic -> transcript -> existing pipeline.
+**START HERE.** The order a council recommended on 19 Aug given a 21 Aug code
+freeze, with what has since been done marked. Items 2, 3 and 5 are done; **1, 4,
+6, 7 and 8 are not**, and item 4 has been promoted to the top:
+
+1. ~~Input guard~~ **STILL NOT BUILT, and now the only thing bounding `embed_query`** -
+   `ISSUES.md` I25 found that a stage timeout cannot interrupt synchronous ONNX
+   work, so the 118 ms pathological query has no other guard. Phase 6.
+2. ~~Phase 5 reranker~~ **DONE.** The honest result: it closed most of the Hindi
+   gap (+0.073, significant) and left English roughly where it was (+0.033, CI
+   spans zero). **A6 is false**, D2's reversal condition fired, and the
+   fast/accurate mode toggle is built.
+3. ~~Calibrate abstention~~ **DONE, and read `ISSUES.md` I26 before quoting the
+   result.** `tau_low = -1.103` catches 100% of off-topic and gibberish input, but
+   **92.5% of wrong top-1 answers pass it** - it is an out-of-domain detector, not
+   a grounding detector.
+4. **Phase 6 guardrails + adversarial set. NOW THE TOP PRIORITY.** I26 makes the
+   OUTPUT guard load-bearing rather than decorative: the retrieval-score floor
+   cannot catch the 62.1% of answers that are wrong, only checking groundedness
+   against the answer text can. Explicitly scored: "show your system knows when
+   NOT to answer."
+5. ~~Phase 4 voice~~ **DONE** (mic path untested against a real microphone - see
+   `HANDOFF.md` 5A).
 6. **Phase 7 deploy** to the idle GCP Mumbai VM (`34.100.222.236`). Start early;
    do not let day 3 be the first deploy.
 7. **Phase 8 frontend**, then **Phase 9 videos + social posting by every member.**
@@ -61,13 +75,13 @@ videos, posting.
 |---|---|---|
 | **Python** | **3.12** | Not 3.13/3.14. `onnxruntime`, `hnswlib` and `bm25s` have no wheels above 3.12. On Windows, `py -3.12` selects it. |
 | Git | any recent | |
-| Node | 20+ | Not needed until Phase 4 (the Next.js frontend) |
+| Node | 20+ | Required. `apps/web` is built and needs it. Verified on Node 22. |
 
 ### 2.2 Clone and build
 
 ```bash
-git clone https://github.com/haziqlandge/RAG_OK4T.git
-cd RAG_OK4T
+git clone https://github.com/haziqlandge/R4GFRONT.git
+cd R4GFRONT
 py -3.12 -m venv .venv                      # macOS/Linux: python3.12 -m venv .venv
 .venv/Scripts/python -m pip install -r requirements-dev.txt
 ```
@@ -99,7 +113,7 @@ A failed `--verify` means every number in `bench/results/` is invalid against yo
 ### 2.4 Verify the rig and the pipeline
 
 ```bash
-.venv/Scripts/python -m pytest                                    # 90 tests, all must pass
+.venv/Scripts/python -m pytest                                    # 202 tests, all must pass
 .venv/Scripts/python scripts/04_bench_latency.py --stub --breakdown
 .venv/Scripts/python scripts/05_eval_retrieval.py                 # correctness gate
 .venv/Scripts/python scripts/04_bench_latency.py --pipeline --lang en --breakdown
@@ -207,6 +221,77 @@ And two reversals — the highest-value entries, because they are the mistakes t
 - **Write the Dockerfile before Phase 7.** It is the entire portability story between hosts and makes a switch a non-event — which already paid off once, when the target moved from Render to Oracle to GCP.
 - **All eight chunking indexes cannot be resident at once** (~4 GB+). The F13 strategy toggle should load on switch. A deliberate toggle is not the hot path, so this is acceptable — but it changes F13's design.
 - **Cap passage length at the 99.5th percentile** before any whole-passage encoder. One Hindi passage is 4,093 words against a 205-word English source — a translation repetition loop — and a handful of those will dominate index build time.
+
+---
+
+## 5A. The frontend, for whoever picks it up next
+
+`apps/web`. Next.js 15 + React 19 + TypeScript, **no component library and no
+Tailwind** (see the Phase 8 `Memory.md` entry for why, and overturn it freely).
+
+### Running the whole stack locally
+
+Three processes. The web app is useless without the other two.
+
+```bash
+# 1. rag_core - the 200ms pipeline
+cd services && ../.venv/Scripts/python -m uvicorn rag_core.main:app --port 8000
+
+# 2. stt_gateway - holds the Sarvam key, browser never talks to Sarvam directly
+cd services && ../.venv/Scripts/python -m uvicorn stt_gateway.main:app --port 8001
+
+# 3. the web app
+cd apps/web && npm install && npm run dev
+```
+
+Then open `http://localhost:3000`. **Use localhost, not a LAN IP** - `getUserMedia`
+requires a secure origin, and `localhost` counts while `192.168.x.x` does not. On
+the deployed box this means HTTPS is mandatory or the microphone silently never
+prompts.
+
+Check `http://localhost:8000/health` first. It reports which capabilities actually
+came up (`reranker`, `generative`, `passage_store`); a dense-only process and a
+fully-reranked one are both "ok" and answer differently.
+
+### What is where
+
+| file | what it is |
+|---|---|
+| `public/pcm-worklet.js` | 48 kHz -> 16 kHz PCM16 with a windowed-sinc low-pass. **The riskiest file in the frontend.** Read its header before touching it. |
+| `lib/audio/recorder.ts` | getUserMedia, the worklet graph, and the RMS the orb ring reads |
+| `lib/api.ts` | typed clients for both services. Architecture.md 9 is the contract |
+| `app/globals.css` | the whole design system, from `Design.md` 10. No hex appears in a component |
+| `components/MicOrb.tsx` | the amplitude ring, driven through a ref inside rAF |
+| `components/LatencyWaterfall.tsx` | the signature component, plus the confidence readout |
+| `components/AnswerCard.tsx` | answer, citation chips, and the abstention panel |
+
+### Rules that are not negotiable in this directory
+
+- **`Design.md` is the brief, not a suggestion.** Two font families, six type
+  steps, four signal colours with fixed meanings, one accent. Never Inter - the
+  brief names it as the stale default to avoid. Signal colours are never
+  decorative; if a colour appears where it carries no meaning the interface stops
+  being readable.
+- **Every number on screen is mono and tabular.** `Design.md` 3.2. This is the one
+  typographic rule that makes it feel like an instrument rather than a web page.
+- **Never hide the instrument column on mobile.** It collapses beneath the stage.
+  It is the only genuinely unusual thing on the screen and it is what makes the
+  submission identifiable at thumbnail size.
+- **The abstention panel gets equal visual weight to an answer**, and is never
+  styled as an error. It is a correct outcome, and it is the single most
+  convincing shot in Video 2.
+- **No API key may appear anywhere under `apps/web`.** `Rules.md` 4 is HARD. The
+  browser talks to `stt_gateway`; the gateway talks to Sarvam.
+
+### Known gaps, in priority order
+
+1. **The microphone path has never run against real audio.** No mic on the build
+   box. Test this before anything else.
+2. F16's text input reads as co-equal to voice rather than as a fallback.
+   Collapsing it behind a "No microphone? Type instead" link is the likely fix.
+3. Not built: the live strategy toggle (F13), the failure-injection param that
+   forces a 429 to demo the circuit breaker, the citation matched-span highlight,
+   and the realtime partial-transcript socket.
 
 ---
 

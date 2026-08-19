@@ -558,7 +558,71 @@ _pending_
 _pending_
 
 ### [Phase 8] Demo surfaces and polish
-_pending_
+**Date:** 19 Aug 2026 | **Who:** BENCH | **Branch:** `p4-p5-voice-rerank`
+**Status: PARTIAL. The surface exists and works; polish, the strategy toggle and
+the failure-injection mode are not built.**
+
+**What happened**
+`apps/web` built: Next.js 15, React 19, TypeScript, no component library. Browser
+recorder (getUserMedia -> AudioWorklet -> 16 kHz PCM16), mic orb with an
+amplitude-reactive ring, latency waterfall, citation chips that expand in place,
+abstention panel, confidence readout, fast/accurate mode toggle, and the F16 text
+fallback on the same endpoint. Build clean at 110 kB First Load JS.
+
+**The resampler is the part that could have shipped silently broken**
+`Phases.md` warns "resample properly, do not just drop samples". The reason it
+matters here specifically: decimating 48 kHz to 16 kHz without filtering folds
+everything above 8 kHz back into the speech band, and sibilance and Devanagari
+retroflex consonants carry real energy there - so the damage lands exactly on the
+sounds an Indic STT model needs, and it does not sound broken on a laptop speaker.
+It just quietly costs Hindi accuracy.
+
+`public/pcm-worklet.js` therefore low-passes before resampling: a 63-tap
+Blackman-windowed sinc at 7.4 kHz, then fractional-position resampling with linear
+interpolation. **The filter is designed at run time from the real AudioContext
+sampleRate**, not hard-coded for 48 kHz - devices report 44.1 kHz too, where the
+ratio is 2.75625 and integer decimation is not even available.
+
+**Verified in a real browser against both live services**
+
+| query | result | Band A |
+|---|---|---|
+| English | EXTRACTIVE, 3 citations, confidence 8.68 | 58.0 ms |
+| Hindi | EXTRACTIVE, Devanagari answer and citations | 83.4 ms |
+| gibberish | **ABSTAINED** `LOW_CONFIDENCE`, -4.908 vs the -1.103 floor | 91.3 ms |
+
+Zero console errors. At 375 px the instrument column collapses BENEATH the stage
+and stays visible, per `Design.md` 4.1 - hiding it would remove the only genuinely
+unusual thing on the screen.
+
+**Deviation, recorded per Rules.md 9: no Tailwind.** `Rules.md` 3.1 lists it. The
+spec is exact pixel geometry, a hatched-bar texture, an amplitude-driven transform
+and six keyframe animations - all plain CSS that utility classes would only wrap,
+plus a config to keep in sync with `tokens.css`. The rule's intent (no component
+library, nothing templated) is met; the tool is not. Overturn freely if a later
+session wants it.
+
+**The measurement boundary is stated on screen**, not only in the README: the
+instrument column shows `stt` and `pipeline` as separate numbers. A judge times
+from when they stop speaking, and a 200 ms claim that quietly excludes speech
+reads as cherry-picking - which is worse than being slower.
+
+**Open threads**
+- **The microphone path has never run against real audio.** The gateway was proven
+  with Sarvam TTS fed back through STT, but this box has no microphone, so
+  getUserMedia -> AudioWorklet -> resampler is unexercised. If anything is wrong in
+  Phase 4, it is there. Test it first on any machine with a mic.
+- The realtime socket (`/v1/stt/live`) is still unwired, so partials and the
+  `Latency.md` 5 prefetch remain hypothetical and must not be claimed.
+- **F16's prominence is an open design question.** The text input currently sits
+  below the answer as an ordinary form, which reads as co-equal to voice rather
+  than as the fallback `Project.md` intends. Collapsing it behind a "No
+  microphone? Type instead" link would keep the insurance while making the demo
+  read voice-first. Not done; it is a judgement call, not a defect.
+- Not built from `Phases.md` Phase 8: the live strategy toggle (F13), the
+  failure-injection query param that forces a 429 to demo the circuit breaker, and
+  the citation matched-span highlight.
+
 
 ### [Phase 9] Videos, posting, submission
 _pending_
