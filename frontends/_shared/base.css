@@ -506,6 +506,9 @@ body[data-chat="off"] .sh-form { display: none; }
    evidence. Dimming its numbers says that at a glance, which the pill in the
    first cell then says in words. */
 .sh-table tr[data-derived="true"] td.sh-num { color: var(--fg-3); }
+/* A number that is only there to show what cheating would have looked like.
+   It must never read as a result. */
+.sh-table tr[data-leak="true"] td { color: var(--halt); }
 
 /* A number column is read down its digits, so its header belongs over the last
    digit rather than the first. A left aligned header sitting on top of right

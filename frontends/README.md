@@ -266,6 +266,11 @@ Against both live services on 20 August 2026, served from this directory root:
 - `Space`, `Ctrl` + `.`, `off chat` and `shruti.chat.off()` all verified, and
   `Space` correctly does nothing while a text field has focus
 
-Still not verified anywhere: **the microphone path against a real microphone.**
-There is no mic on the build box. `Memory.md` Phase 4 and Phase 8 both flag it,
-and it is still the first thing to test on a machine that has one.
+**The microphone path is now verified against a real microphone**, 20 Aug 2026,
+which is the gap Phase 4 and Phase 8 both left open. Two English queries spoken
+into a browser and answered end to end: speech 1016 ms / pipeline 65.2 ms, and
+speech 705 ms / pipeline 68.2 ms, both `EXTRACTIVE` with three citations. The
+second returned a Hindi passage at rank 2 beside its English twin at rank 1, so
+cross-lingual retrieval fired on live spoken input rather than on a constructed
+example. Two samples is a sighting rather than a distribution, and the
+documentation page says so where it prints them.

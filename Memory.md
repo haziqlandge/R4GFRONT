@@ -722,6 +722,42 @@ the two derived ones carrying a `reuses C1` marker and dimmed figures. Dropping
 the rows hid work; showing them unmarked would have padded C1's column with its
 own reflection. Both failures are avoidable at once.
 
+**A read of the whole repo against the whole site, same day**
+Four things came out of it, recorded because the class of error matters more
+than the instances.
+
+1. **C3 and C4 really were never built**, and the site was right to say so.
+   `c3_semantic.py` raises on construction, `registry.py` holds both as
+   `_Pending`, and `artifacts/indexes/` contains exactly `c1 c2 c5 c6 c7
+   c7-leaky c8`. Three independent proofs, none of them a document. Worth
+   writing down because "the docs say not built" and "it was not built" are
+   different claims and only the second one survives a judge checking.
+2. **I20, the C7 answer-key leak, was missing from the site entirely** —
+   `Rules.md` 1 asks for it as a published finding and it is the strongest
+   honesty story in the repo. Now on the documentation page under the chunking
+   table, with the leaky row drawn in the refusal colour so it cannot be
+   mistaken for a result.
+3. **Two published numbers were cited to files that do not contain them.** The
+   shipped `tau_high` is 1.877; the calibration JSON the page cited says 9.242
+   and a 25/70/5 split. The override is deliberate and well argued in
+   `config.py` — precision peaks at 0.508 and buying it with coverage would
+   route most traffic to a free tier serving ~12 calls per window — but a reader
+   who opens the cited file finds a different number and concludes it was
+   massaged. Same shape in the reranker table, which draws depths 5 and 10 from
+   one 300-query run and the English-only arm and depths 20 and 50 from another,
+   while naming only the first. Both now name every file they use, and the
+   threshold curve is on the page rather than buried in a config comment.
+   **The lesson: "every figure names its source" is only worth anything if the
+   named source contains the figure.** A correct number with a wrong citation
+   is indistinguishable from a fabricated one.
+4. **Retrieval, not ranking, is still the stated ceiling** and the site does not
+   say it. On Band B, `gpt-oss-20b` handed the top-3 passages returns
+   `INSUFFICIENT_CONTEXT` on 50% of queries. Left as an open thread rather than
+   quietly fixed, because it is a claim about the system rather than a caption.
+
+`DONT-FORGET.md` at the repo root carries all of this in the form a cold session
+needs: what is easy to get wrong, and the file that proves otherwise.
+
 **Rules that carried over and are still HARD**
 No API key anywhere under `frontends/` (`Rules.md` 4): the browser talks to
 `stt_gateway`, the gateway talks to Sarvam. Every number mono and tabular. The
@@ -741,10 +777,33 @@ CORS rejection that reads exactly like a broken microphone. `run-dev.bat`,
 `frontends/serve.bat` and the VS Code `web` task all now serve `frontends/` on
 3000 instead of running `npm run dev`.
 
+**The microphone gap closed the same day**
+Phase 4 and Phase 8 both ended with `getUserMedia` -> AudioWorklet -> resampler
+unexercised, because the build box has no microphone and the gateway had only
+ever been proven by feeding Sarvam TTS back through STT. On 20 Aug it was run
+for real, in a browser, by a person speaking:
+
+| spoken | speech ms | pipeline ms | path | confidence |
+|---|---|---|---|---|
+| "What is the capital of Russia?" | 1016 | 65.2 | EXTRACTIVE | 5.01 |
+| "Who is Donald Trump?" | 705 | 68.2 | EXTRACTIVE | 10.94 |
+
+Both transcribed exactly and answered with three citations. **The whole capture
+chain works**, including the windowed-sinc low pass that was the riskiest thing
+in the frontend and could have shipped silently degrading Hindi.
+
+Two things worth keeping from that run. Real microphone audio costs **more** than
+the TTS loopback: 705 to 1016 ms against the loopback's 527 to 911 ms, so Band C
+should quote both ranges rather than the friendlier one. And the Donald Trump
+query, **spoken in English, returned a Hindi passage at rank 2** (`1002273:1:hi`,
+10.37) beside its English twin at rank 1 (10.94) — cross-lingual retrieval firing
+on live spoken input rather than on a constructed example, which `README.md` has
+been calling "a checkable event rather than a demo anecdote" since Phase 1.
+
+Two samples is a sighting, not a distribution. A proper Band C distribution is
+still unmeasured and the page says so where it prints these.
+
 **Open threads, unchanged by this work**
-- **The microphone path has still never run against real audio.** No mic on this
-  box. `getUserMedia` -> AudioWorklet -> resampler is the unexercised stretch and
-  it is still the first thing to test on a machine that has one.
 - The realtime socket (`/v1/stt/live`) is still unwired; partials and the
   `Latency.md` 5 prefetch remain hypothetical and must not be claimed.
 - Not built: the live strategy toggle (F13), the failure-injection query param

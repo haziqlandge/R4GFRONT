@@ -149,9 +149,14 @@ const COMMANDS = {
 
   speech: () => [
     line(`${STT.provider} ${STT.model}`, "hd"),
-    ...STT.verified.map((v) => line(`  ${v.lang}  confidence ${fmt(v.conf, 3)}  ${v.ms} ms`)),
+    line("  loopback, speech generated and fed back in"),
+    ...STT.verified.map((v) => line(`    ${v.lang}  confidence ${fmt(v.conf, 3)}  ${v.ms} ms`)),
+    line(`  real microphone, ${STT.liveMic.date}`, "ok"),
+    ...STT.liveMic.samples.map((m) => line(
+      `    ${m.sttMs} ms speech + ${fmt(m.pipelineMs, 1)} ms pipeline   ${m.path.toLowerCase()}`, "ok"
+    )),
     line(""),
-    line("  tested without a microphone by generating speech and feeding it back in.", "dim"),
+    line("  the mic path is verified end to end. two samples is not a distribution.", "dim"),
     line("  that cost is band C. the 200 ms figure does not include it.", "dim"),
   ],
 

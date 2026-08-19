@@ -104,7 +104,7 @@ export const BOUNDARY = [
     name: "Full wall clock",
     covers: "User stops speaking to answer painted. Includes Sarvam, both network hops, render.",
     excludes: "Nothing.",
-    verdict: "Sarvam alone measured 527 ms to 911 ms. Reported separately.",
+    verdict: "Speech to text measured 527 to 911 ms through the TTS loopback, and 705 to 1016 ms from a real microphone. Reported separately.",
     ok: false,
   },
 ];
@@ -153,6 +153,22 @@ export const CHUNKING = {
     { id: "C3", name: "Semantic breakpoint", note: "Time boxed out with three days to freeze. Reasoned, not measured. Reported as such." },
     { id: "C4", name: "Proposition decomposition", note: "Killed on a cost model: 23.7 M output tokens, 7 to 18 days on available hardware." },
   ],
+  // ISSUES.md I20, severity P0. Not because anything broke - the shipped C7 is
+  // clean - but because following the job spec literally would have put a
+  // fabricated number in the table above, confirming a prediction the project
+  // had already written down. Rules.md 1 requires this to be published.
+  leak: {
+    title: "The version of C7 that would have won was reading the answer key",
+    body: "The job sheet sized C7 at one extra vector per query, all 30,000 of them. But the 250 query benchmark IS the test split, ids matching exactly, so indexing a test query's text against its own gold passage puts the answer key in the index: searching that query then matches a vector that IS the query, pointing straight at the passage being scored.",
+    rows: [
+      { arm: "C1 baseline", en: 0.896, enHit: 0.34, hi: 0.696, hiHit: 0.252 },
+      { arm: "C7 as shipped", en: 0.872, enHit: 0.336, hi: 0.656, hiHit: 0.228 },
+      { arm: "C7 leaky, never published", en: 0.972, enHit: 0.808, hi: 0.936, hiHit: 0.792, leak: true },
+    ],
+    worth: "The leak is worth +0.47 Hit@1 in English and +0.54 in Hindi. It would also have appeared to close the multilingual gap, since Hindi Hit@1 more than triples, so it would have read as the single best result in the project.",
+    deeper: "Restricting to the corpus only split removes the leak but cannot rescue the strategy. Real doc2query indexes synthetic queries, so a stored query can resemble a future unseen one. This corpus gives each passage group exactly one real query, and for an evaluated passage that query IS the evaluation query. Either the query is indexed, which leaks, or the evaluated passage is unaugmented, which does nothing. There is no third option, and that is exactly what the honest numbers show.",
+    conclusion: "So the assumption that doc2query would win here is neither confirmed nor refuted. It is untestable on this dataset, and that is the finding. The guard is in the code rather than in a habit: the chunker defaults to the corpus only split, any opt in stamps leaky true into the index metadata, and the leaky build writes to its own directory so it can never overwrite the published one.",
+  },
   headline: "Six strategies built, indexed and measured. Four of them are independent evidence; C5 and C6 reuse C1's index by construction and are marked as such. One reasoned out, one killed on arithmetic.",
 };
 
@@ -190,13 +206,30 @@ export const STT = {
   model: "saaras:v3",
   realtime: "saaras:v3-realtime",
   why: "The corpus is fourteen Indian languages. Sarvam is trained on Indian audio, handles code mixed speech, and its realtime endpoint emits partial transcripts.",
-  // Verified without a microphone by synthesizing speech with Sarvam TTS and
-  // feeding it back through our own STT path. A real round trip in both
-  // languages, repeatable, and reusable as demo footage.
+  // Two separate verifications, and they are not interchangeable.
+  //
+  // `verified` below is the TTS loopback: speech synthesized with Sarvam TTS
+  // and fed back through our own STT path. Repeatable, runs on a box with no
+  // audio hardware, and reusable as demo footage.
+  //
+  // `liveMic` is the real thing, and it is what closes the gap Phase 4 and
+  // Phase 8 both left open: a person speaking into a browser microphone, 20 Aug
+  // 2026. getUserMedia -> AudioWorklet -> 16 kHz PCM16 -> our gateway -> Sarvam,
+  // end to end. Two samples is not a distribution and the field says so.
   verified: [
     { lang: "en-IN", said: "How tall is Mount Everest?", heard: "exact match", conf: 0.991, ms: 911 },
     { lang: "hi-IN", said: "Hindi Eiffel Tower question", heard: "proper noun transliterated to Latin", conf: 0.851, ms: 527 },
   ],
+  // Real microphone, real browser, 20 Aug 2026. Both spoken in English.
+  liveMic: {
+    date: "20 Aug 2026",
+    note: "Spoken into a browser microphone and answered end to end. Two samples, so this is a sighting rather than a distribution.",
+    samples: [
+      { said: "What is the capital of Russia?", heard: "exact", sttMs: 1016, pipelineMs: 65.2, path: "EXTRACTIVE", conf: 5.01 },
+      { said: "Who is Donald Trump?", heard: "exact", sttMs: 705, pipelineMs: 68.2, path: "EXTRACTIVE", conf: 10.94 },
+    ],
+    crossLingual: "The Donald Trump query was spoken in English and returned a Hindi passage at rank 2 (1002273:1:hi, 10.37) alongside its English twin at rank 1 (10.94). Cross lingual retrieval firing on a live spoken query, not a constructed example.",
+  },
   gotchas: [
     "Sarvam authenticates with an api-subscription-key header, not a bearer token. A bearer token returns a 401 that reads like a bad key.",
     "input_audio_codec is required for raw PCM. The endpoint sniffs container formats and raw samples have nothing to sniff.",
@@ -230,9 +263,27 @@ export const HARNESS_LIMIT = {
 /* ------------------------------------------------------------------ */
 
 export const ROUTING = {
-  src: "bench/results/2026-08-19-064809-routing-calibration.json",
+  // TWO sources, and they disagree on purpose. The calibration run fitted
+  // tau_low and proposed tau_high 9.242; the shipped tau_high is 1.877, a
+  // deliberate override recorded in config.py with the curve it was chosen off.
+  // Citing only the JSON would send a reader to a file that says 9.242 and a
+  // 25/70/5 split, which reads like the numbers were massaged. They were not,
+  // they were argued.
+  src: "bench/results/2026-08-19-064809-routing-calibration.json + services/rag_core/config.py",
   tauLow: -1.103,
   tauHigh: 1.877,
+  tauHighNote: {
+    title: "The high threshold is a judgement call, and the curve is why",
+    body: "Calibration targeted 75 percent precision on the extractive path and never reached it. Top-1 precision peaks at 0.508 at 37 percent coverage and falls after, so the fitted cut came back at 9.242, which would route most traffic to the model. We shipped 1.877 instead and wrote down why.",
+    curve: [
+      { cut: 1.88, precision: 0.4, coverage: 85.0, shipped: true },
+      { cut: 4.99, precision: 0.433, coverage: 65.6 },
+      { cut: 8.09, precision: 0.508, coverage: 37.4, peak: true },
+      { cut: 9.65, precision: 0.485, coverage: 20.6 },
+    ],
+    why: "Precision was not worth buying with coverage. Groq's free tier serves about twelve calls per window, so routing 58 to 70 percent of queries there is inoperable rather than merely slow, which is the same arithmetic that killed C4. And the extractive path does not assert an answer: it returns a retrieved passage with its citation, while Hit@1 asks only whether that passage is the one the dataset happened to label. A topically correct but unlabelled passage scores zero here and is still useful to read.",
+    admission: "This is the number behind the claim that our extractive path is not reliably right. It is a floor, not an optimum, and it is not transferable to another reranker or another corpus.",
+  },
   scale: "raw cross encoder logits, roughly -11 to +11",
   dist: [
     { path: "EXTRACTIVE", pct: 85, note: "no network call, answer is a span of the cited passage" },
@@ -272,8 +323,14 @@ export const HONEST_LIMIT = {
 /* ------------------------------------------------------------------ */
 
 export const RERANK = {
-  src: "bench/results/2026-08-19-012924-rerank-phase5.json",
+  // Two runs, both 300 dev queries. The arms table and depths 20 and 50 come
+  // from the 01:22 run, which is the one that carried the English only model;
+  // depths 5 and 10 come from the 01:29 run. Naming one file for both would be
+  // the ISSUES.md I21 mistake in miniature, so both are named and the split is
+  // stated in `mixedRuns` below.
+  src: "bench/results/2026-08-19-012200-rerank-phase5.json + 2026-08-19-012924-rerank-phase5.json",
   method: "300 dev queries, identical candidate lists, paired bootstrap.",
+  mixedRuns: "Depths 5 and 10 come from the later of two 300 query runs, depths 20 and 50 from the earlier one, which is the only run that carried the English only arm. The two report depth 10 slightly differently, en 0.397 against 0.417, which is the run to run spread on 300 queries and is smaller than every difference the table is used to argue.",
   arms: [
     { name: "Dense, no rerank", en: 0.36, hi: 0.233, shipped: false, note: "baseline" },
     { name: "ms-marco-MiniLM-L-6-v2", en: 0.447, hi: 0.12, shipped: false, note: "English only. Best English score, and worse than not reranking at all in Hindi." },

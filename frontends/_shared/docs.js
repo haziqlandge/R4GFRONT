@@ -185,6 +185,28 @@ function chunkingSection() {
         <ul class="doc-list">${notBuilt}</ul>
       </div>
     </div>
+    <h3 class="doc-h3 doc-h3-standalone">${esc(CHUNKING.leak.title)}</h3>
+    <p class="doc-lead">${esc(CHUNKING.leak.body)}</p>
+    <div class="doc-tablewrap">
+      <table class="sh-table">
+        <thead><tr><th>Arm</th><th class="sh-th-num">en R@10</th><th class="sh-th-num">en Hit@1</th><th class="sh-th-num">hi R@10</th><th class="sh-th-num">hi Hit@1</th></tr></thead>
+        <tbody>${CHUNKING.leak.rows.map((r) => `
+          <tr data-leak="${!!r.leak}">
+            <td>${esc(r.arm)}</td>
+            <td class="sh-num">${fmt(r.en, 3)}</td>
+            <td class="sh-num">${fmt(r.enHit, 3)}</td>
+            <td class="sh-num">${fmt(r.hi, 3)}</td>
+            <td class="sh-num">${fmt(r.hiHit, 3)}</td>
+          </tr>`).join("")}
+        </tbody>
+      </table>
+    </div>
+    <blockquote class="doc-quote doc-quote-warn">
+      <p class="doc-quote-title">${esc(CHUNKING.leak.worth)}</p>
+      <p>${esc(CHUNKING.leak.deeper)}</p>
+      <p>${esc(CHUNKING.leak.conclusion)}</p>
+    </blockquote>
+
     <h3 class="doc-h3 doc-h3-standalone">The frozen slice</h3>
     <div class="doc-stats">
       <div class="doc-stat"><span class="sh-num">${CORPUS.queries.toLocaleString()}</span><span>queries</span></div>
@@ -234,7 +256,8 @@ function rerankSection() {
         <tbody>${depths}</tbody>
       </table>
     </div>
-    <p class="doc-note">${esc(RERANK.depthVerdict)}</p>`);
+    <p class="doc-note">${esc(RERANK.depthVerdict)}</p>
+    <p class="doc-caption">${esc(RERANK.mixedRuns)}</p>`);
 }
 
 function guardrailSection() {
@@ -263,6 +286,24 @@ function guardrailSection() {
       <div class="doc-threshold"><span class="doc-tag">scale</span><span>${esc(ROUTING.scale)}</span></div>
     </div>
     <div class="doc-bars">${dist}</div>
+    <h3 class="doc-h3 doc-h3-standalone">${esc(ROUTING.tauHighNote.title)}</h3>
+    <p class="doc-lead">${esc(ROUTING.tauHighNote.body)}</p>
+    <div class="doc-tablewrap">
+      <table class="sh-table">
+        <thead><tr><th class="sh-th-num">Cut</th><th class="sh-th-num">Top-1 precision</th><th class="sh-th-num">Coverage</th><th></th></tr></thead>
+        <tbody>${ROUTING.tauHighNote.curve.map((c) => `
+          <tr data-shipped="${!!c.shipped}">
+            <td class="sh-num">${fmt(c.cut, 2)}</td>
+            <td class="sh-num">${fmt(c.precision, 3)}</td>
+            <td class="sh-num">${fmt(c.coverage, 1)}%</td>
+            <td class="doc-td-verdict">${c.shipped ? "shipped" : c.peak ? "precision peak" : ""}</td>
+          </tr>`).join("")}
+        </tbody>
+      </table>
+    </div>
+    <p class="doc-note">${esc(ROUTING.tauHighNote.why)}</p>
+    <p class="doc-note"><strong>${esc(ROUTING.tauHighNote.admission)}</strong></p>
+
     <h3 class="doc-h3 doc-h3-standalone">Why the floor sits on the reranker and not on retrieval</h3>
     <div class="doc-tablewrap">
       <table class="sh-table">
@@ -311,7 +352,24 @@ function sttSection() {
         <tbody>${rows}</tbody>
       </table>
     </div>
-    <p class="doc-note">Verified without a microphone by synthesizing speech with Sarvam text to speech and feeding it back through our own gateway. A real round trip, repeatable on a machine with no audio hardware.</p>
+    <p class="doc-note">Verified two ways. The table above is the loopback: speech synthesized with Sarvam text to speech and fed back through our own gateway, which is a real round trip and repeatable on a machine with no audio hardware. The table below is a person speaking into a browser microphone.</p>
+    <h3 class="doc-h3 doc-h3-standalone">A real microphone, ${esc(STT.liveMic.date)}</h3>
+    <div class="doc-tablewrap">
+      <table class="sh-table">
+        <thead><tr><th>Spoken</th><th>Heard</th><th class="sh-th-num">Speech ms</th><th class="sh-th-num">Pipeline ms</th><th>Path</th></tr></thead>
+        <tbody>${STT.liveMic.samples.map((m) => `
+          <tr>
+            <td>${esc(m.said)}</td>
+            <td>${esc(m.heard)}</td>
+            <td class="sh-num">${m.sttMs}</td>
+            <td class="sh-num">${fmt(m.pipelineMs, 1)}</td>
+            <td class="doc-td-verdict">${esc(m.path)}</td>
+          </tr>`).join("")}
+        </tbody>
+      </table>
+    </div>
+    <p class="doc-note">${esc(STT.liveMic.note)} It is the measurement Phase 4 and Phase 8 both left open: the browser capture path, the resampler and the gateway had until now only ever been exercised with synthesized audio.</p>
+    <p class="doc-note"><strong>${esc(STT.liveMic.crossLingual)}</strong></p>
     <h3 class="doc-h3 doc-h3-standalone">Four things that cost us time</h3>
     <ul class="doc-list doc-list-num">${gotchas}</ul>`);
 }

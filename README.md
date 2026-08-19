@@ -102,6 +102,10 @@ Check <http://localhost:8000/health> before testing. It reports which capabiliti
 | `scripts/` | Offline: download, freeze, index build, ONNX export, benchmarks, evals |
 | `bench/` | Frozen query sets and dated results |
 
+## Before you change anything
+
+[`DONT-FORGET.md`](DONT-FORGET.md) — the facts that are easy to get wrong and expensive to rediscover, each with the file that proves it. Which chunking strategies were actually built, why one published threshold is not the calibrated one, what the abstention floor does and does not detect, and why serving the site on any port but 3000 breaks speech and not typing.
+
 ## Joining the project
 
 **On a new machine? Start with [`PREREQUISITES.md`](PREREQUISITES.md)** — per-box setup from bare metal to a verified working box.

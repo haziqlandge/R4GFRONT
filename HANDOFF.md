@@ -333,10 +333,16 @@ the change and they still hold; the rest of that document is now history.
 
 ### Known gaps, in priority order
 
-1. **The microphone path has never run against real audio.** No mic on the build
-   box. The gateway was proven by feeding Sarvam TTS back through STT, so
-   `getUserMedia` -> AudioWorklet -> resampler is the unexercised stretch. Test
-   this before anything else on a machine that has a microphone.
+1. ~~**The microphone path has never run against real audio.**~~ **CLOSED
+   20 Aug 2026.** Verified in a browser with a real microphone. Two English
+   queries spoken and answered end to end: "What is the capital of Russia?"
+   (speech 1016 ms, pipeline 65.2 ms, EXTRACTIVE, confidence 5.01) and "Who is
+   Donald Trump?" (speech 705 ms, pipeline 68.2 ms, EXTRACTIVE, confidence
+   10.94). `getUserMedia` -> AudioWorklet -> 16 kHz PCM16 -> gateway -> Sarvam
+   works. The second query also returned a Hindi passage at rank 2 beside its
+   English twin at rank 1, so cross-lingual retrieval fired on live spoken
+   input. Two samples is a sighting, not a distribution — a proper Band C
+   distribution is still unmeasured.
 2. The realtime socket (`/v1/stt/live`) is still unwired, so partials and the
    `Latency.md` 5 prefetch remain hypothetical and must not be claimed.
 3. Not built: the live strategy toggle (F13), the failure-injection param that
