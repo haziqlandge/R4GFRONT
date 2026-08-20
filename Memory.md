@@ -701,6 +701,15 @@ it, is the better version of what the rule was asking for.
 **Status: LIVE at https://shrutirag.duckdns.org, and the 200 ms claim does NOT
 hold on the deploy target. That is the finding.**
 
+> **SUPERSEDED THE SAME DAY. Read this entry, then the second Phase 7 entry at
+> the end of this section.** Everything below is accurate about what was measured
+> and wrong about what it meant: the cost it attributes to the deploy target was
+> mostly a thread-pool defect in our own process (`ISSUES.md` I28). The 200 ms
+> claim now holds, at every percentile, in both languages, over 998 requests.
+> The entry is kept because the reasoning it contains is the reasoning that
+> found the defect, and because two decisions taken here were later reversed
+> (R4) — deleting it would hide the part worth learning from.
+
 **What happened**
 `rag_core` and `stt_gateway` under systemd on the GCP Mumbai VM, Caddy on 443
 serving the static site and reverse proxying both services, real Let's Encrypt
@@ -1042,6 +1051,82 @@ still unmeasured and the page says so where it prints these.
 and 4 are built and the eval runs. Phase 7 deploy is now the top priority, then
 Phase 9.)* The frontend needs nothing further to be submittable.
 
+### [Phase 7] Deploy, and the defect that had been hiding under the budget
+**Date:** 20 Aug 2026 | **Who:** Claude Code session | **Branch:** `front-v1`
+
+**What happened**
+The stack went live at **https://shrutirag.duckdns.org** — Caddy on 443 with a
+Let's Encrypt certificate, serving the static site from `/var/www/shruti` and
+proxying `/api/core/*` and `/api/stt/*` to `rag_core` and `stt_gateway` on
+loopback under systemd. Then Band A was measured *through it*, which
+`Latency.md` 6 has required since Phase 0 and which had never actually been
+done.
+
+It failed. `n2-standard-2` gave en P50 190.47 ms and hi P50 200.87 ms against a
+200 ms budget. Two levers were pulled from the `Latency.md` 8 list — resize the
+instance, then cut rerank depth from 5 to 3 — and the second was documented
+carefully, including the quality it cost. Nine of 499 requests were still over
+budget.
+
+**Neither lever was the fix, and one of them made things worse.** `rag_core`
+holds two ONNX Runtime sessions and a request uses both; each had been given
+`ONNX_THREADS_SERVING` intra-op threads, which on a 4-vCPU box is eight workers
+for four cores. ORT's pool spins rather than sleeping when it finishes a task,
+so the embedder was still burning cores while the cross-encoder ran. One thread
+for the embedder took en P50 from 132.59 ms to 64.48 and made the embedder
+itself faster, 14.29 ms to 8.40. `ISSUES.md` I28.
+
+Depth 5 was then restored (reversal R4), the rerank deadline was made predictive
+rather than reactive, and the box was resized to `n2-standard-8` running four
+uvicorn workers — which buys concurrency rather than speed, because the
+cross-encoder stops scaling at two threads and one uvicorn process serves one
+request at a time (`ISSUES.md` I29).
+
+**Published, through the deployed service, 250 frozen queries x 2 passes per
+language, 30 warmup discarded**
+(`bench/results/2026-08-20-141232-banda-deployed-FINAL-n2std8-w4t2-d5.json`):
+
+| | P50 | P70 | P90 | P99 | P100 | over 200 ms |
+|---|---|---|---|---|---|---|
+| en | **95.89** | 103.44 | 117.61 | 152.48 | **183.35** | **0 of 500** |
+| hi | **115.88** | 126.17 | 146.54 | 174.62 | **182.20** | **0 of 498** |
+
+Band A holds at concurrency 1, 4 and 8. Client wall clock does not, and that is
+reported as the queue it is rather than tuned away.
+
+**Why this approach**
+The rule that produced the finding is worth more than the finding. Every lever
+on the optimization list was applied to a number nobody had explained, and the
+list is not wrong — it was just being consulted at the wrong moment. Timing the
+expensive component *in isolation* and comparing it against the same component
+*inside the process* is a two-minute check that would have caught this in Phase
+5, and it is now step zero of `Latency.md` 8, ahead of every lever.
+
+The second habit worth keeping: the superseded reasoning was left in `config.py`
+underneath the correction rather than deleted. A repo whose pitch is honest
+measurement should show what it believed and why it stopped believing it.
+
+**What this cost**
+`n2-standard-8` is roughly 4x the burn of the original box. Deliberate for a
+judging window measured in weeks, and A12 has been re-priced accordingly.
+Resizing down after judging is a task somebody has to do, not an option.
+
+**Also built, and switched off.** The realtime STT relay (`/v1/stt/live`) closes
+assumption A3 — Sarvam's realtime model emits real partials, 19 over 5.8 s of
+speech — but the live on-screen transcript is disabled. Under
+`language_code=auto` the partials arrive romanised and only the final is
+Devanagari; pinning `hi-IN` fixes that and corrupts the English final into
+phonetic Devanagari, which would be the string sent to `rag_core`. `ISSUES.md`
+I30.
+
+**Where to continue.** Phase 9 (videos, posting, submission) is the only phase
+left. `DONT-FORGET.md` 12 holds three decisions still waiting on a human, and 13
+holds what is still open — Band B and the path distribution have never been
+measured on the deployed box, and the rerank deadline's truncation rate is known
+only at concurrency 1.
+
+---
+
 ### [Phase 9] Videos, posting, submission
 _pending_
 
@@ -1309,6 +1394,73 @@ budget, and a 3.31 ms wrong answer was worth nothing.
 
 _Log here whenever a prior decision is overturned. Include the original reasoning, what changed, and the new decision. These are the highest-value entries in the file._
 
+### R4: rerank depth back to 5, and serving threads back to 2
+**Date:** 20 Aug 2026 | **Overturns:** two decisions taken earlier the same day
+
+**Original reasoning.** The first deploy measured `n2-standard-2` at en P50
+190.47 ms and hi P50 200.87 ms against a 200 ms budget, with the rerank stage at
+94% of the spend. Two levers were pulled from the `Latency.md` 8 list: resize the
+instance and raise `ONNX_THREADS_SERVING` from 2 to 4 with it, then cut
+`RERANK_TOP_K` from 5 to 3. On `n2-standard-4` that produced en P50 137.70 and hi
+P50 150.64, with 9 of 499 requests still over budget. Both decisions were
+documented carefully, including the quality cost of the depth cut, and both were
+correct readings of the measurement in front of them.
+
+**What changed.** The measurement was of a defect. `rag_core` holds two ONNX
+Runtime sessions — the embedder and the cross-encoder — and both were built with
+`intra_op_num_threads = ONNX_THREADS_SERVING`. On four vCPUs that is eight worker
+threads, and ORT's pool spins rather than sleeping when it finishes a task, so
+the embedder was burning cores while the reranker ran. Isolating the cross-encoder
+gave ~18 ms per pair, which puts depth 3 at ~55 ms; the service was reporting 118.
+That ratio is what found it, and nobody had computed it in six phases.
+
+**New decision.** `ONNX_THREADS_EMBED_SERVING = 1`, `ONNX_THREADS_SERVING = 2`,
+`RERANK_TOP_K = 5`, a predictive rerank deadline, and `uvicorn --workers` at
+vCPUs/2. Measured through the deployed service, 250 frozen queries x 2 passes per
+language: **en P50 95.89 / P100 183.35, hi P50 115.88 / P100 182.20, 0 of 998
+requests over 200 ms.** `ISSUES.md` I28 and I29 carry the tables.
+
+**Why this is better, not merely different:**
+
+1. **The depth cut is undone at no latency cost.** Depth 5 beats depth 3 on Hindi
+   Hit@1 (0.307 vs 0.290) and clearly on MRR and nDCG, which order citations two
+   and three. The project traded that away to buy 35 ms that a session option
+   returned for free.
+2. **The guarantee is now a mechanism rather than a margin.** The deadline
+   refuses to start a pair it cannot afford instead of asking whether it has
+   already overrun. The rerank stage's three worst runs in a pass land within
+   0.16 ms of each other, which is what a bound looks like.
+3. **Spare cores now buy concurrency.** The cross-encoder is identical at 2 and 4
+   threads, and one uvicorn process serves one request at a time because every
+   stage is synchronous. Four workers took the client-side wall clock at four
+   concurrent clients from P100 698 ms to 416 ms.
+
+**Costs accepted:**
+
+- **`n2-standard-8` is roughly 4x the runway burn of `n2-standard-2`.** Taken
+  deliberately for a judging window measured in weeks, not as a permanent shape.
+  R3's runway arithmetic no longer holds and A12 should be re-read as such.
+- **The deadline truncates a rerank on 0.8% of English and 3.2% of Hindi
+  requests**, which get depth 4. It is recorded in the trace and has to be quoted
+  beside the P100, because a guarantee held by degrading is a different claim
+  from a guarantee held by being fast.
+- **Two documented decisions now read as reversed within hours.** The blocks in
+  `config.py` are kept rather than deleted, with the reversal written underneath
+  them. A repo whose whole pitch is honest measurement should show what it
+  believed when it believed it.
+
+**The lesson, which is the actual value of this entry.** `Latency.md` 8 is a list
+of levers, and a list of levers invites pulling one. Every lever pulled here was
+on the list, and none of them was the fix; two of them made things worse or were
+wasted. The missing step was upstream of the list: *explain the number first*.
+Time the expensive component in isolation, compare it against the same component
+inside the service, and only then decide what to trade. That is now lever 0.
+
+**Reversal condition:** a box where the cross-encoder scales past two threads —
+more physical cores, or a materially different model — would put
+`ONNX_THREADS_SERVING` back in play. Re-run `scripts/07b_rerank_sweep.py` on the
+new box before assuming it.
+
 ### R3: Google Cloud Mumbai, not Oracle Cloud Hyderabad
 **Date:** 15 Aug 2026 | **Overturns:** the A7 resolution taken earlier the same day
 
@@ -1367,20 +1519,20 @@ Track these explicitly. An unverified assumption that turns out false late is th
 |---|---|---|---|
 | A1 | ONNX int8 `multilingual-e5-small` embeds a short query in under 15ms on the target container CPU | Phase 2 | ✓ **TRUE, 2.81 ms median** locally. Re-verify on the GCP box. |
 | A2 | Cross-encoder rerank of 20 candidates fits in 45ms on the same CPU | Phase 5 | ✗ **FALSE.** Depth 20 measures **249.1 ms P50** on an idle BENCH at 2 threads - 5.5x, on a faster CPU than the deploy target. Depth is 5, not 20. See the 19 Aug mid-phase entry. |
-| A3 | Sarvam's realtime endpoint emits partials fast enough and stably enough for speculative prefetch to hit often | Phase 4 | ☐ |
+| A3 | Sarvam's realtime endpoint emits partials fast enough and stably enough for speculative prefetch to hit often | Phase 4 | ✓ **TRUE, measured 20 Aug** (`scripts/08_probe_realtime_stt.py`). Over 5.8 s of synthesized speech: **19 partial events**, first at 991 ms, each extending the last word by word, final 385 ms after the audio ended. Through our own relay and Caddy (`08b_probe_live_relay.py`): 7 partials and a correct final. **The partials are NOT used on screen**, and that is a second finding rather than a change of mind: under `language_code=auto` the partials arrive ROMANISED ("Qatar ki rajdhani kya hai") and only the final is converted to Devanagari. Pinning `hi-IN` fixes them and corrupts the English final to `व्हाट इज द कैपिटल ऑफ कतार`. No `mode` or `stream_type` separates the two (`scripts/08c_probe_hindi_partials.py`). So A3 is TRUE as written and the prefetch it was asked for has a NEW blocker: the partial and the final are not in the same script, so the edit-distance match Latency.md 5 specifies would fail on every Hindi utterance. **The prefetch is still NOT built.** |
 | A4 | The frozen slice fits in the container RAM budget with all eight indexes loaded | Phase 3 | ✗ **FALSE as stated.** One index is 655 MB; eight will not co-reside in 8 GB alongside the models. Load-on-switch instead. **Amended 18 Aug:** several Phase 3 strategies exceed C1's 655 MB, so the F13 toggle's switch pause differs per strategy — the UI should show the actual figure, not a generic spinner. |
 | A5 | C7 (doc2query / query-aligned) outperforms the other seven strategies on this corpus | Phase 3 | ☐ |
 | A6 | Extractive answers are good enough to be the default path rather than a fallback | Phase 5 | ◐ **still open, and the reranker did not settle it.** en Hit@1 0.360 -> 0.397 (+0.037, CI [-0.013,+0.090], NOT significant); hi 0.233 -> 0.313 (+0.080, significant). English top-1 is still wrong ~60% of the time, so D2's reversal condition is live. Decide with Phase 6 numbers. |
 | A7 | An India-region always-on container is available on the free or cheap tier of the chosen host | Phase 0 | ✓ **TRUE** — GCP Compute Engine `n2-standard-2`, `asia-south1` (Mumbai), on $300 trial credits. See reversal R3. |
 | A11 | ONNX int8 inference on ARM (Ampere A1) hits the same latency as x86 | Phase 2 | ~~open~~ **MOOT.** Retired by R3: GCP is x86, so the question no longer arises. |
-| A12 | $300 of GCP credit outlasts the judging window | Phase 7 | ◐ ~$70/mo projects to ~4 months (mid-Dec) against a mid-Sept judging need. Budget alert required. |
+| A12 | $300 of GCP credit outlasts the judging window | Phase 7 | ◐ **re-price it, 20 Aug.** The ~$70/mo that projected to mid-December was `n2-standard-2`. The box is now `n2-standard-8` (reversal R4), roughly 4x that, so the runway is roughly a quarter as long. It still covers a judging window measured in weeks, which is what it has to do. Budget alert is now mandatory rather than advisable, and resizing down after judging is a task, not an option. |
 | A13 | fp16 GPU passage vectors paired with int8 CPU query vectors retrieve equivalently to an all-int8 index | Phase 3, J1 | ☐ **This is the gate the whole split rests on. Verify first, not last.** |
 | A14 | A local 3B to 7B model produces usable propositions from machine-translated Hindi passages | Phase 3, J6 | ☐ Genuine risk of a lossy pass over already-lossy text. Track the parse-reject rate. |
 | A15 | The winning strategy's index fits the 8 GB `n2-standard-2` alongside embedder, reranker, BM25 and passage store | Phase 3, J16 | ☐ Follows from `ISSUES.md` I4. One C1 index already costs ~1.16 GB resident; a strategy at 3x the chunk count may win on recall and still not be servable. |
 | A16 | The 5070 Ti's CUDA stack comes up on this project's toolchain | Phase 3, J5 | ☐ Blackwell is sm_120, needs CUDA 12.8+. Timeboxed to 45 min with a role-swap fallback (`Devices.md` §4.3). |
 | A8 | Sarvam free credits cover the full build plus demo recording | Phase 4 | ◐ key verified live 14 Aug; remaining credit balance not yet checked |
 | A10 | Groq free-tier limits allow a Band B benchmark of useful size | Phase 5 | ✗ **FALSE as stated** — 12,000 tokens/window caps it. Band B must be a ~50-query sample, stated in the methodology. |
-| A9 | The 200ms budget's 25ms reserve is enough to absorb tail jitter | Phase 5 | ◐ early evidence: a do-nothing stub already shows a 2.7ms P99→P100 gap from scheduler jitter alone |
+| A9 | The 200ms budget's 25ms reserve is enough to absorb tail jitter | Phase 5 | ✓ **TRUE on the deployed box, but the reserve is not what does the work.** 0 of 998 requests over 200 ms, en P99→P100 152.48→183.35. The tail is held by the predictive rerank deadline, which stops before a pair that will not fit, not by the reserve absorbing it. Remove the deadline and 8 of 998 go over at depth 5. |
 | A17 | Lexical overlap between an answer and its cited passages detects ungrounded answers | Phase 6 | ✗ **FALSE as hoped.** It detects answers about a different subject (0.062) and does not detect false claims: a reassembly of the passage's own words scores 0.833 against a true paraphrase's 0.639. Useful for provenance, not for truth. |
 | A18 | A score-gap check can catch ambiguous queries | Phase 6 | ✗ **FALSE.** Catching 5 of 9 ambiguous costs 4 of 14 answerable; the distributions interleave. Rejected, `ISSUES.md` I27. |
 
@@ -1397,5 +1549,18 @@ Paste this when starting a fresh AI coding session on this project:
 > Key context: the fast path makes zero network calls. Extractive answering when reranker confidence is high, Groq LLM fallback when moderate, abstention when low. No LangChain. No hosted vector DB. No hosted embeddings. Everything in-process on ONNX int8.
 >
 > The website is `frontends/`: static HTML, two stylesheets and ES modules, no build step and no Node. It is served by `python -m http.server` on port 3000, which is fixed because `stt_gateway` allows CORS from that origin only. Its own `README.md` is the frontend handoff. The Next.js app that used to be in `apps/web` was removed on 20 Aug.
+>
+> **Current state, 20 Aug 2026.** Phases 0-5, 7 and 8 are complete, Phase 6 is
+> partial, and **Phase 9 (videos, posting, submission) is the only phase left.**
+> It is deployed at https://shrutirag.duckdns.org on an `n2-standard-8` in
+> Mumbai, and Band A is **95.89 ms P50 English / 115.88 ms Hindi measured through
+> the deployed service, with 0 of 998 requests over the 200 ms budget.** Do not
+> quote the 59.99 ms figure that appears in older files: it is a development
+> machine and `DONT-FORGET.md` 6 explains why that matters.
+>
+> Read `DONT-FORGET.md` first, then `HANDOFF.md` 1A for how to reach and deploy
+> to the box. Before changing anything for latency reasons, read `ISSUES.md` I28
+> and step 0 of `Latency.md` 8 — the two most recent optimizations on this
+> project were both aimed at a number nobody had explained and both were wrong.
 >
 > Tell me which phase we are on and what its exit criterion is before writing any code.

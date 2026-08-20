@@ -11,7 +11,7 @@ Voice → STT → input guard → embed → hybrid retrieve → fuse → rerank
      → confidence route → [extractive | LLM | abstain] → output guard → response
 ```
 
-**Status: Phases 0-5 and 8 complete, Phase 6 partial.** Band A P50 **59.99 ms** English / **73.77 ms** Hindi against a 200 ms budget, en Recall@10 **0.878**, 221 tests green, `mypy --strict` clean. Voice input, reranking, routing, abstention, guardrails and the site all work end to end. Guardrail layers 1 and 4 are live and measured over 60 adversarial cases plus 16 controls; layer 2 was measured and deliberately not shipped ([`ISSUES.md`](ISSUES.md) I27). **Phase 7 deploy is now the top priority**, then Phase 9 videos. See [`HANDOFF.md`](HANDOFF.md) to pick up, [`DONT-FORGET.md`](DONT-FORGET.md) 12 for the decisions waiting on a human, and read [`ISSUES.md`](ISSUES.md) I24-I27 before quoting any Phase 5 or 6 number.
+**Status: Phases 0-5, 7 and 8 complete, Phase 6 partial.** Deployed at **https://shrutirag.duckdns.org**. Band A P50 **95.89 ms** English / **115.88 ms** Hindi against a 200 ms budget, measured through the deployed service, **0 of 998 requests over budget**, en Recall@10 **0.878**, 221 tests green, `mypy --strict` clean. Voice input, reranking, routing, abstention, guardrails and the site all work end to end. Guardrail layers 1 and 4 are live and measured over 60 adversarial cases plus 16 controls; layer 2 was measured and deliberately not shipped ([`ISSUES.md`](ISSUES.md) I27). **Phase 9 videos are now the top priority.** See [`HANDOFF.md`](HANDOFF.md) to pick up, [`DONT-FORGET.md`](DONT-FORGET.md) 12 for the decisions waiting on a human, and read [`ISSUES.md`](ISSUES.md) I24-I27 before quoting any Phase 5 or 6 number.
 
 ---
 
@@ -21,20 +21,47 @@ The brief asks for sub-200ms. We publish three bands and state the boundary for 
 
 | Band | Boundary | Target | Measured |
 |---|---|---|---|
-| **A — Core RAG** | Transcript in → response serialized. Guardrails, embedding, dense + lexical search, fusion, reranking, routing, extractive answering, groundedness. No STT, no LLM network call. | < 200 ms | **59.99 ms P50 en, 73.77 ms hi.** P100 118.79 / 155.92 |
+| **A — Core RAG** | Transcript in → response serialized. Guardrails, embedding, dense + lexical search, fusion, reranking, routing, extractive answering, groundedness. No STT, no LLM network call. | < 200 ms | **95.89 ms P50 en, 115.88 ms hi**, on the deployed box. P100 183.35 / 182.20, 0 of 998 over budget |
 | **B — Core RAG + generation** | Band A routed through the Groq LLM fallback. | reported honestly | **643.83 ms P50.** Over budget, published anyway |
 | **C — Full wall clock** | User stops speaking → answer painted. | reported honestly | Sarvam alone 527-911 ms. Reported separately |
 
-250 frozen queries, 30 warmup runs discarded, on an i5-12400F at 2 serving threads.
+250 frozen queries x 2 passes per language, 30 warmup runs discarded, measured
+**through the deployed service** in Mumbai — `Latency.md` 6 has always required
+that, and until 20 August the published figures came from a development machine
+instead.
 
-**The deployed numbers are worse and we publish those too.** Measured on the
-`n2-standard-2` in Mumbai on 20 August, same 250 queries: English P50 **190.47 ms**,
-P70 198.31, P100 250.90. Hindi P50 **200.87 ms**, P100 256.57. That box is a
-2.80 GHz Xeon with one physical core plus a hyperthread, against six cores
-boosting to 4.4 GHz, and the cross-encoder is 94% of the budget. **So the 200 ms
-target is met on the development machine and missed on the deployment.** The
-levers for closing it, in order, are a larger instance, then rerank depth 5 to 3,
-then `ef_search`. `ISSUES.md` I8 predicted this and is closed by it. The full table with P70 and P90, the per-stage breakdown and the boundary for each band are on the site's documentation page and in [`Latency.md`](Latency.md).
+**It did not start out meeting the target, and how it got there is the more
+useful story.** The first deploy measured English P50 190.47 ms and Hindi
+200.87 ms — over the line, with the cross-encoder at 94% of the budget. Two
+levers were pulled from the optimization list: a bigger instance, then rerank
+depth 5 to 3. Both were reasonable and neither was the fix.
+
+The fix was that `rag_core` holds two ONNX Runtime sessions, the embedder and the
+cross-encoder, and gave each of them four intra-op threads on a four-vCPU box.
+ONNX Runtime's thread pool spins rather than sleeping when it finishes, so the
+embedder was burning cores the reranker needed. **Giving the embedder one thread
+halved the rerank stage and made the embedder faster at the same time** — English
+P50 132.59 ms to 64.48. The rerank depth cut was then reverted, because the cost
+that justified it was the bug. [`ISSUES.md`](ISSUES.md) I28 has the tables.
+
+What found it was a ratio nobody had computed for six phases: the cross-encoder
+costs ~18 ms per pair in isolation on that box, so depth 3 should have cost
+~55 ms, and the service was reporting 118. Timing a component alone and then
+inside the process is now step zero of the optimization list in
+[`Latency.md`](Latency.md) 8, ahead of every lever.
+
+**The tail is held by a mechanism rather than by margin.** The reranker's
+deadline used to ask whether it had already overrun, which cannot bound a stage
+nothing can interrupt. It now refuses to *start* a pair that will not fit. Nine
+requests over budget became zero, and the three slowest rerank runs in a
+250-query pass land within 0.16 ms of each other. It truncates 0.8% of English
+and 3.2% of Hindi requests to depth 4, recorded in the trace and quoted here
+because a guarantee held by degrading is a different claim from one held by
+being fast.
+
+`ISSUES.md` I8 predicted the deployment gap and is closed by it. The full table
+with P70 and P90, the per-stage breakdown and the boundary for each band are on
+the site's documentation page and in [`Latency.md`](Latency.md).
 
 A pipeline containing a hosted LLM call cannot reliably finish in 200 ms — time-to-first-token alone consumes the budget before retrieval starts. So the fast path contains no LLM call: when reranker confidence is high the answer is a verbatim span from a cited passage, which is both faster and structurally incapable of hallucinating. Full reasoning in [`Latency.md`](Latency.md).
 

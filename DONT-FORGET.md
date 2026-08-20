@@ -131,17 +131,22 @@ Whatever origin Phase 7 deploys to must be added to that allow list.
 
 ## 6. The 200 ms claim is Band A only, and the boundary must stay on screen.
 
-- **Band A** — transcript in to response serialized. **59.99 ms P50 en,
-  73.77 ms hi.** P100 118.79 / 155.92. Inside budget.
+- **Band A** — transcript in to response serialized. **95.89 ms P50 en,
+  115.88 ms hi**, measured through the DEPLOYED service on 20 Aug. P100 183.35 /
+  182.20, and **0 of 998 requests over 200 ms**. Inside budget.
+  The 59.99 / 73.77 figures that used to sit here are the development machine and
+  must not be quoted as the product's latency (section 12A).
 - **Band B** — Band A routed through Groq. **643.83 ms P50.** Over budget, and
   published anyway.
 - **Band C** — full wall clock. Speech to text measured **527 to 911 ms**
   through the TTS loopback and **705 to 1016 ms** from a real microphone
   (section 8). Quote both, not the friendlier one.
 
-250 frozen queries, 30 warmup runs discarded, `time.perf_counter_ns`,
-`numpy.percentile method=nearest`, P100 is the true maximum. Measured on an
-i5-12400F at 2 serving threads — **not** the deploy target (`ISSUES.md` I8).
+250 frozen queries x 2 passes per language, 30 warmup runs discarded,
+`time.perf_counter_ns` inside the process, `numpy.percentile method=nearest`,
+P100 is the true maximum. Measured on the deployed `n2-standard-8` in Mumbai at
+4 uvicorn workers x 2 ONNX threads, which is what `Latency.md` 6 requires and
+what `ISSUES.md` I8 closed against us until it was fixed.
 
 A 200 ms claim that quietly excludes speech-to-text reads as cherry-picking,
 which is worse than being slower. The site keeps `pipeline` and `speech` as two
@@ -213,7 +218,8 @@ where it prints them.
 
 - **A2 is false.** Reranking 20 candidates does not fit in 45 ms — depth 20
   measures **249.1 ms P50**, 5.5x over, on a faster CPU than the deploy target.
-  Shipped depth is **5**.
+  Shipped depth is **5**. It was briefly cut to 3 on 20 Aug and put back the same
+  day: the cost that forced the cut was `ISSUES.md` I28, not the depth.
 - **The English-only reranker is actively harmful in Hindi.**
   `ms-marco-MiniLM-L-6-v2` scores en 0.447 / hi 0.120; no reranking at all
   scores hi 0.233. Shipped `mmarco-mMiniLMv2-L12-H384-v1` at en 0.393 /
@@ -233,6 +239,16 @@ where it prints them.
   `degenerate_dropped: 2` in every index meta is that, not a bug.
 - **Non-ASCII through `curl` on Windows silently mangles** (I12). Test Hindi
   through the browser or a Python client, never a Windows shell.
+- **Sarvam has TWO speech-to-text sockets and only one of them emits partials.**
+  `wss://api.sarvam.ai/speech-to-text/ws` is the legacy streaming endpoint and
+  Sarvam's own comparison table gives its interim results as "None; only a final
+  transcript per utterance". The realtime one is
+  `wss://api.sarvam.ai/speech-to-text-realtime/ws`. `config.py` pointed at the
+  legacy host until 20 Aug, which would have produced a live transcript that
+  never updated until the speaker stopped - with correct-looking code. The
+  realtime endpoint also renames the parameters: `encoding=linear16` rather than
+  `input_audio_codec=pcm_s16le`, `stream_type` takes fast/balanced/simulated
+  (not `vad`), and segmentation is a separate `endpointing` parameter.
 - **`PYTHONIOENCODING=utf-8` is not optional** on Windows: printing a Hindi
   transcript to a cp1252 console raises `UnicodeEncodeError` and kills the
   request rather than garbling one log line.
@@ -422,57 +438,151 @@ group treatment the unsafe patterns got.
 
 ---
 
-## 12A. IT IS DEPLOYED, and the 200 ms claim does not hold there (20 Aug)
+## 12A. IT IS DEPLOYED, and the 200 ms claim HOLDS there (20 Aug, second pass)
 
 **https://shrutirag.duckdns.org** is live. Valid Let's Encrypt certificate,
 `rag_core` and `stt_gateway` under systemd bound to loopback, Caddy on 443
 serving the site and proxying `/api/core/*` and `/api/stt/*`. Configs in
 `deploy/etc/`.
 
-**Measured on the deployed box, 250 frozen queries, 30 warmup discarded:**
+**Published Band A, measured through the deployed service**, 250 frozen queries
+x 2 passes per language, 30 warmup discarded, `n2-standard-8`, 4 uvicorn workers
+x 2 ONNX threads, rerank depth 5
+(`bench/results/2026-08-20-141232-banda-deployed-FINAL-n2std8-w4t2-d5.json`):
 
-| | P50 | P70 | P90 | P100 |
-|---|---|---|---|---|
-| en, i5-12400F | 59.99 | 65.18 | 75.10 | 118.79 |
-| **en, n2-standard-2** | **190.47** | **198.31** | 216.12 | 250.90 |
-| hi, i5-12400F | 73.77 | 80.85 | 95.61 | 155.92 |
-| **hi, n2-standard-2** | **200.87** | 208.98 | 221.72 | 256.57 |
+| | P50 | P70 | P90 | P99 | P100 | over 200 ms |
+|---|---|---|---|---|---|---|
+| en | **95.89** | **103.44** | 117.61 | 152.48 | **183.35** | **0 of 500** |
+| hi | **115.88** | **126.17** | 146.54 | 174.62 | **182.20** | **0 of 498** |
 
-**Do not quote the 59.99 ms figure as the product's latency.** It is a real
-measurement on a machine the product does not run on, and `Latency.md` 6 has
-always required published numbers to come from the deployed service. I8 is
-closed by this and it closed against us.
+**Still do not quote the 59.99 ms development-machine figure as the product's
+latency.** The rule that put it here has not changed; what changed is that the
+deployed figure is now a good number, so there is no temptation.
 
-The box is a 2.80 GHz Xeon with 2 vCPU, meaning one physical core plus a
-hyperthread, against a six-core i5 boosting to ~4.4 GHz. The reranker is 94% of
-the budget and scales with both. `avx512_vnni` **is** present, so this is not an
-int8 fallback.
+### What this section said this morning, and why it was wrong
 
-**Levers, in this order, re-measuring after each rather than stacking them:**
+It said the claim did not hold: `n2-standard-2` measured en P50 190.47 and hi
+P50 200.87, and it listed three levers — a bigger instance, rerank depth 5 to 3,
+`ef_search` 64 to 48. Two were pulled and the third was not needed. **None of
+them was the fix.**
 
-1. Resize to `n2-standard-4`, and change `ONNX_THREADS_SERVING` from 2 to 4 with
-   it. Costs money, costs no quality. `N2_CPUS` quota is 200 with 2 in use.
-2. Rerank depth 5 to 3. Free, costs quality.
-3. `ef_search` 64 to 48. Smallest effect, costs recall.
+The fix was `ISSUES.md` **I28**: `rag_core` holds two ONNX sessions and gave each
+one four intra-op threads on a four-vCPU box. ORT's thread pool spins rather than
+sleeping when it finishes, so the embedder was burning cores while the
+cross-encoder ran. Giving the embedder **one** thread halved the rerank stage and
+made the embedder faster at the same time — en P50 132.59 to 64.48 at depth 3,
+from one line.
 
-**Voice does not work on the deployed box yet.** `.env` is gitignored so the VM
-has no `SARVAM_API_KEY` or `GROQ_API_KEY`. Text answering works,
-`/api/stt/health` returns 503 `no_api_key`, and the generative path is off.
+Three things follow, and each is the kind of mistake worth not repeating:
+
+- **Explain a number before pulling a lever against it.** The cross-encoder cost
+  ~18 ms per pair standalone on that box, so depth 3 should have cost ~55 ms and
+  the service reported 118. Nobody computed that ratio for six phases. It is now
+  lever 0 in `Latency.md` 8.
+- **Rerank depth was cut to 3 and put back to 5 the same day.** The cut was a
+  correct decision on a measurement of a defect. Depth 5 is better on Hindi
+  Hit@1, MRR and nDCG, and it fits.
+- **`ONNX_THREADS_SERVING` went 2 → 4 → 2.** The raise tracked the resize and
+  made the contention worse; the cross-encoder does not scale past two threads at
+  all (17.78 ms per pair at 2, 17.88 at 4), so it bought nothing either way.
+
+### The tail is now a ceiling, not a distribution
+
+The rerank deadline used to ask "have I already overrun?", which cannot bound a
+stage that nothing can interrupt: a check passing with 5 ms left still spent a
+whole pair. It now refuses to *start* a pair that will not fit. At depth 5 that
+took 8 of 998 requests over budget to 0, and the three worst rerank runs in a
+250-query pass land at 175.50, 175.66 and 175.51 ms.
+
+It truncates 0.8% of English and 3.2% of Hindi requests to depth 4, recorded in
+the trace as `deadline: scored 4 of 5`. Quote that alongside the P100 — a
+guarantee held by degrading is a different claim from a guarantee held by being
+fast, and the second one is not true.
+
+### Editing the frontend on the box changes nothing until you sync /var/www
+
+The repo lives at `/home/haziqlandge/app` on the VM, but Caddy's root is
+`/var/www/shruti` — a home directory is 0750 and the `caddy` user cannot
+traverse into it, so serving from `~` returns 403 with nothing useful in the
+log. The Caddyfile says `deploy.sh syncs it` and **there is no `deploy.sh` on
+the box**; the sync has been done by hand.
+
+The failure is silent and convincing: `scp` succeeds, `grep` on
+`~/app/frontends/_shared/data.js` finds the new value, and the site keeps serving
+the old one. Verify by fetching the asset over HTTPS and grepping the response,
+not by looking at the file you copied. The sync is:
+
+```
+sudo rsync -a --delete /home/haziqlandge/app/frontends/ /var/www/shruti/
+sudo chown -R caddy:caddy /var/www/shruti
+```
+
+Backend files are different: `services/` is run from `~/app` directly by the
+systemd units, so `scp` plus `sudo systemctl restart shruti-core` is the whole
+deploy there.
+
+### The box is 8 vCPU, and it bought concurrency rather than speed
+
+`n2-standard-2` → `n2-standard-4` → `n2-standard-8`, all on 20 Aug. The last
+resize improved single-request P50 only from 102.48 to 95.89, because threads
+stopped buying latency at two. What it bought is **workers**: every Band A stage
+is synchronous and never yields, so one uvicorn process serves one request at a
+time no matter how many cores it has (`ISSUES.md` I29). At four concurrent
+clients that was a client-side wall clock of P50 418 ms and P100 698 ms with
+Band A completely unchanged — a queue, not a slowdown, and the source of the
+"~700 ms" people were seeing. Four workers x two threads takes wall P100 at
+four concurrent clients to 416 ms.
+
+**Cost.** `n2-standard-8` is roughly 4x `n2-standard-2`. That is a deliberate
+choice for a short judging window, not a permanent shape — `Memory.md` R3 sizes
+the runway, and this shortens it. Resize down with
+`gcloud compute instances stop rag-core --zone=asia-south1-a`, then
+`set-machine-type`, then `start`; the static IP survives, and
+`ONNX_THREADS_SERVING` stays at 2 while `--workers` in
+`deploy/etc/shruti-core.service` becomes vCPUs/2.
+
+**Voice works on the deployed box now.** `.env` is on the VM (gitignored, copied
+by hand). `/api/stt/health` returns `ok`, core `/health` reports
+`generative: true`. The section that said otherwise was written before the keys
+were copied.
 
 ---
 
 ## 13. Still open
 
-- **Every published figure is still the i5 number.** `data.js`, the
-  documentation page, `README.md` and `Latency.md` results all predate the
-  deployment. They must be republished from the deployed box once a lever has
-  been pulled and the number settles. See 12A.
-- **`.env` on the VM**, without which there is no voice and no generative path.
+- ~~**Every published figure is still the i5 number.**~~ **Republished 20 Aug**
+  from the deployed box: `data.js` `BANDS` and `STAGES`, `README.md`,
+  `Latency.md` 7 and section 6 above. The i5 figures are kept beside the deployed
+  ones rather than deleted, labelled as the development machine.
+  Two Band A numbers on the page that are still NOT from the deployed box: the
+  dense-only baseline (3.25 ms P50, Phase 2, development machine) and Band B
+  (643.83 ms P50). Both are labelled; neither has been re-run on the box.
+- ~~**`.env` on the VM**~~ **done**, by hand. `/api/stt/health` is `ok` and core
+  `/health` reports `generative: true`, so voice and the generative path both
+  work on the deployed box.
+- **Band B and the path distribution have never been measured on the deployed
+  box.** Band B is a Groq network call, so it will be dominated by that rather
+  than by the box, but it is still an unmeasured claim on the deploy target.
+- **The rerank deadline's truncation rate is measured only at concurrency 1.**
+  It fires on 0.8% en / 3.2% hi with one client. Under load the remaining budget
+  is smaller, so it will fire more often, and nobody has measured how much more.
 - **Band C has two samples, not a distribution.** The mic path works; how long
   it takes across many utterances is unmeasured.
-- The realtime STT socket (`/v1/stt/live`) is unwired, so partials and the
-  `Latency.md` 5 speculative prefetch remain hypothetical and must not be
-  claimed.
+- **The realtime STT socket is BUILT and DELIBERATELY OFF.** `/v1/stt/live`
+  exists in `stt_gateway`, the browser client exists in `_shared/core.js`, both
+  were tested end to end, and `LIVE_TRANSCRIPT` in `_shared/app.js` is `false`.
+  Read that constant's comment before switching it on.
+  The reason is Hindi. With `language_code=auto` Sarvam's realtime model streams
+  ROMANISED partials and only converts to Devanagari on the final, so a Hindi
+  speaker watches "Qatar ki rajdhani kya hai" type out and snap to script at the
+  end. Pinning `hi-IN` fixes the partials and **corrupts the English final** to
+  `व्हाट इज द कैपिटल ऑफ कतार`, which is the string that would be sent to
+  `rag_core`. Every `mode` and both `stream_type` values were tried
+  (`scripts/08c_probe_hindi_partials.py`); none of them separates the two.
+  **The `Latency.md` 5 speculative prefetch is still NOT built and must not be
+  claimed**, and it now has a second problem to solve if anyone tries: under
+  auto, the partials it would speculate on are in a different script from the
+  final it would be compared against.
 - Layer 3's schema-repair retry is not built.
 - The adversarial eval is 76 cases. The ambiguous and answerable groups are 12
   and 16, which is enough to decide a direction and not enough to price one.

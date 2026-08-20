@@ -511,9 +511,9 @@ Abstention is never silent. It returns a typed reason (`OFF_TOPIC`, `LOW_CONFIDE
 | Frontend | Static HTML + ES modules, no framework | **Changed 20 Aug**, was Next.js 15. One screen, no routing, no data layer of its own: the build step was buying nothing. See the 20 Aug entry in `Memory.md` |
 | Styling | Two plain stylesheets, CSS custom properties | `base.css` sets structure and reads a token contract; `theme.css` defines it and owns every visual decision |
 | Audio | Web Audio API + AudioWorklet | Only reliable way to get 16kHz PCM16 in-browser |
-| Frontend host | **Open, Phase 7.** The site is static files, so anything serves it, including the GCP box itself | Whatever origin is chosen must be added to `stt_gateway`'s CORS allow list, which is `localhost:3000` only today. Serving it from the same box as the services removes the cross-origin question entirely |
+| Frontend host | **RESOLVED, 20 Aug: the GCP box itself.** Caddy serves the static files from `/var/www/shruti` and reverse proxies `/api/core/*` and `/api/stt/*` on the same origin | Same origin means the browser makes same-origin requests and CORS stops being a thing that can be misconfigured. It also means TLS, which is not optional: `getUserMedia` needs a secure origin or the microphone never prompts |
 | Backend | Python 3.11, FastAPI, uvicorn | Ecosystem for ONNX, hnswlib, bm25s |
-| Backend host | **GCP Compute Engine `n2-standard-2`, `asia-south1` (Mumbai), always-on** | Serverless cold starts are fatal to P100; `e2` burst throttling is fatal to it too |
+| Backend host | **GCP Compute Engine `n2-standard-8`, `asia-south1` (Mumbai), always-on** | Serverless cold starts are fatal to P100; `e2` burst throttling is fatal to it too. Started at `n2-standard-2` and grew twice on 20 Aug — the last resize bought concurrency rather than speed, see `ISSUES.md` I29 |
 | STT | Sarvam `saaras:v3-realtime` | Requirement 1; Indic-native; partial transcripts |
 | Embeddings | `intfloat/multilingual-e5-small`, ONNX int8 | Multilingual, small, fast, local |
 | Dense index | `hnswlib`, in-process | No network hop |
@@ -580,7 +580,7 @@ Client sends binary PCM16 16kHz mono frames. Server sends:
 
 ```
 static site  ────────►  GCP Compute Engine (asia-south1 Mumbai, always-on)
-(host open, Phase 7)      n2-standard-2, 2 vCPU, 8 GB, x86
+(deployed 20 Aug)         n2-standard-8, 8 vCPU, 32 GB, x86
                            ├─ stt_gateway  (thin, async, low CPU)
                            └─ rag_core     (warm indexes in RAM)
                                   │

@@ -215,6 +215,25 @@ Deploy early enough that deployment problems are not deadline problems. This is 
 
 **Exit criterion:** a teammate on a different network, on mobile data, opens the live URL and completes a voice query successfully. Benchmarks re-run against production and committed.
 
+> **DONE, 20 August 2026, and not the way this task list describes.** No
+> Dockerfile, no Fly.io, no Render and no Vercel: one `n2-standard-8` in
+> `asia-south1` running both services under systemd on loopback, with Caddy on
+> 443 terminating TLS, serving the static site from `/var/www/shruti` and
+> proxying `/api/core/*` and `/api/stt/*`. One origin, so the CORS question this
+> phase worried about does not arise. Configs in `deploy/etc/`.
+>
+> **The benchmark re-run against production is the phase.** It failed first —
+> en P50 190.47 ms, hi 200.87 — and the cause turned out to be two ONNX sessions
+> with four intra-op threads each on a four-vCPU box, not the box
+> (`ISSUES.md` I28). Published now: **en P50 95.89 / P100 183.35, hi P50 115.88 /
+> P100 182.20, 0 of 998 requests over budget**, measured through the deployed
+> service as `Latency.md` 6 has always required.
+>
+> Still not done from this list: rate limiting per IP, the keepalive ping, and a
+> secret scan across full git history before the repo is made public. Request
+> size caps exist (Caddy 12 MB, gateway 8 MB). Error boundaries exist in the
+> frontend. See the second `[Phase 7]` entry in `Memory.md`.
+
 ---
 
 ## Phase 8: Demo surfaces and polish

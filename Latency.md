@@ -127,6 +127,27 @@ pairs, returning a partial rerank rather than overrunning. So the guarantee hold
 but it rests on the pre-stage gate plus that in-stage deadline — not on the timeout
 column.
 
+**Amended 20 Aug: checking between pairs is necessary and was not sufficient.**
+The check asked whether the deadline had *already* passed, which cannot bound
+anything when nothing can interrupt a pair once ONNX has it — a check that passes
+with 5 ms remaining still spends a whole pair and lands well over. On the deployed
+box this produced Band A P100s above 200 ms while every stage reported `ok`, which
+is exactly the failure mode `ISSUES.md` I25 warns about, one level further in.
+
+The deadline is now **predictive**: it refuses to *start* a pair that will not
+fit, estimating the next pair's cost as the slowest pair already scored in that
+call. The slowest rather than the mean, because cost tracks sequence length and a
+mean underestimates precisely the case that breaks the budget — the long passage
+sitting at rank 5. Overestimating costs one pair of reranking on a query that was
+near the line anyway; underestimating costs the guarantee.
+
+Measured effect at depth 5 on the deployed box: 8 of 998 requests over budget
+became 0 of 998, and the rerank stage's three worst runs in a 250-query pass land
+at 175.50, 175.66 and 175.51 ms. That is a ceiling, which is what a guarantee
+looks like in a histogram. A truncated rerank is recorded in the trace as
+`deadline: scored 4 of 5` and rendered in the waterfall, on the same principle as
+a skipped stage: visible degradation, not invisible degradation.
+
 ---
 
 ## 5. The prefetch optimization
@@ -164,7 +185,81 @@ Reported statistics: P50, P70 (explicitly required by the brief), P90, P99, P100
 
 **To be filled in at Phase 5 and finalized at Phase 7. Estimates below are placeholders and must be replaced with measured values before submission. Do not ship this file with estimates in it.**
 
-### Band A on the DEPLOYED service, 20 August 2026
+### Band A on the DEPLOYED service, 20 August 2026 — PUBLISHED
+
+`n2-standard-8`, `asia-south1` (Mumbai), 4 uvicorn workers x 2 ONNX threads,
+rerank depth 5. 250 frozen queries x 2 passes per language, 30 warmup runs
+discarded, `time.perf_counter_ns` inside the process, percentiles by nearest
+rank. **These are the numbers section 6 of this document has always said must be
+the published ones.** Source:
+`bench/results/2026-08-20-141232-banda-deployed-FINAL-n2std8-w4t2-d5.json`.
+
+| | P50 | P70 | P90 | P99 | P100 | over 200 ms |
+|---|---|---|---|---|---|---|
+| **en** | **95.89** | **103.44** | 117.61 | 152.48 | **183.35** | **0 of 500** |
+| **hi** | **115.88** | **126.17** | 146.54 | 174.62 | **182.20** | **0 of 498** |
+
+**The 200 ms target is met on the deployed box, at every percentile including
+the true maximum, in both languages, over 998 requests.** That sentence was not
+true this morning and the rest of this section is about why.
+
+Per-stage medians, English: `input_guard` 0.23, `embed_query` 6.59,
+`dense_search` 0.83, `rerank` 87.26, `route` 0.09, `answer_extractive` 0.05,
+`output_guard` 0.20. The reranker is still ~90% of the budget spent, and that is
+the correct shape — it is the stage that turns retrieval into a right answer.
+
+**Under concurrent load** (English, 250 queries, same box):
+
+| concurrency | Band A P50 | Band A P100 | client wall P50 | client wall P100 |
+|---|---|---|---|---|
+| 1 | 95.31 | 182.89 | 126.17 | 444.77 |
+| 4 | 139.35 | 189.52 | 173.37 | 416.19 |
+| 8 | 140.51 | 187.40 | 366.84 | 707.42 |
+
+Band A holds at every concurrency measured. Client wall clock does not, and that
+is a queue rather than a slowdown — see `ISSUES.md` I29. Wall clock also carries
+the measuring client's own home network to Mumbai and is not a Band A figure.
+
+#### What changed, and what it says about the earlier numbers
+
+Three changes, measured one at a time rather than stacked, in the order they
+were made:
+
+1. **The embedder was given one ONNX thread instead of four** (`ISSUES.md` I28).
+   Two ORT sessions of four spinning workers on four vCPUs meant the embedder
+   was still burning cores while the cross-encoder ran. This is the whole
+   finding: en P50 132.59 to 64.48 and hi 142.30 to 75.88 at depth 3, from a
+   one-line change, with the embedder itself getting faster too.
+2. **Rerank depth went back to 5.** It had been cut to 3 that morning to survive
+   a cost that turned out to be defect 1. Depth 5 is the better arm on Hindi
+   Hit@1, MRR and nDCG, and it now fits.
+3. **The rerank deadline became predictive** rather than reactive. It used to
+   ask "have I already overrun?", which cannot keep a promise that nothing can
+   interrupt a pair once ONNX has it: a check passing with 5 ms left still spent
+   a whole pair. It now refuses to *start* a pair that will not fit, estimating
+   from the slowest pair already scored in that call. Depth 5 went from 8 of 998
+   requests over budget to 0, and the rerank stage's three worst runs in a
+   250-query pass land at 175.50, 175.66 and 175.51 ms — a ceiling, not a tail.
+
+The deadline truncates a rerank on 0.8% of English and 3.2% of Hindi requests,
+which get depth 4 instead of depth 5. That is recorded in the trace as
+`deadline: scored 4 of 5` and rendered in the waterfall, because a partial
+rerank presented as a complete one is the failure this project cares most about
+avoiding.
+
+**A larger instance was also bought**, from `n2-standard-4` to `n2-standard-8`,
+and it deserves less credit than it will appear to. It bought concurrency, not
+speed: single-request Band A improved only from P50 102.48 to 95.89, because the
+cross-encoder does not scale past two threads. What eight vCPUs actually buy is
+four uvicorn workers instead of one process serving one request at a time.
+
+#### The superseded measurement, kept
+
+The block below is what this section said before, measured on `n2-standard-2`
+earlier the same day. It is kept rather than deleted: it was an honest reading
+of a real measurement, and the thing it was measuring was a defect.
+
+### Band A on `n2-standard-2`, 20 August 2026 — SUPERSEDED
 
 `n2-standard-2`, `asia-south1` (Mumbai), 250 frozen queries, 30 warmup runs
 discarded, `time.perf_counter_ns` inside the process, percentiles by nearest
@@ -191,8 +286,16 @@ Xeon with one physical core plus a hyperthread; the development machine is a
 six-core i5 boosting to about 4.4 GHz. The cross-encoder is 94% of the budget
 spent and scales with both.
 
-Levers in section 8 apply in this order: a larger instance first, because it
+Levers in section 8 applied in this order: a larger instance first, because it
 costs money and no quality; then rerank depth 5 to 3; then `ef_search`.
+
+**None of the three is what fixed it.** The first was pulled and helped less than
+expected, the second was pulled and then reverted, and the third was never
+needed. What fixed it was a thread count nobody had thought to question, found by
+comparing the reranker in isolation against the same reranker inside the service.
+`ISSUES.md` I28 is the entry; section 8 has been amended to put that comparison
+first, because a lever pulled against an unexplained number buys the wrong
+thing.
 
 ---
 
@@ -291,10 +394,33 @@ _Table generated by `scripts/04_bench_latency.py --breakdown`, pasted here at Ph
 
 If a benchmark comes in over budget, pull these in this order. Do not optimize randomly.
 
+**0. Before pulling any lever, explain the number.** Added 20 Aug after the list
+below cost a day and produced two wrong decisions. Time the expensive component
+*in isolation* and compare it against the same component *inside the service*. On
+the deployed box the cross-encoder cost ~18 ms per pair standalone, so depth 3
+should have been ~55 ms, and the service reported 118. That ratio was the entire
+bug (`ISSUES.md` I28: two ONNX sessions with spinning thread pools on four
+vCPUs). Levers 1, 2 and 4 were all pulled against it — one helped less than it
+appeared to, one was reverted, and none of them was the fix.
+
+The list below is still correct. It is just not the first thing to do.
+
 1. **Lower `ef_search` on the HNSW index.** Largest single dial. Trades recall for speed almost linearly. Start at 64, try 48 and 32.
 2. **Rerank fewer candidates.** 20 to 12 saves roughly 15ms. Measure the recall cost before committing.
 3. **Verify int8 quantization actually applied.** A silently-fp32 ONNX model is a common and expensive mistake. Check the model file size.
-4. **Pin `onnxruntime` intra-op threads.** The default oversubscribes on small models. Try 1, 2 and 4 and measure. Counterintuitively, fewer threads is often faster here.
+4. **Pin `onnxruntime` intra-op threads — and tune the sessions against each
+   other, not one at a time.** The default oversubscribes on small models. Try 1,
+   2 and 4 and measure. Counterintuitively, fewer threads is often faster here.
+   Measured on the deployed box: the cross-encoder is identical at 2 and 4 threads
+   (17.78 vs 17.88 ms per pair), and the embedder is *faster* at 1 thread than at
+   4 (8.40 vs 14.29 ms) because it stops fighting the reranker for cores. Every
+   process holding two sessions has this problem and it is invisible in a
+   single-session benchmark.
+
+   Once threads stop buying latency, spare vCPUs buy **throughput** instead:
+   every Band A stage is synchronous and never yields, so one uvicorn process
+   serves one request at a time regardless of core count (`ISSUES.md` I29). Run
+   `--workers vCPUs/2` alongside `ONNX_THREADS_SERVING = 2`.
 5. **Check the deploy region.** If the container is not in India, nothing else matters. This is worth checking first if numbers are wildly off.
 6. **Shorten the maximum passage length fed to the reranker.** Cross-encoder cost scales with sequence length. Truncating to 256 tokens is usually free in accuracy.
 7. **Drop to a smaller embedder.** Last resort, since it costs retrieval quality across the board.

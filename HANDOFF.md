@@ -4,7 +4,7 @@
 
 The repo is the handoff. This file covers only what the repo cannot: what a human has to do by hand, what was decided and why it is not in the code yet, and what is deliberately not committed.
 
-Last updated: 20 August 2026, after Phases 4, 5 and 8. The frontend was replaced and `apps/web` removed - see section 5A.
+Last updated: 20 August 2026, after Phase 7. **It is deployed, the 200 ms claim now holds on the deployed box, and Phase 9 is the only phase left.** See section 1A.
 
 > **On a brand-new machine, read [`PREREQUISITES.md`](PREREQUISITES.md) first.** It takes a bare box to a verified one. This file assumes that is done.
 
@@ -28,9 +28,12 @@ Read in this order, and do not skip the first one:
 **Phases 0-3 are complete.** Band A P50 **3.31 ms** against a 200 ms budget,
 en Recall@10 **0.878**, `mypy --strict` clean.
 
-**Phases 4, 5 and 8 are complete and Phase 6 is partial.**
-Band A P50 **59.99 ms** en / **73.77 ms** hi with the reranker in the path, Band B
-**653.6 ms**, 221 tests green, `mypy --strict` clean. Voice input, routing,
+**Phases 4, 5, 7 and 8 are complete and Phase 6 is partial.**
+Band A P50 **95.89 ms** en / **115.88 ms** hi **measured through the deployed
+service**, P100 183.35 / 182.20, **0 of 998 requests over the 200 ms budget**.
+Band B **643.8 ms**, 222 tests green, `mypy --strict` clean.
+The 59.99 / 73.77 figures an earlier draft of this file quoted are the
+development machine and must not be quoted as the product's latency. Voice input, routing,
 abstention, guardrails and the site all work end to end. Abstention recall
 **0.750** at precision **0.957** over 60 adversarial cases plus 16 controls. See `Memory.md` Phase 4, 5 and 8
 entries, and **read `ISSUES.md` I24, I25 and I26 before trusting any Phase 5
@@ -73,18 +76,97 @@ rather than on code.
    true paraphrase.
 5. ~~Phase 4 voice~~ **DONE** (mic path untested against a real microphone - see
    `HANDOFF.md` 5A).
-6. **Phase 7 deploy** to the idle GCP Mumbai VM (`34.100.222.236`). **NOW THE
-   TOP PRIORITY.** Every published latency figure is from an i5-12400F rather
-   than the 2 vCPU target and will be worse there (`ISSUES.md` I8), which is the
-   largest remaining honesty gap. Whatever origin it deploys to must be added to
-   the `stt_gateway` CORS allow list, and the microphone needs HTTPS.
+6. ~~**Phase 7 deploy**~~ **DONE, 20 Aug. https://shrutirag.duckdns.org.**
+   And it did not go the way this item expected: the deployed box missed the
+   budget, two levers from the `Latency.md` 8 list were pulled, and neither was
+   the fix. The cause was our own process giving two ONNX sessions four threads
+   each on a four-vCPU box (`ISSUES.md` I28). Read section 1A before touching
+   anything latency-shaped.
 7. ~~**Phase 8 frontend**~~ **DONE.** Replaced on 20 Aug: `frontends/`, static,
    no build step. Demo page and a documentation page carrying every published
    number with its source file named. Section 5A.
-8. **Phase 9 videos + social posting by every member.**
+8. **Phase 9 videos + social posting by every member. THIS IS NOW THE ONLY
+   THING LEFT.**
 
 Never cut (own planning docs): guardrail eval, latency benchmark, deployment,
 videos, posting.
+
+---
+
+## 1A. It is deployed. What that means operationally.
+
+**https://shrutirag.duckdns.org** — static site, both services, one origin, real
+certificate. Everything below is what a session needs to touch it without
+rediscovering anything.
+
+### Where things live on the box
+
+| what | where |
+|---|---|
+| repo | `/home/haziqlandge/app` |
+| **web root Caddy actually serves** | **`/var/www/shruti`** |
+| services | `shruti-core` and `shruti-gateway` under systemd, bound to loopback |
+| Caddy config | `/etc/caddy/Caddyfile`, versioned copy in `deploy/etc/` |
+| keys | `~/app/.env`, gitignored, copied by hand. `SARVAM_API_KEY` and `GROQ_API_KEY` are both there, so voice and the generative path both work |
+
+**The frontend deploy has a trap and it is silent.** Editing
+`~/app/frontends/...` changes nothing, because Caddy serves `/var/www/shruti` —
+a home directory is 0750 and the `caddy` user cannot traverse it. The Caddyfile
+says "deploy.sh syncs it" and **there is no `deploy.sh`**. Sync by hand:
+
+```
+sudo rsync -a --delete /home/haziqlandge/app/frontends/ /var/www/shruti/
+sudo chown -R caddy:caddy /var/www/shruti
+```
+
+Then verify by fetching the asset over HTTPS and grepping the response, not by
+looking at the file you copied. Backend files are simpler: `scp` into
+`~/app/services/...` and `sudo systemctl restart shruti-core`.
+
+### Getting a shell
+
+`gcloud compute ssh` **fails** on the Windows box — it shells out to PuTTY's
+plink and the server refuses the key. Plain OpenSSH works:
+
+```
+ssh -i ~/.ssh/google_compute_engine haziqlandge@34.100.222.236
+```
+
+If the key is rejected for permissions, `icacls` it to the current user only.
+
+### The machine, and the money
+
+`n2-standard-8`, `asia-south1-a`, 8 vCPU / 32 GB, static IP `34.100.222.236`.
+It got there as `n2-standard-2` → `-4` → `-8` on 20 Aug. **That is roughly 4x
+the burn the runway in `Memory.md` R3 was costed against**, taken deliberately
+for a judging window measured in weeks. Resizing down after judging is a task,
+not an option:
+
+```
+gcloud compute instances stop rag-core --zone=asia-south1-a
+gcloud compute instances set-machine-type rag-core --zone=asia-south1-a --machine-type=n2-standard-4
+gcloud compute instances start rag-core --zone=asia-south1-a
+```
+
+The static IP and the certificate survive it. If the vCPU count changes,
+`--workers` in `deploy/etc/shruti-core.service` must change with it: the rule is
+**workers = vCPUs / 2**, paired with `ONNX_THREADS_SERVING = 2`, and the reason
+both numbers are what they are is written above them in the files.
+
+### Before you optimize anything
+
+Read `ISSUES.md` I28 and `Latency.md` 8 step 0. The short version: the last two
+latency levers pulled on this project were both aimed at a number nobody had
+explained, and both were wrong. Time the expensive component in isolation, then
+time it inside the service, and compare — that ratio is what found a defect six
+phases old.
+
+### Re-benching
+
+`python scripts/07_bench_deployed.py --lang both --passes 2 --label <name>` runs
+from any machine and measures the deployed service. Band A comes from
+`trace.total_ms`, which `rag_core` measures inside its own process, so the
+network hop is reported separately as wall clock and never mixed in.
 
 ---
 
@@ -390,7 +472,7 @@ Finish `PREREQUISITES.md` first — the prompts below assume a verified box.
 >
 > Read these first, in order: `PREREQUISITES.md`, `Memory.md` (decisions and reversals — the *why*), `Devices.md` (what this machine is and what it may publish), `Phase3-Parallel.md` (the job board), `Rules.md` (HARD constraints), `ISSUES.md` (measured open problems), `Architecture.md`, `Latency.md`.
 >
-> Key context: the fast path makes zero network calls. Extractive answering when reranker confidence is high, Groq LLM fallback when moderate, abstention when low. No LangChain, no hosted vector DB, no hosted embeddings — everything in-process on ONNX int8. Deploy target is **GCP Compute Engine `n2-standard-2` in `asia-south1` (Mumbai), x86** (see `Memory.md` reversal R3; an earlier draft said Oracle ARM and that is superseded).
+> Key context: the fast path makes zero network calls. Extractive answering when reranker confidence is high, Groq LLM fallback when moderate, abstention when low. No LangChain, no hosted vector DB, no hosted embeddings — everything in-process on ONNX int8. It is already deployed at **https://shrutirag.duckdns.org** on a GCP Compute Engine **`n2-standard-8` in `asia-south1` (Mumbai), x86** (see `Memory.md` reversal R3 for why GCP, and R4 for why the box is this size). Read `HANDOFF.md` 1A before deploying anything to it.
 >
 > Phase 2 is complete: Band A P50 3.31 ms, en Recall@10 0.870. Phase 3 is running across three machines.
 

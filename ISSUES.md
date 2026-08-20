@@ -1185,3 +1185,217 @@ the system's own headline capability.
 **Ambiguity is therefore an open weakness, stated rather than closed.** The
 adversarial eval reports it per category so the 25% is visible instead of being
 averaged away.
+
+---
+
+## I28 — the embedder's ONNX thread pool was stealing the reranker's cores
+
+**Severity: P0, and RESOLVED 20 Aug 2026.** It was the single largest latency
+defect in the project, it had been present since Phase 2, and it was invisible
+because every stage reported `ok`.
+
+### What was wrong
+
+`rag_core` holds two ONNX Runtime sessions and one request uses both: the
+embedder runs at `embed_query`, the cross-encoder at `rerank`. Both were built
+with `intra_op_num_threads = ONNX_THREADS_SERVING`. On the deployed
+`n2-standard-4` that is two pools of four workers on four vCPUs, and ORT's pool
+does not sleep the moment it finishes a task — it spins. So the embedder's
+threads were still burning cores while the reranker ran.
+
+### What was measured
+
+`scripts/07c_ort_contention.py`, on the deployed box, same pairs in the same
+order, 50 measured after 10 warmup. Figures are the rerank stage, not the
+request:
+
+| arm | depth 3 P50 | depth 5 P50 | embed P50 |
+|---|---|---|---|
+| reranker alone, no embedder in the process | 57.27 | 97.20 | — |
+| embedder at 4 threads (**what shipped**) | **122.52** | **161.31** | 14.29 |
+| embedder at 4 threads, spinning disabled | 73.83 | 121.87 | 8.69 |
+| embedder at 2 threads | — | 139.13 | 12.19 |
+| **embedder at 1 thread** | **58.90** | **97.27** | **8.40** |
+| embedder at 1 thread, spinning disabled | — | 122.64 | 7.13 |
+
+One thread for the embedder recovers the standalone reranker cost exactly, and
+the embedder gets *faster* doing it — 14.29 ms to 8.40 — because it stops
+fighting its own oversubscribed pool. Both sides win, which is rare enough to be
+worth stating plainly.
+
+Files: `bench/results/2026-08-20-134018-ort-n2std4.json` and
+`-134156-ort-n2std4-d5.json`.
+
+### What it cost while it was live
+
+Band A through the deployed service, 250 frozen queries x 2 passes per language,
+30 warmup discarded, before and after the one-line change
+(`bench/results/2026-08-20-133614-banda-deployed-n2std4-d3-baseline.json` and
+`-134551-...-d3-embed1thread.json`):
+
+| | P50 before | P50 after | P100 before | P100 after | over 200 ms |
+|---|---|---|---|---|---|
+| en | 132.59 | **64.48** | 206.47 | **122.91** | 1/500 → 0/500 |
+| hi | 142.30 | **75.88** | 223.44 | **147.88** | 6/498 → 0/498 |
+
+### Why it was invisible for six phases
+
+Nothing was broken. Every span closed `ok`, the arithmetic in `Latency.md` 4 was
+consistent with what the stages reported, and the stage that looked expensive —
+the reranker — genuinely is the expensive one. The only signal was a ratio
+nobody had reason to compute: the cross-encoder costs ~18 ms per pair on this
+box, so depth 3 should be ~55 ms, and the service was reporting 118. Comparing
+the isolated component against the same component inside the process is what
+found it, and it is worth doing routinely rather than once.
+
+### What it invalidates
+
+**Two Phase 7 decisions were taken against this defect and both were wrong.**
+
+- `RERANK_TOP_K` was cut from 5 to 3 to fit depth 5's cost on the deployed box.
+  That cost was the bug. Depth 5 fits with the fix, and depth 5 is the better
+  arm on Hindi Hit@1, MRR and nDCG. **Reverted to 5.**
+- `ONNX_THREADS_SERVING` was raised from 2 to 4 to track the resize from
+  `n2-standard-2` to `n2-standard-4`. That raise is what made the contention
+  severe. Measurement then showed the cross-encoder does not scale past two
+  threads at all (17.78 ms per pair at 2, 17.88 at 4), so the raise bought
+  nothing even without the contention. **Set to 2**, and the spare cores now buy
+  worker processes instead — see I29.
+
+`ISSUES.md` I6 is the same shape of finding one level down: more threads is not
+more speed. I6 is one session oversubscribing itself; this is two sessions
+oversubscribing each other. `Latency.md` 8 lever 4 says to pin thread counts and
+measure, and it did not anticipate that the counts have to be chosen *against
+each other* rather than one at a time.
+
+---
+
+## I29 — one uvicorn process serves one request at a time, whatever the box
+
+**Severity: P1, MITIGATED 20 Aug 2026.** Band A was never wrong; the number a
+person with a browser experiences was, and only under concurrent load.
+
+### What was measured
+
+Four concurrent clients against the 4-vCPU box, 250 queries, English
+(`bench/results/2026-08-20-135949-banda-deployed-n2std4-d5-conc4.json`):
+
+| | concurrency 1 | concurrency 4 |
+|---|---|---|
+| Band A P50 (in-process) | 102.48 | **101.04** |
+| Band A P100 | 181.34 | 180.04 |
+| client wall P50 | 135.82 | **417.61** |
+| client wall P100 | 368.49 | **698.16** |
+
+Per-request Band A does not move at all. That is the signature of perfect
+serialization: nothing ran slower, requests queued. Every Band A stage is
+synchronous ONNX or C++ that never yields to the event loop (the same property
+`I25` is about), so one uvicorn process runs one pipeline at a time no matter
+how many cores it is given.
+
+**This is where the ~700 ms tail people were seeing came from**, and it is not
+in Band A by construction — the trace starts when the pipeline starts, after the
+queue wait.
+
+### The fix, and why the numbers are what they are
+
+`uvicorn --workers N` with `N = vCPUs / 2`, paired with
+`ONNX_THREADS_SERVING = 2`. The pairing is the point: the cross-encoder stops
+scaling at two threads, so anything above two is a core that could have been
+serving a second request instead.
+
+Deployed as 8 vCPU, 4 workers, 2 threads
+(`bench/results/2026-08-20-140648-banda-deployed-n2std8-w4t2-conc1.json`,
+`-140703-...-conc4.json`, `-140716-...-conc8.json`):
+
+| concurrency | Band A P50 | Band A P100 | wall P50 | wall P100 | over 200 ms |
+|---|---|---|---|---|---|
+| 1 | 95.31 | 182.89 | 126.17 | 444.77 | 0/250 |
+| 4 | 139.35 | 189.52 | 173.37 | 416.19 | 0/250 |
+| 8 | 140.51 | 187.40 | 366.84 | 707.42 | 0/250 |
+
+Wall clock at four concurrent clients falls from 698 ms to 416. At eight it
+returns, because eight concurrent requests on four workers is a queue again —
+honestly reported rather than tuned away. Band A stays inside 200 ms at every
+concurrency measured, which is the claim that was made.
+
+Each worker loads its own ~2.5 GB of index, passage store and models, so worker
+count is bounded by RAM as well as by cores: 4 workers is ~11 GB of the 32 GB on
+`n2-standard-8`.
+
+---
+
+## I30 — realtime partial transcripts arrive in the wrong script for Hindi
+
+**Severity: P2. Measured, understood, and the feature is switched off rather
+than shipped wrong.** It is not a bug in our code.
+
+### What was asked for
+
+A live transcript: the question appearing word by word under a blinking caret
+while someone speaks, instead of arriving whole when they stop. The condition
+set was explicit — build it only if the speech-to-text actually supports
+streaming partials.
+
+### It does, and that part works
+
+`scripts/08_probe_realtime_stt.py`, against `saaras:v3-realtime` on the deployed
+box, 5.8 s of synthesized speech: **19 partial events**, the first at 991 ms,
+each extending the last word by word, and the final 385 ms after the audio
+ended. Through our own relay and Caddy (`08b_probe_live_relay.py`): 7 partials
+and a correct final. **This closes `Memory.md` A3**, open since Phase 4.
+
+Two things had to be corrected to get there, and both would have failed quietly:
+
+- `config.py` pointed at `wss://api.sarvam.ai/speech-to-text/ws`, the **legacy**
+  streaming socket, whose documented interim-result behaviour is "None; only a
+  final transcript per utterance". The realtime host is
+  `speech-to-text-realtime/ws`.
+- The realtime endpoint renames the parameters. `encoding=linear16` rather than
+  `input_audio_codec=pcm_s16le`; `stream_type` takes `fast`/`balanced`/
+  `simulated` and **not** `vad`; segmentation is a separate `endpointing`.
+
+### What is wrong with it
+
+Tried with a real microphone: English was excellent. **Hindi streams in Latin
+script.** The partials read "Qatar ki rajdhani kya hai" and only the final
+becomes "कतर की राजधानी क्या है".
+
+Every combination was measured before giving up
+(`scripts/08c_probe_hindi_partials.py`), same synthesized audio each time:
+
+| language_code | mode | partials | final |
+|---|---|---|---|
+| auto | transcribe | romanised | correct |
+| auto | codemix | romanised | correct |
+| auto | verbatim | romanised | **corrupt for English** |
+| auto | translit | romanised | romanised |
+| **hi-IN** | transcribe | **Devanagari** | correct (Hindi audio) |
+| **hi-IN** | transcribe, **English spoken** | devanagari | **`व्हाट इज द कैपिटल ऑफ कतार`** |
+| en-IN | transcribe | latin | correct (English audio) |
+
+`stream_type` `fast` and `balanced` are indistinguishable on this axis.
+
+### Why it is off rather than pinned
+
+The only setting that fixes Hindi partials is pinning `language_code`, and a
+pinned socket does not merely mis-render the other language — **it corrupts the
+FINAL**, which is the string sent to `rag_core`. `व्हाट इज द कैपिटल ऑफ कतार`
+retrieves nothing, so a pinned socket trades a correct answer for a prettier
+caption. Asking a visitor to declare their language before speaking would avoid
+that and give up the auto-detection this system is built around, on the one
+screen where cross-lingual behaviour is meant to be visible.
+
+So `LIVE_TRANSCRIPT` in `frontends/_shared/app.js` is `false` and the transcript
+appears whole, as it did before. The relay, the browser client, the caret and
+the fallback are all built and tested; the constant's comment carries this table
+so the next person does not re-derive it.
+
+### What it costs elsewhere
+
+**The `Latency.md` 5 speculative prefetch now has a second blocker.** It
+specifies matching a stable partial against the final within a normalized edit
+distance of 0.15. Under `language_code=auto` the partial and the final are in
+different scripts for every Hindi utterance, so that comparison fails outright —
+not marginally. Anyone building the prefetch has to solve the language problem
+first, and it is not a threshold they can tune.

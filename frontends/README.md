@@ -149,12 +149,17 @@ at all when it does not, which is what an unfocused terminal window does. Past
 the width of the field the measurement stops being true, so the browser's caret
 comes back for the rest of that line.
 
-### Turning the text input off
+### Turning the text input on
 
-The text box is a presentation choice, not a feature flag. It stays in the DOM
-and stays wired, so switching it off costs nothing and loses no state. It is
-there because a judge without a microphone still has to be able to try the
-system.
+**It is OFF by default**, so the page opens voice first and the microphone is
+the obvious thing to reach for. That is a presentation choice, not a feature
+flag: the box stays in the DOM and stays wired, so switching it back on costs
+nothing and loses no state. It has to stay one action away, because a judge
+without a microphone still has to be able to try the system.
+
+When it is on, submitting empties it. The question is echoed into the transcript
+line above the box, so nothing is lost and the next question can be typed
+without clearing the previous one by hand.
 
 | Where | How |
 |---|---|
@@ -172,9 +177,20 @@ route into that switch reports itself exactly once.
 ## What is on the demo page
 
 - Microphone capture with an amplitude reactive ring, and a text box on the same
-  endpoint for anyone without a mic
-- Five sample questions, two of which the corpus deliberately cannot answer, so
-  the refusal is one click away rather than something a judge has to invent
+  endpoint for anyone without a mic, off by default and one keystroke away
+- The transcript appears whole when you stop speaking. A word-by-word live
+  version is **built and switched off** (`LIVE_TRANSCRIPT` in `_shared/app.js`),
+  because Sarvam streams romanised partials unless the language is pinned and
+  pinning corrupts the other language's final. The measurement is in that file
+  and in `scripts/08c_probe_hindi_partials.py`
+- Four sample questions, two English and two Hindi, every one of them run
+  through the real pipeline and the answer read before it went on the page.
+  `SAMPLE_QUERIES` in `_shared/core.js` records the ones that were rejected, and
+  they were rejected for answering WRONGLY rather than for abstaining - which is
+  `ISSUES.md` I26 showing up in the demo rather than in the eval.
+  These used to be five, two of which the corpus deliberately cannot answer, so
+  that the refusal was one click away. That was changed on request; the refusal
+  is still one typed question away, since any gibberish triggers it
 - The answer, its path badge, and citations that expand in place
 - The abstention panel: the typed reason, the score, and the calibrated floor
   drawn on the same axis
