@@ -68,11 +68,20 @@ MAX_UTTERANCE_SECONDS: Final[float] = 30.0
 HTTP_TIMEOUT_S: Final[float] = 30.0
 WS_CONNECT_TIMEOUT_S: Final[float] = 10.0
 
-# Where the browser is served from. Phase 7 replaces this with the Vercel origin;
-# a wildcard is not acceptable on a service that holds a key.
+# Where the browser is served from. A wildcard is not acceptable on a service
+# that holds a key (Rules.md 4, HARD).
+#
+# Phase 7 note: in the deployed setup this list should never be consulted.
+# Caddy serves the site and reverse proxies /api/stt/* to this process on
+# localhost, so the browser's requests are SAME-ORIGIN and no CORS check runs at
+# all. The deployed origin is listed anyway, because the cost is one line and
+# the failure it prevents - speech failing while typing works, with a CORS
+# rejection that reads exactly like a dead microphone - is one this project has
+# already paid for once.
 ALLOWED_ORIGINS: Final[tuple[str, ...]] = (
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "https://shrutirag.duckdns.org",
 )
 
 CLIENT_HEADERS: Final[dict[str, str]] = {

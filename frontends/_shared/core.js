@@ -6,14 +6,32 @@
  * or anywhere under frontends/ holds a credential. The browser talks to our own
  * stt_gateway on :8001, and the gateway talks to Sarvam.
  *
- * PORT 3000 IS LOAD BEARING. services/stt_gateway/config.py allows CORS from
- * localhost:3000 and 127.0.0.1:3000 only. Serve these pages on any other port
- * and speech to text fails with a CORS error that looks like a broken gateway.
- * serve.bat pins 3000 for exactly this reason.
+ * PORT 3000 IS LOAD BEARING IN DEVELOPMENT. services/stt_gateway/config.py
+ * allows CORS from localhost:3000 and 127.0.0.1:3000 only. Serve these pages on
+ * any other LOCAL port and speech to text fails with a CORS error that looks
+ * like a broken gateway. serve.bat pins 3000 for exactly this reason.
  */
 
-export const RAG_CORE = "http://127.0.0.1:8000";
-export const STT_GATEWAY = "http://127.0.0.1:8001";
+/**
+ * Where the two services live, decided by where this page is being served from.
+ *
+ * In development the page is on :3000 and the services are on :8000 and :8001,
+ * so the browser has to be told about them explicitly and CORS applies.
+ *
+ * In deployment there is one origin. Caddy serves these files and reverse
+ * proxies /api/core/* and /api/stt/* to the two services on localhost, so the
+ * browser makes SAME-ORIGIN requests and CORS stops being a thing that can go
+ * wrong rather than a thing that has to be configured correctly.
+ *
+ * This has to be computed rather than hardcoded: a deployed page pointing at
+ * 127.0.0.1:8000 would be asking the VISITOR's own machine for an answer, which
+ * fails for everyone except whoever is running the stack locally.
+ */
+const LOCAL_DEV =
+  location.hostname === "localhost" || location.hostname === "127.0.0.1";
+
+export const RAG_CORE = LOCAL_DEV ? "http://127.0.0.1:8000" : "/api/core";
+export const STT_GATEWAY = LOCAL_DEV ? "http://127.0.0.1:8001" : "/api/stt";
 
 /* ------------------------------------------------------------------ */
 /* Service clients                                                     */

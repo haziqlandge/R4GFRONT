@@ -18,7 +18,7 @@
  */
 
 import { PROJECT, BANDS, CORPUS, ROUTING, CHUNKING, RERANK, STACK, STT } from "/_shared/data.js";
-import { fmt, esc } from "/_shared/core.js";
+import { fmt, esc, RAG_CORE, STT_GATEWAY } from "/_shared/core.js";
 
 const PROMPT = "ok4t\\ragfront>";
 
@@ -47,7 +47,7 @@ const COMMANDS = {
   status: async () => {
     const out = [line("checking both services", "dim")];
     try {
-      const core = await (await fetch("http://127.0.0.1:8000/health")).json();
+      const core = await (await fetch(`${RAG_CORE}/health`)).json();
       out.push(line(`  rag_core     ${core.status}`, core.status === "ok" ? "ok" : "bad"));
       out.push(line(`  index        ${Number(core.chunks).toLocaleString()} chunks, strategy ${core.strategy}`));
       out.push(line(`  reranker     ${core.reranker || "not loaded"}`));
@@ -55,13 +55,13 @@ const COMMANDS = {
       out.push(line(`  llm fallback ${core.generative ? "configured" : "no key, extractive only"}`));
       out.push(line(`  warm in      ${core.startup_seconds}s`));
     } catch {
-      out.push(line("  rag_core     unreachable on :8000", "bad"));
+      out.push(line(`  rag_core     unreachable at ${RAG_CORE || "this origin"}`, "bad"));
     }
     try {
-      const gw = await (await fetch("http://127.0.0.1:8001/health")).json();
+      const gw = await (await fetch(`${STT_GATEWAY}/health`)).json();
       out.push(line(`  speech       ${gw.status}, expects ${gw.expects}`, gw.status === "ok" ? "ok" : "bad"));
     } catch {
-      out.push(line("  speech       unreachable on :8001", "bad"));
+      out.push(line(`  speech       unreachable at ${STT_GATEWAY || "this origin"}`, "bad"));
     }
     return out;
   },
