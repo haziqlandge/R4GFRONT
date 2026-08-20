@@ -18,6 +18,13 @@ numpy>=1.26
 fastapi>=0.115
 uvicorn[standard]>=0.30
 
+# WebSocket CLIENT, for the stt_gateway relay to Sarvam's realtime socket
+# (/v1/stt/live). uvicorn[standard] already installs this as a websocket SERVER
+# implementation, so on a machine that has the line above it is present either
+# way - but the gateway imports it directly now, and an import that works by
+# accident is one dependency resolution away from not working.
+websockets>=13
+
 # Required by stt_gateway's POST /v1/stt/file, which takes an audio upload.
 # FastAPI resolves Form/UploadFile parameters when it REGISTERS the route, not
 # when the route is called, so without this the whole service fails to start -

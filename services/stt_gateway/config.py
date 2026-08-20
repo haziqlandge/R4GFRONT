@@ -26,7 +26,14 @@ SARVAM_API_KEY: Final[str] = os.environ.get("SARVAM_API_KEY", "")
 AUTH_HEADER: Final[str] = "api-subscription-key"
 
 SARVAM_STT_URL: Final[str] = "https://api.sarvam.ai/speech-to-text"
-SARVAM_WS_URL: Final[str] = "wss://api.sarvam.ai/speech-to-text/ws"
+
+# THIS IS THE REALTIME HOST, NOT THE LEGACY ONE, AND THE DIFFERENCE IS THE WHOLE
+# FEATURE. It used to read wss://api.sarvam.ai/speech-to-text/ws, which is the
+# legacy streaming socket - Sarvam's own comparison table says it has no interim
+# results at all, only "a final transcript per utterance". Pointing the realtime
+# model at it would have produced a live transcript that never updated until the
+# speaker stopped, and the code would have looked correct.
+SARVAM_WS_URL: Final[str] = "wss://api.sarvam.ai/speech-to-text-realtime/ws"
 
 # Architecture.md 3.1. saaras:v3 for the batch path, the realtime variant for the
 # streaming socket that makes partial transcripts - and therefore the Latency.md 5

@@ -26,17 +26,21 @@ everything in this file is Band C and is reported separately and honestly.
 from __future__ import annotations
 
 import asyncio
+import base64
+import json
 import time
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
 import httpx
+import websockets
 from fastapi import FastAPI, File, Form, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import ORJSONResponse
 
 from .config import (
     ALLOWED_ORIGINS,
+    AUTH_HEADER,
     CLIENT_HEADERS,
     DEFAULT_LANGUAGE,
     HTTP_TIMEOUT_S,
@@ -44,9 +48,17 @@ from .config import (
     MAX_UTTERANCE_SECONDS,
     SAMPLE_RATE,
     SAMPLE_WIDTH,
+    SARVAM_API_KEY,
     configured,
 )
-from .sarvam import SarvamError, Transcript, error_frame, transcribe_pcm
+from .sarvam import (
+    SarvamError,
+    Transcript,
+    error_frame,
+    parse_event,
+    realtime_url,
+    transcribe_pcm,
+)
 from .vad import UtteranceDetector, duration_ms
 
 STATE: dict[str, object] = {}
@@ -214,3 +226,90 @@ async def stt_socket(ws: WebSocket) -> None:
         # socket is gone, so there is nowhere to send it. Drop it explicitly
         # rather than leaving a buffer attached to a dead connection.
         detector.reset()
+
+
+@app.websocket("/v1/stt/live")
+async def stt_live(ws: WebSocket) -> None:
+    """Relay between the browser and Sarvam's realtime socket. Latency.md 5.
+
+    This is the path that produces a transcript WHILE someone is speaking. The
+    browser sends the same PCM16 frames it already sends to /v1/stt; this
+    forwards each one to Sarvam as a base64 `audio_input` event and forwards
+    Sarvam's `transcript.partial` and `transcript.final` events back in the
+    Architecture.md 9 frame contract, so the browser parses one shape whatever
+    endpoint produced it.
+
+    Rules.md 4, HARD: the key is attached HERE. The browser never sees it and
+    never opens a socket to Sarvam, which is the entire reason this relay exists
+    rather than the page connecting directly.
+
+    MEASURED before it was built (scripts/08_probe_realtime_stt.py, on the
+    deployed box, 5.8 s of synthesized speech): 19 partial events, the first at
+    991 ms, each extending the last, and the final 385 ms after the audio ended.
+    That closes Memory.md A3, which had been open since Phase 4.
+
+    /v1/stt/file stays the floor. If this socket fails for any reason the browser
+    falls back to uploading the recording, which is the path requirement 1 was
+    always scored on.
+    """
+    await ws.accept()
+    if not configured():
+        await ws.send_text(error_frame("no_api_key", "SARVAM_API_KEY is not set"))
+        await ws.close()
+        return
+
+    try:
+        upstream = await websockets.connect(
+            realtime_url(),
+            additional_headers={AUTH_HEADER: SARVAM_API_KEY},
+            max_size=None,
+        )
+    except Exception as exc:  # noqa: BLE001 - report, never drop the socket silently
+        await ws.send_text(error_frame("upstream_unavailable", str(exc)[:200]))
+        await ws.close()
+        return
+
+    async def browser_to_sarvam() -> None:
+        while True:
+            message = await ws.receive()
+            if message.get("type") == "websocket.disconnect":
+                await upstream.send(json.dumps({"event": "end"}))
+                return
+            chunk = message.get("bytes")
+            if chunk:
+                await upstream.send(json.dumps({
+                    "event": "audio_input",
+                    "audio": base64.b64encode(chunk).decode("ascii"),
+                }))
+                continue
+            text = (message.get("text") or "").strip().lower()
+            if text in {"end", "stop", "flush"}:
+                # Ends the utterance without closing the socket: Sarvam still owes
+                # us the final, and closing here would race it.
+                await upstream.send(json.dumps({"event": "end"}))
+
+    async def sarvam_to_browser() -> None:
+        async for raw in upstream:
+            if isinstance(raw, bytes):
+                continue
+            parsed = parse_event(raw)
+            if parsed is not None:
+                await ws.send_text(parsed.frame())
+
+    up = asyncio.create_task(browser_to_sarvam())
+    down = asyncio.create_task(sarvam_to_browser())
+    try:
+        # Whichever side finishes first ends the session; the other is cancelled
+        # rather than left waiting on a socket with nobody at the other end.
+        await asyncio.wait({up, down}, return_when=asyncio.FIRST_COMPLETED)
+    except WebSocketDisconnect:
+        pass
+    except Exception as exc:  # noqa: BLE001
+        try:
+            await ws.send_text(error_frame("internal", str(exc)[:200]))
+        except Exception:  # noqa: BLE001
+            pass
+    finally:
+        for task in (up, down):
+            task.cancel()
+        await upstream.close()

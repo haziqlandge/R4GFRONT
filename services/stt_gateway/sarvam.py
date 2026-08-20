@@ -116,12 +116,24 @@ async def transcribe_pcm(
     )
 
 
-# The realtime socket's query parameters. `vad` makes Sarvam segment on silence
-# and emit an end-of-speech event, which is what lets the browser stop worrying
-# about when an utterance ended.
+# The realtime socket's query parameters, corrected against the documented
+# contract on 20 Aug. Three of the five were wrong and two of those were silent:
+#
+#   stream_type=vad         -> "fast". The allowed values are fast, balanced and
+#                              simulated; "vad" is not one of them. Segmentation
+#                              is `endpointing`, which is a different parameter.
+#   input_audio_codec=...   -> `encoding`, whose value here is linear16 rather
+#                              than the batch endpoint's pcm_s16le. Same bytes,
+#                              different vocabulary on a different endpoint.
+#   (no endpointing)        -> endpointing=vad, so Sarvam segments on silence and
+#                              emits vad.speech_start / vad.speech_end.
+#
+# `fast` rather than `balanced` because this drives a caret on screen: a partial
+# that is 300 ms fresher is worth more here than one that is slightly more
+# considered, and the FINAL is what gets sent to rag_core either way.
 _WS_PARAMS: Final[str] = (
-    f"?model={STT_REALTIME_MODEL}&stream_type=vad&language_code=auto"
-    f"&sample_rate={SAMPLE_RATE}&input_audio_codec={PCM_CODEC}"
+    f"?model={STT_REALTIME_MODEL}&stream_type=fast&language_code=auto"
+    f"&sample_rate={SAMPLE_RATE}&encoding=linear16&endpointing=vad"
 )
 
 
