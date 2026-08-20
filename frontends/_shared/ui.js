@@ -9,6 +9,7 @@
  */
 
 import { fmt, esc } from "./core.js";
+import { VINTAGE } from "./data.js";
 
 /* ------------------------------------------------------------------ */
 /* Answer, citations, abstention                                       */
@@ -161,6 +162,7 @@ export function renderAnswer(el, res, floor = -1.103) {
             ? "Quoted from the passage below. No model wrote this."
             : "Written by the fallback model from the passages below."}</span>
         </div>
+        <p class="sh-vintage">${esc(VINTAGE.line)}</p>
         ${cites ? `<ol class="sh-cites">${cites}</ol>` : ""}
       </div>
       <aside class="sh-answer-side">

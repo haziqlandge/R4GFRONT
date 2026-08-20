@@ -219,6 +219,17 @@ svg { display: block; }
    sits under the first word as it arrives. */
 .sh-transcript[data-live="true"]:empty::before { content: none; }
 
+/* Corpus vintage. Deliberately NOT styled as a warning: it is true of every
+   answer, so an alarm colour on all of them would be noise. It reads as
+   provenance, which is what it is. */
+.sh-vintage {
+  margin-top: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--fg-3);
+}
+
 .sh-error {
   font-family: var(--font-mono);
   font-size: 12px;
