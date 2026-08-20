@@ -573,6 +573,17 @@ function wireToc(root) {
   update();
 }
 
+/**
+ * A published Band A row by label, so prose can quote the same number the table
+ * shows instead of a copy of it. Throws rather than returning undefined: a
+ * renamed label should fail loudly here, not print "undefined ms" to a judge.
+ */
+function bandA(label) {
+  const row = BANDS.rows.find((r) => r.label === label);
+  if (!row) throw new Error(`BANDS has no row labelled "${label}"`);
+  return row;
+}
+
 export function renderDocs(root) {
   root.innerHTML = `
     ${tocMarkup()}
@@ -587,7 +598,15 @@ export function renderDocs(root) {
     ${stackSection()}
     <section class="doc-sec doc-closing">
       <h2 class="doc-h2">The honest paragraph</h2>
-      <p class="doc-lead">Our core pipeline completes at a P50 of 59.99 ms in English and 73.77 ms in Hindi, inside the 200 ms target, by making zero network calls on the fast path.</p>
+      <!-- READ DONT-FORGET.md 6 AND 12A BEFORE EDITING THESE TWO NUMBERS.
+           They must be the DEPLOYED figures, and they are read from BANDS
+           rather than typed, so this paragraph cannot drift from the table
+           above it again. It did once: the 20 Aug republish moved every figure
+           in data.js to the deployed box and missed this sentence, which went
+           on quoting the development machine's 59.99 / 73.77 as the product's
+           latency - in the section called "the honest paragraph", which is the
+           worst possible place for it. -->
+      <p class="doc-lead">Our core pipeline completes at a P50 of ${fmt(bandA("Core RAG, English").p50, 2)} ms in English and ${fmt(bandA("Core RAG, Hindi").p50, 2)} ms in Hindi, measured through the deployed service, inside the 200 ms target, by making zero network calls on the fast path.</p>
       <p>We do not claim 200 ms end to end including speech to text and hosted generation, because that is not physically achievable. The fastest hosted provider's shortest possible call measured 352 ms from this machine, which exhausts the budget before retrieval begins. Rather than hide that, we designed around it: when retrieval confidence is high the answer is a span of a cited passage with no model call at all, which is both faster and structurally incapable of hallucinating. When confidence is moderate we route to Groq and report that path separately at 643 ms. When confidence is low we refuse, and we say which of the five reasons applied.</p>
       <p>All three bands are published, with the measurement boundary stated for each.</p>
     </section>`;
