@@ -192,6 +192,13 @@ Run for real, in a browser, by a person speaking:
 |---|---|---|---|---|
 | "What is the capital of Russia?" | 1016 | 65.2 | EXTRACTIVE | 5.01 |
 | "Who is Donald Trump?" | 705 | 68.2 | EXTRACTIVE | 10.94 |
+| "कतर की राजधानी क्या है?" (hi, **deployed box**) | 366 | 86.0 | EXTRACTIVE | 10.53 |
+| "प्रकाश संश्लेषण क्या है?" (hi, **deployed box**) | 798 | 130.8 | EXTRACTIVE | 8.33 |
+
+The last two were spoken into the deployed site on 20 Aug, in Hindi, and both
+returned three Hindi citations. They widen the observed speech range downward to
+**366 ms** — the earlier "705 to 1016 ms" was two samples and is not a floor.
+Four samples is still not a distribution, and Band C still has no percentiles.
 
 Both transcribed exactly, both answered with three citations. The whole capture
 chain works, **including the windowed-sinc low pass** — the riskiest file in the
@@ -566,8 +573,9 @@ were copied.
 - **The rerank deadline's truncation rate is measured only at concurrency 1.**
   It fires on 0.8% en / 3.2% hi with one client. Under load the remaining budget
   is smaller, so it will fire more often, and nobody has measured how much more.
-- **Band C has two samples, not a distribution.** The mic path works; how long
-  it takes across many utterances is unmeasured.
+- **Band C has four samples, not a distribution.** The mic path works in both
+  languages, on the deployed box, verified by a person; how long it takes across
+  many utterances is still unmeasured. Observed speech: 366, 705, 798, 1016 ms.
 - **The realtime STT socket is BUILT and DELIBERATELY OFF.** `/v1/stt/live`
   exists in `stt_gateway`, the browser client exists in `_shared/core.js`, both
   were tested end to end, and `LIVE_TRANSCRIPT` in `_shared/app.js` is `false`.

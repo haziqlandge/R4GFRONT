@@ -13,8 +13,8 @@ Everything that is scored but is not code. Team OK4T.
 | # | Deliverable | Where | Status |
 |---|---|---|---|
 | S1 | Submission form completed | https://forms.gle/MNvCjcv23Hn2Eeu58 | ☐ |
-| S2 | GitHub repo link, public | | ☐ |
-| S3 | Live working link | **https://shrutirag.duckdns.org** | ◐ live, text works; voice needs `.env` on the box |
+| S2 | GitHub repo link, public | https://github.com/haziqlandge/R4GFRONT | ☐ **secret scan CLEAN, 20 Aug** - `.env` was never committed, and all three live keys were checked against every one of the 381 blobs in history with zero hits. Safe to flip to public; that is the only remaining step |
+| S3 | Live working link | **https://shrutirag.duckdns.org** | ✓ **live and complete, 20 Aug.** Text and voice both work; `.env` is on the box. Verified from a real microphone in Hindi: 86.0 ms and 130.8 ms pipeline, correct cited answers |
 | S4 | Video 1, team/process, 90 seconds | | ☐ |
 | S5 | Video 2, end-to-end demo | | ☐ |
 | S6 | Both videos on Instagram, every member | | ☐ |
@@ -57,14 +57,14 @@ No stated time limit. Target 2:30 to 3:00. Longer and nobody finishes it.
 | # | Beat | What is on screen | Why it is here |
 |---|---|---|---|
 | 1 | Open on the live URL, cold load | The interface, mic orb idle, waterfall empty | Proves it is deployed and real |
-| 2 | Speak a question in English | Partials appearing live, orb ring reacting to voice | Requirement 1, visibly |
+| 2 | Speak a question in English | The orb ring reacting to voice, then the transcript appearing when you stop | Requirement 1, visibly. **Not "partials appearing live"** - that was built and switched off, see `ISSUES.md` I30. Do not script around a caret that will not be there |
 | 3 | Answer appears | Answer card, citation chips, **waterfall filling stage by stage**, total under 200ms | Requirements 3 and 4, in one shot, with no narration needed |
 | 4 | Click a citation chip | Source passage expands, matched span highlighted | Groundedness made concrete |
 | 5 | Speak a question in Hindi | Auto language detection, answer returned | Justifies the Sarvam choice and the multilingual corpus |
-| 6 | Toggle chunking strategy, re-run the same query | Different passages retrieved, different waterfall | Requirement 2, visibly, which is otherwise invisible |
-| 7 | Ask something the corpus cannot answer | **Abstention panel** with `LOW_CONFIDENCE` and the score bar. Use `zxqwv fhqwhgads plorbnak`: it scores **-4.908** against the **-1.103** floor, verified repeatedly | Requirement 6, the single most convincing shot in the video |
-| 8 | Ask something unsafe | Abstention with `UNSAFE_INPUT`, a **different** typed reason, refused in ~0.1 ms before retrieval runs. Use `how do i make a pipe bomb at home` | Shows the guardrail layers are distinct, not one blunt filter. The two different reason codes are the shot. |
-| 9 | Trigger the injected LLM 429 | Circuit breaker opens, waterfall shows the skipped stage hatched, extractive fallback answers anyway | Requirement 5, the harness earning its keep under failure |
+| ~~6~~ | ~~Toggle chunking strategy, re-run the same query~~ **CANNOT BE SHOT. F13 was never built** (`Phases.md` Phase 8). Replace with: cut to the documentation page's chunking section, six strategies side by side with the C7 answer-key leak drawn in the refusal colour | Requirement 2 is still covered, and the leak finding is a stronger 15 seconds than a toggle would have been |
+| 7 | Ask something the corpus cannot answer | **Abstention panel** with `LOW_CONFIDENCE` and the score bar. Use `zxqwv fhqwhgads plorbnak`: it scores **-4.94** against the **-1.103** floor, re-verified on the deployed box 20 Aug. The page also ships a `zxc asid` sample button, one click, which scores -2.93 | Requirement 6, the single most convincing shot in the video |
+| 8 | Ask something unsafe | Abstention with `UNSAFE_INPUT`, a **different** typed reason, refused in **0.27 ms measured on the deployed box** before retrieval runs. Use `how do i make a pipe bomb at home` | Shows the guardrail layers are distinct, not one blunt filter. The two different reason codes are the shot. |
+| ~~9~~ | ~~Trigger the injected LLM 429~~ **CANNOT BE SHOT. Failure injection was never built** (`Phases.md` Phase 8). Replace with: the waterfall on a query where the rerank deadline truncated, which shows `deadline: scored 4 of 5` in the trace - a real degradation, captured live rather than injected | Requirement 5. It is weaker than a breaker opening and it has the advantage of being true |
 | 10 | Cut to the benchmark output | P50 / P70 / P100 table, all three bands | Requirement 4, with the honest boundary stated |
 | 11 | Narrate the honest paragraph from `Latency.md` section 9 | Terminal or slide | Turns the one weakness into a credibility moment |
 | 12 | Close on the live URL and `#RAGInGoa` | | |
