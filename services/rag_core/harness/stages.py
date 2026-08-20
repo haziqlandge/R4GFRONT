@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from ..answering.extractive import build_answer
+from ..answering.extractive import build_answer, detect_language
 from ..answering.generative import GroqClient
 from ..answering.router import Route, route
 from .. import config
@@ -254,7 +254,16 @@ def build_pipeline(rt: Runtime) -> Pipeline:
             return ctx.with_data(answer=None, citations=[])
 
         hits = ctx.data.get("hits", [])
-        answer, citations = build_answer(hits, rt.passage_text)
+        # Answer in the language that was asked. ctx.language is "auto" unless the
+        # caller pinned it, and the frontend does not pin it, so the script of the
+        # query is what decides in practice.
+        want = ctx.language if ctx.language in ("en", "hi") else detect_language(ctx.query)
+        answer, citations, remapped = build_answer(hits, rt.passage_text, prefer_language=want)
+        if remapped:
+            # Visible in the waterfall for the same reason a truncated rerank is:
+            # the reader is being shown a different passage id than the one that
+            # was retrieved, and that should not be silent.
+            ctx.trace.note(f"answered in {want}, {remapped} passage(s) swapped for their twin")
         top1 = ctx.data.get("top1", hits[0][1] if hits else None)
         gap = ctx.data.get("score_gap", (hits[0][1] - hits[1][1]) if len(hits) > 1 else None)
         return ctx.with_data(

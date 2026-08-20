@@ -1,0 +1,641 @@
+{
+  "generated_utc": "2026-08-20T17:16:59.532382+00:00",
+  "what": "abstention floor sweep against in-corpus and near-miss questions",
+  "url": "https://shrutirag.duckdns.org/api/core",
+  "note": "60 general-knowledge questions written blind, 30 en 30 hi, against the frozen 250 as the in-corpus control",
+  "n_in_corpus": 499,
+  "n_near_miss": 60,
+  "sweep": [
+    {
+      "floor": -1.103,
+      "coverage": 0.9339,
+      "precision": 0.3691,
+      "near_miss_refused": 0.2,
+      "in_corpus_kept": 466,
+      "near_miss_refused_n": 12
+    },
+    {
+      "floor": 0.0,
+      "coverage": 0.8978,
+      "precision": 0.375,
+      "near_miss_refused": 0.2833,
+      "in_corpus_kept": 448,
+      "near_miss_refused_n": 17
+    },
+    {
+      "floor": 1.0,
+      "coverage": 0.8677,
+      "precision": 0.3788,
+      "near_miss_refused": 0.3167,
+      "in_corpus_kept": 433,
+      "near_miss_refused_n": 19
+    },
+    {
+      "floor": 1.5,
+      "coverage": 0.8176,
+      "precision": 0.3897,
+      "near_miss_refused": 0.3833,
+      "in_corpus_kept": 408,
+      "near_miss_refused_n": 23
+    },
+    {
+      "floor": 2.0,
+      "coverage": 0.7976,
+      "precision": 0.3945,
+      "near_miss_refused": 0.4,
+      "in_corpus_kept": 398,
+      "near_miss_refused_n": 24
+    },
+    {
+      "floor": 2.5,
+      "coverage": 0.7635,
+      "precision": 0.4016,
+      "near_miss_refused": 0.45,
+      "in_corpus_kept": 381,
+      "near_miss_refused_n": 27
+    },
+    {
+      "floor": 3.0,
+      "coverage": 0.7335,
+      "precision": 0.4016,
+      "near_miss_refused": 0.5,
+      "in_corpus_kept": 366,
+      "near_miss_refused_n": 30
+    },
+    {
+      "floor": 3.5,
+      "coverage": 0.6894,
+      "precision": 0.4099,
+      "near_miss_refused": 0.55,
+      "in_corpus_kept": 344,
+      "near_miss_refused_n": 33
+    },
+    {
+      "floor": 4.0,
+      "coverage": 0.6493,
+      "precision": 0.4136,
+      "near_miss_refused": 0.6167,
+      "in_corpus_kept": 324,
+      "near_miss_refused_n": 37
+    },
+    {
+      "floor": 5.0,
+      "coverage": 0.5852,
+      "precision": 0.4041,
+      "near_miss_refused": 0.6667,
+      "in_corpus_kept": 292,
+      "near_miss_refused_n": 40
+    },
+    {
+      "floor": 6.0,
+      "coverage": 0.495,
+      "precision": 0.4291,
+      "near_miss_refused": 0.7,
+      "in_corpus_kept": 247,
+      "near_miss_refused_n": 42
+    }
+  ],
+  "language_mismatch_in_corpus": 9,
+  "near_miss": [
+    {
+      "status": "ANSWERED",
+      "score": 10.9329195022583,
+      "top_id": "618904:0:en",
+      "top_lang": "en",
+      "answer": "Thomas Edison’s Light Bulb. Thomas Edison is most well known for his invention of the light bulb. Contrary to popular belief, Edison did not invent the light bulb; it had been around for a number of y",
+      "query": "who invented the light bulb",
+      "lang": "en"
+    },
+    {
+      "status": "ANSWERED",
+      "score": 10.635442733764648,
+      "top_id": "998445:8:en",
+      "top_lang": "en",
+      "answer": "The world's tallest building is the Burj Khalifa (formerly know as Burj Dubai) in The United Arab Emirates at 829.84 meters or 2,722.57 feet.",
+      "query": "what is the tallest building in the world",
+      "lang": "en"
+    },
+    {
+      "status": "ANSWERED",
+      "score": 9.5586519241333,
+      "top_id": "394464:5:en",
+      "top_lang": "en",
+      "answer": "The Nile River. by Marie Parsons. The Nile is the longest river in the world, stretching north for approximately 4,000 miles from East Africa to the Mediterranean. Studies have shown that the River (I",
+      "query": "what is the longest river in the world",
+      "lang": "en"
+    },
+    {
+      "status": "ANSWERED",
+      "score": 9.369861602783203,
+      "top_id": "885932:4:en",
+      "top_lang": "en",
+      "answer": "With 1,210,000,000 (1.21 billion) people, India is currently the world's second largest country. India crossed the one billion mark in the year 2000, one year after the world's population crossed the ",
+      "query": "what is the population of india",
+      "lang": "en"
+    },
+    {
+      "status": "ANSWERED",
+      "score": 9.266864776611328,
+      "top_id": "998445:8:hi",
+      "top_lang": "hi",
+      "answer": "दुनिया की सबसे ऊँची इमारत संयुक्त अरब अमीरात में बुर्ज खलीफा (पूर्व में बुर्ज दुबई के नाम से जानी जाती) है जिसकी ऊँचाई 829.84 मीटर या 2,722.57 फीट है।",
+      "query": "दुनिया की सबसे ऊंची इमारत कौन सी है",
+      "lang": "hi"
+    },
+    {
+      "status": "ANSWERED",
+      "score": 9.0851469039917,
+      "top_id": "1085819:5:en",
+      "top_lang": "en",
+      "answer": "Name at birth: William Gates III. Bill Gates is the co-founder of the software company Microsoft and is one of the world's wealthiest men. Gates and Paul Allen founded Microsoft in the 1970s, though A",
+      "query": "who is the founder of microsoft",
+      "lang": "en"
+    },
+    {
+      "status": "ANSWERED",
+      "score": 8.998284339904785,
+      "top_id": "814254:5:en",
+      "top_lang": "en",
+      "answer": "Space enthusiasts as well as astronomers are getting excited for the biggest total solar eclipse happening next year. The total solar eclipse will reportedly occur on August 21, 2017. According to sky",
+      "query": "when is the next solar eclipse",
+      "lang": "en"
+    },
+    {
+      "status": "ANSWERED",
+      "score": 8.515727996826172,
+      "top_id": "421360:2:en",
+      "top_lang": "en",
+      "answer": "portuguese is the language of the majority of people in brazil and portugal and 99 8 % of the population of são tomé and príncipe declared speaking portuguese in the 1991 census perhaps 75 % of the po",
+      "query": "what language is spoken in brazil",
+      "lang": "en"
+    },
+    {
+      "status": "ANSWERED",
+      "score": 8.460883140563965,
+      "top_id": "985883:5:en",
+      "top_lang": "en",
+      "answer": "President of the United States. The President of the United States of America is the head of state, and head of government of the United States. The office of President was created in the United State",
+      "query": "who is the president of the united states",
+      "lang": "en"
+    },
+    {
+      "status": "ANSWERED",
+      "score": 8.266386985778809,
+      "top_id": "394464:5:hi",
+      "top_lang": "hi",
+      "answer": "नील नदी, मैरी पार्सन्स द्वारा। नील दुनिया की सबसे लंबी नदी है, जो पूर्वी अफ्रीका से भूमध्य सागर तक लगभग 4,000 मील तक फैली हुई है। अध्ययनों से पता चला है कि नदी (इटेरु, जिसका अर्थ है, बस, नदी, जैसा कि ",
+      "query": "दुनिया की सबसे लंबी नदी कौन सी है",
+      "lang": "hi"
+    },
+    {
+      "status": "ANSWERED",
+      "score": 8.057463645935059,
+      "top_id": "1094152:1:en",
+      "top_lang": "en",
+      "answer": "What is the capital of France? Located in the continent of Europe, France covers 640,427 square kilometers of land and 3,374 square kilometers of water, making it the 43rd largest nation in the world ",
+      "query": "what is the capital of france",
+      "lang": "en"
+    },
+    {
+      "status": "ANSWERED",
+      "score": 7.64064884185791,
+      "top_id": "885932:3:hi",
+      "top_lang": "hi",
+      "answer": "उस समय, भारत की जनसंख्या 1.53 अरब से अधिक होने की उम्मीद थी, जबकि चीन की जनसंख्या 1.46 अरब के चरम पर पहुंचने का अनुमान है (और बाद के वर्षों में गिरना शुरू हो जाएगा)। वर्तमान में भारत में लगभग 1.21 अरब",
+      "query": "भारत की जनसंख्या कितनी है",
+      "lang": "hi"
+    },
+    {
+      "status": "ANSWERED",
+      "score": 7.457221031188965,
+      "top_id": "374860:3:en",
+      "top_lang": "en",
+      "answer": "Reset iPhone. Hold down the Sleep/Wake button and the Home button at the same time for at least ten seconds, until the Apple logo appears. You can reset the word dictionary, network settings, home scr",
+      "query": "how do i reset my iphone",
+      "lang": "en"
+    },
+    {
+      "status": "ANSWERED",
+      "score": 7.32084846496582,
+      "top_id": "1006763:6:hi",
+      "top_lang": "hi",
+      "answer": "संयुक्त राज्य अमेरिका के राष्ट्रपति: संयुक्त राज्य अमेरिका के राष्ट्रपति अमेरिका के राज्य के प्रमुख हैं, संघीय सरकार के मुख्य कार्यकारी और सशस्त्र बलों के प्रधान सेनापति हैं। संयुक्त राज्य अमेरिका आधु",
+      "query": "अमेरिका के राष्ट्रपति कौन हैं",
+      "lang": "hi"
+    },
+    {
+      "status": "ANSWERED",
+      "score": 6.7633819580078125,
+      "top_id": "421360:2:hi",
+      "top_lang": "hi",
+      "answer": "ब्राजील और पुर्तगाल में अधिकांश लोगों की भाषा पुर्तगाली है और 1991 की जनगणना में 8% आबादी साओ टोमे और प्रिंसिपे में पुर्तगाली बोलती है और 85% लोग पुर्तगाली में धाराप्रवाह हैं।",
+      "query": "ब्राजील में कौन सी भाषा बोली जाती है",
+      "lang": "hi"
+    },
+    {
+      "status": "ANSWERED",
+      "score": 6.56008768081665,
+      "top_id": "1096759:6:hi",
+      "top_lang": "hi",
+      "answer": "अधिकांश टीमों में लगभग 12 या उससे आस-पास खिलाड़ी होते हैं। मैदान पर एक समय में 6 खिलाड़ी होते हैं।",
+      "query": "क्रिकेट टीम में कितने खिलाड़ी होते हैं",
+      "lang": "hi"
+    },
+    {
+      "status": "ANSWERED",
+      "score": 6.3206305503845215,
+      "top_id": "229732:0:en",
+      "top_lang": "en",
+      "answer": "1 The Earth is much closer to the Sun than it is to Jupiter. Distances from the Sun are measured in Astronomical Units (AU). The Earth is the standard unit, and is one AU from the Sun, so an AU equals",
+      "query": "how far is the sun from the earth",
+      "lang": "en"
+    },
+    {
+      "status": "ANSWERED",
+      "score": 6.30921745300293,
+      "top_id": "1085819:7:hi",
+      "top_lang": "hi",
+      "answer": "माइक्रोसॉफ्ट का इतिहास: माइक्रोसॉफ्ट एक बहुराष्ट्रीय कंप्यूटर प्रौद्योगिकी निगम है। माइक्रोसॉफ्ट का इतिहास 4 अप्रैल 1975 को शुरू हुआ जब इसकी स्थापना बिल गेट्स और पॉल एलन ने अल्बुकर्क, न्यू मैक्सिको मे",
+      "query": "माइक्रोसॉफ्ट के संस्थापक कौन हैं",
+      "lang": "hi"
+    },
+    {
+      "status": "ANSWERED",
+      "score": 5.4902777671813965,
+      "top_id": "1086059:3:hi",
+      "top_lang": "hi",
+      "answer": "उपयोगी हो जाएँ: यदि सूर्य के सबसे करीब पृथ्वी का भाग एक भाग से 3,000 मील करीब था और पृथ्वी सूर्य से 93,000,000 मील दूर थी, तो इससे सूर्य से हमारी दूरी का लगभग 3,000 एक प्रतिशत (0.003%) का अंतर होगा।",
+      "query": "सूरज पृथ्वी से कितनी दूर है",
+      "lang": "hi"
+    },
+    {
+      "status": "ANSWERED",
+      "score": 5.113819599151611,
+      "top_id": "1010835:9:en",
+      "top_lang": "en",
+      "answer": "Independence Day, is annually observed on 15 August as a national holiday in India commemorating the nation's independence from the British Empire on 15 August 1947.",
+      "query": "when did india gain independence",
+      "lang": "en"
+    },
+    {
+      "status": "ANSWERED",
+      "score": 4.639067649841309,
+      "top_id": "618904:1:hi",
+      "top_lang": "hi",
+      "answer": "थॉमस एडिसन प्रकाश बल्ब के आविष्कार के लिए सबसे ज्यादा जाने जाते हैं। लोकप्रिय धारणा के विपरीत, एडिसन ने प्रकाश बल्ब का आविष्कार नहीं किया था; यह कई वर्षों से मौजूद था। हालांकि, उस समय की बिजली की रोशन",
+      "query": "बल्ब का आविष्कार किसने किया",
+      "lang": "hi"
+    },
+    {
+      "status": "ANSWERED",
+      "score": 4.522957801818848,
+      "top_id": "709795:3:hi",
+      "top_lang": "hi",
+      "answer": "अल्फाबेट की स्थापना 2 अक्टूबर 2015 को गूगल के सह-संस्थापक सर्गेई ब्रिन द्वारा की गई थी, जो नई कंपनी के अध्यक्ष के रूप में कार्य करेंगे, और लैरी पेज, जो सी.ई.ओ. के रूप में कार्य करेंगे। गूगल के पूर्व उ",
+      "query": "who is the ceo of google",
+      "lang": "en"
+    },
+    {
+      "status": "ANSWERED",
+      "score": 4.474044322967529,
+      "top_id": "1063366:6:en",
+      "top_lang": "en",
+      "answer": "Earthquakes. Earthquakes are the result of plate tectonics, or shifting plates in the crust of Earth, and quakes occur when the frictional stress of gliding plate boundaries builds and causes failure ",
+      "query": "what causes an earthquake",
+      "lang": "en"
+    },
+    {
+      "status": "ANSWERED",
+      "score": 3.8479957580566406,
+      "top_id": "709795:3:hi",
+      "top_lang": "hi",
+      "answer": "अल्फाबेट की स्थापना 2 अक्टूबर 2015 को गूगल के सह-संस्थापक सर्गेई ब्रिन द्वारा की गई थी, जो नई कंपनी के अध्यक्ष के रूप में कार्य करेंगे, और लैरी पेज, जो सी.ई.ओ. के रूप में कार्य करेंगे। गूगल के पूर्व उ",
+      "query": "गूगल का सीईओ कौन है",
+      "lang": "hi"
+    },
+    {
+      "status": "ANSWERED",
+      "score": 3.8032121658325195,
+      "top_id": "1063366:6:hi",
+      "top_lang": "hi",
+      "answer": "भूकंप: भूकंप प्लेट विवर्तनिकी का परिणाम है, या पृथ्वी की पपड़ी में प्लेटों का स्थानांतरण है, और जब प्लेट सीमाओं की घर्षण तनाव बनता है और एक विफलता रेखा पर विफलता का कारण बनता है तो भूकंप आते हैं। एक भ",
+      "query": "भूकंप क्यों आता है",
+      "lang": "hi"
+    },
+    {
+      "status": "ANSWERED",
+      "score": 3.69940185546875,
+      "top_id": "940018:1:hi",
+      "top_lang": "hi",
+      "answer": "नील आर्मस्ट्रांग: नासा। 20 जुलाई 1969 को अमेरिकी अंतरिक्ष यान अपोलो 11 द्वारा की गई पहली चंद्रमा लैंडिंग की 45वीं वर्षगांठ मनाते हुए, जिस व्यक्ति ने उन ऐतिहासिक पहले कदम उठाए, वह फिर से आकर्षण का विषय",
+      "query": "चंद्रयान कब लॉन्च हुआ",
+      "lang": "hi"
+    },
+    {
+      "status": "ANSWERED",
+      "score": 3.6617865562438965,
+      "top_id": "1095883:4:en",
+      "top_lang": "en",
+      "answer": "Bitcoins are now worth nearly as much as an ounce of gold. 1 The price of one bitcoin rose as high as $1,242 early Friday, just two days after crossing $1,000 for the first time. 2 Bitcoin has surged ",
+      "query": "what is the price of bitcoin today",
+      "lang": "en"
+    },
+    {
+      "status": "ANSWERED",
+      "score": 3.432431697845459,
+      "top_id": "1002579:9:hi",
+      "top_lang": "hi",
+      "answer": "चार्ल्स बैबेज द्वारा 1822 में बनाया गया पहला यांत्रिक कंप्यूटर, वास्तव में आज के कंप्यूटरों से मिलता-जुलता नहीं है। इसलिए, इस दस्तावेज़ को प्रत्येक कंप्यूटर के पहले की सूची के साथ बनाया गया है, जो डिफ",
+      "query": "कंप्यूटर का आविष्कार किसने किया",
+      "lang": "hi"
+    },
+    {
+      "status": "ANSWERED",
+      "score": 3.2475764751434326,
+      "top_id": "289981:6:hi",
+      "top_lang": "hi",
+      "answer": "बृहस्पति सौर मंडल का सबसे बड़ा ग्रह है। इसका विषुव रेखा पर लगभग 143,000 किलोमीटर (लगभग 89,000 मील) चौड़ा है। बृहस्पति इतना बड़ा है कि सौर मंडल के अन्य सभी ग्रह इसके अंदर फिट हो सकते हैं। 1,300 से अधिक",
+      "query": "सबसे बड़ा ग्रह कौन सा है",
+      "lang": "hi"
+    },
+    {
+      "status": "ANSWERED",
+      "score": 3.1639621257781982,
+      "top_id": "1002314:1:en",
+      "top_lang": "en",
+      "answer": "File:Leonardo da Vinci - Mona Lisa (La Gioconda) - WGA12712.jpg File:Mona Lisa, by Leonardo da Vinci, from C2RMF.jpg File:Mona Lisa, by Leonardo da Vinci, from C2RMF retouched.jpg",
+      "query": "who painted the mona lisa",
+      "lang": "en"
+    },
+    {
+      "status": "ANSWERED",
+      "score": 2.6327006816864014,
+      "top_id": "1094447:6:hi",
+      "top_lang": "hi",
+      "answer": "मुप्पावरपु वेंकैया नायडू एक भारतीय राजनेता और वर्तमान भारतीय राष्ट्रपति हैं, जो 11 अगस्त 2017 से पद पर हैं। इससे पहले, उन्होंने मोदी मंत्रिमंडल में आवास और शहरी गरीबी उन्मूलन, शहरी विकास और सूचना और प",
+      "query": "who is narendra modi",
+      "lang": "en"
+    },
+    {
+      "status": "ANSWERED",
+      "score": 2.606614351272583,
+      "top_id": "994964:6:en",
+      "top_lang": "en",
+      "answer": "You can use this Indian passport renewal USA application form sample. This is a separate form than what you have already filled up on CKGS website. This basically belongs to Indian embassy and has to ",
+      "query": "how do i apply for an indian passport",
+      "lang": "en"
+    },
+    {
+      "status": "ANSWERED",
+      "score": 2.5274996757507324,
+      "top_id": "891555:4:en",
+      "top_lang": "en",
+      "answer": "Ganges River. Winding 1,560 miles across northern India, from the Himalaya Mountains to the Indian Ocean, the Ganges River is not a sacred place: it is a sacred entity. Known as Ganga Ma—Mother Ganges",
+      "query": "गंगा नदी कहाँ से निकलती है",
+      "lang": "hi"
+    },
+    {
+      "status": "ANSWERED",
+      "score": 2.4551899433135986,
+      "top_id": "933252:3:en",
+      "top_lang": "en",
+      "answer": "Bookmark this location to check the time and temperature with forecast and current weather conditions in Mumbai, India before making travel plans for a hotel or flight to Mumbai, India Whether is it r",
+      "query": "what is the weather in mumbai today",
+      "lang": "en"
+    },
+    {
+      "status": "ANSWERED",
+      "score": 2.219984292984009,
+      "top_id": "293375:2:hi",
+      "top_lang": "hi",
+      "answer": "सही उत्तर: हाँ, गेंदबाज शामिल है। एक बेसबॉल टीम में केवल 9 खिलाड़ी नहीं होते हैं। वे मैदान पर खिलाड़ियों की संख्या हैं, 1 बल्लेबाज को छोड़कर। एम.एल.बी. में उनके पास हर चीज के लिए एक विकल्प होता है, इस",
+      "query": "how many players are there in a cricket team",
+      "lang": "en"
+    },
+    {
+      "status": "ANSWERED",
+      "score": 2.1854238510131836,
+      "top_id": "1100181:0:en",
+      "top_lang": "en",
+      "answer": "Gregory Ablavsky, The Savage Constitution, 63 Duke L.J. 999 (2014).Christina Duffy PonsaIn this tightly argued and thoroughly engaging article, Gregory Ablavsky makes the case for a revisionist histor",
+      "query": "who wrote the indian constitution",
+      "lang": "en"
+    },
+    {
+      "status": "ANSWERED",
+      "score": 1.7824630737304688,
+      "top_id": "1094447:6:hi",
+      "top_lang": "hi",
+      "answer": "मुप्पावरपु वेंकैया नायडू एक भारतीय राजनेता और वर्तमान भारतीय राष्ट्रपति हैं, जो 11 अगस्त 2017 से पद पर हैं। इससे पहले, उन्होंने मोदी मंत्रिमंडल में आवास और शहरी गरीबी उन्मूलन, शहरी विकास और सूचना और प",
+      "query": "भारत के प्रधानमंत्री कौन हैं",
+      "lang": "hi"
+    },
+    {
+      "status": "ANSWERED",
+      "score": 1.2132563591003418,
+      "top_id": "1010835:9:hi",
+      "top_lang": "hi",
+      "answer": "स्वतंत्रता दिवस, हर साल 15 अगस्त को भारत में राष्ट्रीय अवकाश के रूप में मनाया जाता है जो 15 अगस्त 1947 को ब्रिटिश साम्राज्य से देश की स्वतंत्रता की याद में मनाया जाता है।",
+      "query": "भारत को आजादी कब मिली",
+      "lang": "hi"
+    },
+    {
+      "status": "ANSWERED",
+      "score": 1.2038743495941162,
+      "top_id": "1094447:6:en",
+      "top_lang": "en",
+      "answer": "Muppavarapu Venkaiah Naidu is an Indian politician and the current Vice-President of India, in office since 11 August 2017. Previously, he served as the Minister of Housing and Urban Poverty Alleviati",
+      "query": "who is the prime minister of india",
+      "lang": "en"
+    },
+    {
+      "status": "ANSWERED",
+      "score": 1.1545096635818481,
+      "top_id": "1030228:0:hi",
+      "top_lang": "hi",
+      "answer": "इम्बोडेन 7 दिन का मौसम: 1 बुधवार को इम्बोडेन में 30 अगस्त के लिए 86 डिग्री और धूप का मौसम है। 60 प्रतिशत बारिश और पूर्वोत्तर से 12 मील प्रति घंटे की हवा की संभावना है। 2 गुरुवार को इम्बोडेन में 31 अगस",
+      "query": "मुंबई का मौसम कैसा है",
+      "lang": "hi"
+    },
+    {
+      "status": "ANSWERED",
+      "score": 1.005591630935669,
+      "top_id": "1002314:1:hi",
+      "top_lang": "hi",
+      "answer": "फाइल: लियोनार्डो दा विंची - मोना लिसा (ला जियोकोंडा) - डब्लू.जी.ए.12712.jpg फाइल: लियोनार्डो दा विंची द्वारा मोना लिसा, सी2आरएमएफ.jpg फाइल: लियोनार्डो दा विंची द्वारा मोना लिसा, सी2आरएमएफ से संस्कृत।",
+      "query": "मोना लिसा किसने बनाई",
+      "lang": "hi"
+    },
+    {
+      "status": "ANSWERED",
+      "score": 0.3185242712497711,
+      "top_id": "1094447:6:en",
+      "top_lang": "en",
+      "answer": "Muppavarapu Venkaiah Naidu is an Indian politician and the current Vice-President of India, in office since 11 August 2017. Previously, he served as the Minister of Housing and Urban Poverty Alleviati",
+      "query": "नरेंद्र मोदी कौन है",
+      "lang": "hi"
+    },
+    {
+      "status": "ANSWERED",
+      "score": 0.20819078385829926,
+      "top_id": "1085135:6:en",
+      "top_lang": "en",
+      "answer": "Directed by James Cameron. With Arnold Schwarzenegger, Linda Hamilton, Michael Biehn, Paul Winfield. A seemingly indestructible humanoid cyborg is sent from 2029 to 1984 to assassinate a waitress, who",
+      "query": "who directed the movie oppenheimer",
+      "lang": "en"
+    },
+    {
+      "status": "ANSWERED",
+      "score": -0.10811862349510193,
+      "top_id": "342285:3:hi",
+      "top_lang": "hi",
+      "answer": "व्हाइट स्टार लाइन वह कंपनी थी जिसने टाइटैनिक का निर्माण किया था, और इसका स्वामित्व एक अमेरिकी उद्योगपति जे.पी. मॉर्गन के पास था। आर.एम.एस. टाइटैनिक के निर्माण की लागत 75 लाख डॉलर थी। आर.एम.एस. का अर्थ",
+      "query": "ताजमहल किसने बनवाया",
+      "lang": "hi"
+    },
+    {
+      "status": "ANSWERED",
+      "score": -0.15469752252101898,
+      "top_id": "901569:1:en",
+      "top_lang": "en",
+      "answer": "1 Rub the fillets on both sides with lemon juice, then salt and pepper them to taste. 2 Place the fillets in the baking dish& completely dab with butter. Then sprinkle evenly with chopped scallions& t",
+      "query": "how do i cook biryani",
+      "lang": "en"
+    },
+    {
+      "status": "ANSWERED",
+      "score": -0.283553808927536,
+      "top_id": "1060453:2:en",
+      "top_lang": "en",
+      "answer": "Japan Balance of Trade 1963-2017 | Data | Chart | Calendar | Forecast. Japan's trade surplus fell 17.0 percent to JPY 418.77 billion in July of 2017 from JPY 504.53 billion in the same month a year ea",
+      "query": "what is the currency of japan",
+      "lang": "en"
+    },
+    {
+      "status": "ANSWERED",
+      "score": -0.4143252670764923,
+      "top_id": "1038685:2:hi",
+      "top_lang": "hi",
+      "answer": "जॉर्जिया सदर्न इंट्रोड्यूस विली फ्रिट्ज़ को नए फुटबॉल कोच के रूप में पेश करता है। एस.ओ.आर.ओ., जी.ए. - जॉर्जिया सदर्न एथलेटिक्स निदेशक टॉम क्लेनलीन ने आज कार्यक्रम के आधुनिक इतिहास में विली फ्रिट्ज़ को",
+      "query": "विराट कोहली कौन है",
+      "lang": "hi"
+    },
+    {
+      "status": "ANSWERED",
+      "score": -0.9117674827575684,
+      "top_id": "1092326:4:hi",
+      "top_lang": "hi",
+      "answer": "अंतर्राष्ट्रीय डॉलर - संयुक्त राज्य अमेरिका डॉलर से 1:1 के अनुमानित मुद्रा के बराबर; जमैकन डॉलर - जमैका; किआटचोउ डॉलर - किंगडाओ; किरिबेटियन डॉलर - किरिबेटी; लाइबेरियन डॉलर - लाइबेरिया; मलाया और ब्रिटि",
+      "query": "जापान की मुद्रा क्या है",
+      "lang": "hi"
+    },
+    {
+      "status": "ABSTAINED",
+      "score": -1.3645967245101929,
+      "top_id": null,
+      "top_lang": null,
+      "answer": "",
+      "query": "what is chatgpt",
+      "lang": "en"
+    },
+    {
+      "status": "ABSTAINED",
+      "score": -1.6989825963974,
+      "top_id": null,
+      "top_lang": null,
+      "answer": "",
+      "query": "बिरयानी कैसे बनाते हैं",
+      "lang": "hi"
+    },
+    {
+      "status": "ABSTAINED",
+      "score": -1.7534325122833252,
+      "top_id": null,
+      "top_lang": null,
+      "answer": "",
+      "query": "भारत का राष्ट्रीय पशु कौन सा है",
+      "lang": "hi"
+    },
+    {
+      "status": "ABSTAINED",
+      "score": -2.1597208976745605,
+      "top_id": null,
+      "top_lang": null,
+      "answer": "",
+      "query": "हिंदी दिवस कब मनाया जाता है",
+      "lang": "hi"
+    },
+    {
+      "status": "ABSTAINED",
+      "score": -2.547851324081421,
+      "top_id": null,
+      "top_lang": null,
+      "answer": "",
+      "query": "चैटजीपीटी क्या है",
+      "lang": "hi"
+    },
+    {
+      "status": "ABSTAINED",
+      "score": -2.6842854022979736,
+      "top_id": null,
+      "top_lang": null,
+      "answer": "",
+      "query": "भारत का संविधान किसने लिखा",
+      "lang": "hi"
+    },
+    {
+      "status": "ABSTAINED",
+      "score": -3.0611371994018555,
+      "top_id": null,
+      "top_lang": null,
+      "answer": "",
+      "query": "what is quantum entanglement",
+      "lang": "en"
+    },
+    {
+      "status": "ABSTAINED",
+      "score": -3.08353328704834,
+      "top_id": null,
+      "top_lang": null,
+      "answer": "",
+      "query": "आईपीएल 2024 कौन जीता",
+      "lang": "hi"
+    },
+    {
+      "status": "ABSTAINED",
+      "score": -3.301178216934204,
+      "top_id": null,
+      "top_lang": null,
+      "answer": "",
+      "query": "what is a large language model",
+      "lang": "en"
+    },
+    {
+      "status": "ABSTAINED",
+      "score": -3.962284803390503,
+      "top_id": null,
+      "top_lang": null,
+      "answer": "",
+      "query": "योग दिवस कब मनाया जाता है",
+      "lang": "hi"
+    },
+    {
+      "status": "ABSTAINED",
+      "score": -5.1752448081970215,
+      "top_id": null,
+      "top_lang": null,
+      "answer": "",
+      "query": "who won the ipl in 2024",
+      "lang": "en"
+    },
+    {
+      "status": "ABSTAINED",
+      "score": -5.712641716003418,
+      "top_id": null,
+      "top_lang": null,
+      "answer": "",
+      "query": "who is virat kohli",
+      "lang": "en"
+    }
+  ]
+}

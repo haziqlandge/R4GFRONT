@@ -1399,3 +1399,92 @@ distance of 0.15. Under `language_code=auto` the partial and the final are in
 different scripts for every Hindi utterance, so that comparison fails outright —
 not marginally. Anyone building the prefetch has to solve the language problem
 first, and it is not a threshold they can tune.
+
+---
+
+## I31 — it answers confidently with the wrong passage, and no threshold fixes it
+
+**Severity: P1. Half of this is FIXED, half is measured and open.** Raised from a
+user report: "many times the model retrieves something but it's unrelated to the
+question — the answer may contain the word but the full answer is very
+unrelated", plus "sometimes it retrieves Hindi answers for English questions".
+
+### The method
+
+Sixty general-knowledge questions were written **blind**, thirty English and
+thirty Hindi, without looking at the corpus first — the questions a visitor
+actually types, not questions reverse-engineered from what happens to be
+indexed. They were run against the deployed service alongside the frozen 250 as
+an in-corpus control (`scripts/09_relevance_floor.py`).
+
+The existing Phase 6 adversarial set does not cover this band. Its off-topic and
+gibberish cases score far below the floor and are caught. These do not.
+
+### Finding 1: raising the abstention floor does not work
+
+| floor | in-corpus kept | precision | blind-60 refused |
+|---|---|---|---|
+| **-1.103 (shipped)** | 93.4% | 36.9% | 20.0% |
+| 2.00 | 79.8% | 39.4% | 40.0% |
+| 3.00 | 73.3% | 40.2% | 50.0% |
+| 4.00 | 64.9% | 41.4% | 61.7% |
+| 6.00 | 49.5% | 42.9% | 70.0% |
+
+The distributions interleave. In-corpus scores run P25 2.74 / P50 5.87 / P75
+9.14; the blind-60 run P25 -0.19 / P50 2.90 / **max 10.93** — a higher maximum
+than the in-corpus P75. Moving the floor to 4.0 buys **+4.5 points of precision
+for -28 points of coverage**.
+
+Two candidate signals were then scored directly on their ability to separate a
+right top-1 from a wrong one, over 466 in-corpus queries:
+
+| signal | AUC |
+|---|---|
+| absolute rerank score | **0.606** |
+| margin over second | **0.586** |
+
+0.500 is a coin flip. **Neither signal can carry a threshold.** This is the same
+shape as I27, which rejected the score-gap check for ambiguity, and it is I26
+restated: the score knows whether a question is in the corpus's world and does
+not know whether the passage answers it.
+
+**No fix ships for this half, deliberately.** A "low confidence" badge driven by
+a signal with AUC 0.61 would be a second claim that the number does not support.
+The honest surface is the one already there: the cited passage is on screen, and
+the reader can see what the answer was drawn from.
+
+### Finding 2: the language mismatch was real, and fixing it also fixed a metric
+
+Top-1 came back in the **other** language on **9 of 499** in-corpus queries
+(1.8%). Those nine scored:
+
+| | Hit@1 |
+|---|---|
+| strict, as published | **0.0%** |
+| comparing the passage and ignoring the language tag | **66.7%** |
+
+Six of the nine had found the **right passage**. They were counted as complete
+misses because gold ids are language-tagged (`gold_en_ids` / `gold_hi_ids`), so
+a cross-language hit cannot match one by construction. Cross-lingual retrieval
+was working *better* than same-language retrieval on those queries — 66.7%
+against 37.6% — and the metric was recording it as a total failure.
+
+**Fixed** by answering from the parallel twin: the corpus carries both languages
+for **100%** of its 147,945 passage groups, so the twin always exists.
+`build_answer(..., prefer_language=...)` swaps the cited passage for its twin in
+the language that was asked. Nothing is dropped, reordered or re-scored, and the
+trace records `answered in hi, N passage(s) swapped for their twin`.
+
+Measured before and after, same 499 queries:
+
+| | Hit@1 (strict) | language mismatches |
+|---|---|---|
+| before | 37.1% | 9 of 466 |
+| **after** | **38.2%** | **0 of 466** |
+
+**+1.07 points of Hit@1 that were being thrown away by the metric**, and the
+presentation bug is gone.
+
+This does not weaken the cross-lingual claim. The cross-lingual match still
+happens and is still what the reranker scored; the reader is simply shown the
+half of the parallel pair they can read.
