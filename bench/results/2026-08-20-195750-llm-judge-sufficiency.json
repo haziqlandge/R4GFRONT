@@ -1,0 +1,1168 @@
+{
+  "generated_utc": "2026-08-20T19:57:50.963810+00:00",
+  "what": "does an LLM context-sufficiency judgement predict our own wrong top-1",
+  "model": "openai/gpt-oss-20b",
+  "note": "Does LLM context-sufficiency judging predict our wrong top-1 better than our own scores (AUC 0.606)? Prompted for sufficiency only, never truth, so corpus staleness cannot poison it.",
+  "n": 115,
+  "n_correct": 50,
+  "n_wrong": 65,
+  "sufficient_when_right": 0.9,
+  "sufficient_when_wrong": 0.8154,
+  "judge_auc": 0.5423,
+  "rerank_score_auc_same_sample": 0.6157,
+  "detector_precision": 0.7059,
+  "detector_recall": 0.1846,
+  "verdict": "NOT A USABLE SIGNAL - no better than what we already have.",
+  "rows": [
+    {
+      "query_id": 4578,
+      "lang": "en",
+      "query": "Incubation period for gonorrhea",
+      "top_id": "4578:0:en",
+      "correct": true,
+      "verdict": "SUFFICIENT",
+      "score": 8.709909439086914,
+      "gap": 0.0594940185546875
+    },
+    {
+      "query_id": 7451,
+      "lang": "hi",
+      "query": "कतर की राजधानी क्या है?",
+      "top_id": "7451:3:hi",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 10.525073051452637,
+      "gap": 0.5843276977539062
+    },
+    {
+      "query_id": 8992,
+      "lang": "hi",
+      "query": "अपराध दृश्य फोटोग्राफी के लिए पसंदीदा फिल्म __________ प्रिंट फिल्म है।",
+      "top_id": "8992:4:hi",
+      "correct": true,
+      "verdict": "SUFFICIENT",
+      "score": 6.3841872215271,
+      "gap": 0.3612031936645508
+    },
+    {
+      "query_id": 10486,
+      "lang": "en",
+      "query": "accuracy definition math term",
+      "top_id": "10486:4:en",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 9.033324241638184,
+      "gap": 0.6181068420410156
+    },
+    {
+      "query_id": 14277,
+      "lang": "hi",
+      "query": "ए.टी.वी. चलाने की उम्र",
+      "top_id": "653023:5:hi",
+      "correct": false,
+      "verdict": "INSUFFICIENT",
+      "score": 1.2518137693405151,
+      "gap": 1.7623218894004822
+    },
+    {
+      "query_id": 15636,
+      "lang": "hi",
+      "query": "अल्लाह अकबर की परिभाषा",
+      "top_id": "15636:2:hi",
+      "correct": true,
+      "verdict": "SUFFICIENT",
+      "score": 6.016251087188721,
+      "gap": 2.625600814819336
+    },
+    {
+      "query_id": 16096,
+      "lang": "en",
+      "query": "alzheimer's meaning",
+      "top_id": "16096:3:en",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 4.431153297424316,
+      "gap": 0.867793083190918
+    },
+    {
+      "query_id": 18412,
+      "lang": "hi",
+      "query": "एनेबेल सांचेज़ की पत्नी",
+      "top_id": "18412:5:hi",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 10.208773612976074,
+      "gap": 0.35697364807128906
+    },
+    {
+      "query_id": 18840,
+      "lang": "en",
+      "query": "another name for reaper",
+      "top_id": "18840:9:en",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 7.084631443023682,
+      "gap": 4.7733988761901855
+    },
+    {
+      "query_id": 20304,
+      "lang": "hi",
+      "query": "एक महीने में उपयोगिताओं की अनुमानित लागत",
+      "top_id": "20304:3:hi",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 1.6012989282608032,
+      "gap": 4.090644717216492
+    },
+    {
+      "query_id": 20570,
+      "lang": "en",
+      "query": "arch meaning",
+      "top_id": "20570:9:en",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 8.729828834533691,
+      "gap": 1.0441622734069824
+    },
+    {
+      "query_id": 22711,
+      "lang": "en",
+      "query": "are grains a source of protein",
+      "top_id": "843382:0:en",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 6.467872619628906,
+      "gap": 3.7793776988983154
+    },
+    {
+      "query_id": 24873,
+      "lang": "en",
+      "query": "are shakeology meal replacement shakes protein based",
+      "top_id": "423565:4:en",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 7.956075668334961,
+      "gap": 0.7753896713256836
+    },
+    {
+      "query_id": 34520,
+      "lang": "hi",
+      "query": "व्यवसाय शुरू करने की औसत लागत",
+      "top_id": "34520:4:hi",
+      "correct": true,
+      "verdict": "SUFFICIENT",
+      "score": 4.532001495361328,
+      "gap": 2.700884461402893
+    },
+    {
+      "query_id": 42076,
+      "lang": "en",
+      "query": "average salary for a welder",
+      "top_id": "42076:2:en",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 4.96047830581665,
+      "gap": 0.1695246696472168
+    },
+    {
+      "query_id": 42714,
+      "lang": "hi",
+      "query": "औसत वेतन गृह देखभाल अनुसूचक",
+      "top_id": "42714:7:hi",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 3.9542934894561768,
+      "gap": 3.2141846418380737
+    },
+    {
+      "query_id": 49130,
+      "lang": "en",
+      "query": "batch plant definition",
+      "top_id": "49130:4:en",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 10.595555305480957,
+      "gap": 0.2585935592651367
+    },
+    {
+      "query_id": 52174,
+      "lang": "hi",
+      "query": "डोमिनिकन गणराज्य के मौसम के लिए सबसे अच्छा समय",
+      "top_id": "52174:4:hi",
+      "correct": true,
+      "verdict": "SUFFICIENT",
+      "score": 10.82845687866211,
+      "gap": 0.25434303283691406
+    },
+    {
+      "query_id": 54625,
+      "lang": "en",
+      "query": "blood sugar is 240",
+      "top_id": "54625:7:en",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 3.2652487754821777,
+      "gap": 1.7571759223937988
+    },
+    {
+      "query_id": 54972,
+      "lang": "hi",
+      "query": "बोआ समझौते की परिभाषा",
+      "top_id": "54972:2:hi",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 1.329260230064392,
+      "gap": 0.8736740946769714
+    },
+    {
+      "query_id": 60303,
+      "lang": "en",
+      "query": "calories in galia melon",
+      "top_id": "60303:6:en",
+      "correct": true,
+      "verdict": "SUFFICIENT",
+      "score": 10.876267433166504,
+      "gap": 0.7580194473266602
+    },
+    {
+      "query_id": 65735,
+      "lang": "hi",
+      "query": "कैन क्लैरिथ्रोमाइसिन एक यूटी का इलाज कर सकता है",
+      "top_id": "65735:1:hi",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 4.608522415161133,
+      "gap": 1.110267162322998
+    },
+    {
+      "query_id": 74944,
+      "lang": "en",
+      "query": "can tums be harmful",
+      "top_id": "74944:6:en",
+      "correct": true,
+      "verdict": "SUFFICIENT",
+      "score": 1.858168601989746,
+      "gap": 3.8039835691452026
+    },
+    {
+      "query_id": 77491,
+      "lang": "en",
+      "query": "can you freeze buttercream frosting",
+      "top_id": "77491:4:en",
+      "correct": true,
+      "verdict": "SUFFICIENT",
+      "score": 0.8891122341156006,
+      "gap": 0.8869358645752072
+    },
+    {
+      "query_id": 79171,
+      "lang": "hi",
+      "query": "क्या आप किसी भी वेप पेन में खरपतवार डाल सकते हैं?",
+      "top_id": "79171:0:hi",
+      "correct": true,
+      "verdict": "SUFFICIENT",
+      "score": 4.799181938171387,
+      "gap": 6.428003191947937
+    },
+    {
+      "query_id": 79831,
+      "lang": "en",
+      "query": "can you still have your period if your pregnant",
+      "top_id": "79831:8:en",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 10.326759338378906,
+      "gap": 1.4203100204467773
+    },
+    {
+      "query_id": 80181,
+      "lang": "hi",
+      "query": "क्या आप बता सकते हैं कि कोई आपके बारे में सपना देखता है?",
+      "top_id": "80181:3:hi",
+      "correct": true,
+      "verdict": "INSUFFICIENT",
+      "score": 4.491689682006836,
+      "gap": 1.0152668952941895
+    },
+    {
+      "query_id": 81649,
+      "lang": "en",
+      "query": "cancer of the stomach symptoms",
+      "top_id": "1006454:4:en",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 8.690028190612793,
+      "gap": 3.1099190711975098
+    },
+    {
+      "query_id": 83990,
+      "lang": "hi",
+      "query": "बिल्लियाँ कितने साल तक जीवित रहती हैं",
+      "top_id": "83990:1:hi",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 6.043426990509033,
+      "gap": 0.1434803009033203
+    },
+    {
+      "query_id": 84497,
+      "lang": "en",
+      "query": "cause of retinal breaks",
+      "top_id": "84497:3:en",
+      "correct": true,
+      "verdict": "SUFFICIENT",
+      "score": 6.068422317504883,
+      "gap": 0.9560446739196777
+    },
+    {
+      "query_id": 84666,
+      "lang": "hi",
+      "query": "अतिकैलेमिया के कारण और लक्षण",
+      "top_id": "84666:8:hi",
+      "correct": false,
+      "verdict": "INSUFFICIENT",
+      "score": 3.760770082473755,
+      "gap": 0.44165802001953125
+    },
+    {
+      "query_id": 85018,
+      "lang": "en",
+      "query": "causes for shingles",
+      "top_id": "846513:1:en",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 8.106342315673828,
+      "gap": 0.12254858016967773
+    },
+    {
+      "query_id": 85954,
+      "lang": "en",
+      "query": "causes of death in the world's history",
+      "top_id": "85712:4:en",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 5.691834926605225,
+      "gap": 2.538450002670288
+    },
+    {
+      "query_id": 87214,
+      "lang": "hi",
+      "query": "पैर में दर्द/पिंडली के कारण",
+      "top_id": "87214:6:hi",
+      "correct": true,
+      "verdict": "SUFFICIENT",
+      "score": 5.179970741271973,
+      "gap": 1.0559816360473633
+    },
+    {
+      "query_id": 89443,
+      "lang": "en",
+      "query": "celeberties with the birthday september 17",
+      "top_id": "89443:4:en",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 10.788015365600586,
+      "gap": 0.012654304504394531
+    },
+    {
+      "query_id": 95598,
+      "lang": "en",
+      "query": "common jellyfish are found in what states",
+      "top_id": "95598:2:en",
+      "correct": false,
+      "verdict": "INSUFFICIENT",
+      "score": 2.8503973484039307,
+      "gap": 0.29361510276794434
+    },
+    {
+      "query_id": 95929,
+      "lang": "hi",
+      "query": "संचार रोग की परिभाषा",
+      "top_id": "95929:8:hi",
+      "correct": true,
+      "verdict": "SUFFICIENT",
+      "score": 7.357254505157471,
+      "gap": 1.6470332145690918
+    },
+    {
+      "query_id": 96310,
+      "lang": "en",
+      "query": "composition and functions of blood types",
+      "top_id": "1086209:9:en",
+      "correct": false,
+      "verdict": "INSUFFICIENT",
+      "score": 3.54724383354187,
+      "gap": 2.3491047620773315
+    },
+    {
+      "query_id": 97104,
+      "lang": "en",
+      "query": "connected credit union routing number",
+      "top_id": "97104:2:en",
+      "correct": true,
+      "verdict": "SUFFICIENT",
+      "score": 10.234947204589844,
+      "gap": 2.534864902496338
+    },
+    {
+      "query_id": 98153,
+      "lang": "hi",
+      "query": "फॉर्मूला का उपयोग करके एकड़ को वर्ग फुट में बदलें।",
+      "top_id": "98153:8:hi",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 3.2836177349090576,
+      "gap": 1.3343679904937744
+    },
+    {
+      "query_id": 99347,
+      "lang": "en",
+      "query": "cooking hours per pound roast",
+      "top_id": "238578:8:en",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 5.005160808563232,
+      "gap": 0.2672743797302246
+    },
+    {
+      "query_id": 102732,
+      "lang": "hi",
+      "query": "वारंटी के बाद प्रायस पर बैटरी की लागत",
+      "top_id": "102732:9:hi",
+      "correct": true,
+      "verdict": "SUFFICIENT",
+      "score": 3.4659132957458496,
+      "gap": 1.62119722366333
+    },
+    {
+      "query_id": 106430,
+      "lang": "en",
+      "query": "cost of rain catchment system",
+      "top_id": "106430:0:en",
+      "correct": true,
+      "verdict": "SUFFICIENT",
+      "score": 6.282676696777344,
+      "gap": 3.00663685798645
+    },
+    {
+      "query_id": 106755,
+      "lang": "hi",
+      "query": "नेत्र वृत्त के नीचे के लिए रेस्टाइलेन फिलर की लागत",
+      "top_id": "106755:0:hi",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 0.694954514503479,
+      "gap": 0.6973474370315671
+    },
+    {
+      "query_id": 106856,
+      "lang": "en",
+      "query": "cost of ruthenium per gram",
+      "top_id": "106856:2:en",
+      "correct": true,
+      "verdict": "SUFFICIENT",
+      "score": 10.761402130126953,
+      "gap": 0.21802902221679688
+    },
+    {
+      "query_id": 107045,
+      "lang": "hi",
+      "query": "साधारण छत की लागत",
+      "top_id": "197411:2:hi",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 3.9128775596618652,
+      "gap": 0.5680427551269531
+    },
+    {
+      "query_id": 109601,
+      "lang": "en",
+      "query": "cost to hire painter for kitchen cabinets",
+      "top_id": "109601:7:en",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 6.835823059082031,
+      "gap": 2.114403247833252
+    },
+    {
+      "query_id": 117135,
+      "lang": "hi",
+      "query": "स्वीकार्य जोखिम को परिभाषित करें",
+      "top_id": "117135:0:hi",
+      "correct": true,
+      "verdict": "SUFFICIENT",
+      "score": 8.864176750183105,
+      "gap": 0.186431884765625
+    },
+    {
+      "query_id": 117506,
+      "lang": "en",
+      "query": "define allowable stress",
+      "top_id": "117506:8:en",
+      "correct": true,
+      "verdict": "SUFFICIENT",
+      "score": 10.4500093460083,
+      "gap": 4.6013898849487305
+    },
+    {
+      "query_id": 119046,
+      "lang": "hi",
+      "query": "कानून के संदर्भ में नागरिक अधिकारों को परिभाषित करें।",
+      "top_id": "119046:2:hi",
+      "correct": true,
+      "verdict": "SUFFICIENT",
+      "score": 7.992680072784424,
+      "gap": 5.677804470062256
+    },
+    {
+      "query_id": 119243,
+      "lang": "en",
+      "query": "define commerce clause",
+      "top_id": "119243:9:en",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 9.23017692565918,
+      "gap": 1.1780366897583008
+    },
+    {
+      "query_id": 119581,
+      "lang": "hi",
+      "query": "निगमित शासन को परिभाषित करें",
+      "top_id": "119581:8:hi",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 3.8574934005737305,
+      "gap": 1.6056041717529297
+    },
+    {
+      "query_id": 119755,
+      "lang": "en",
+      "query": "define crowing",
+      "top_id": "119755:6:en",
+      "correct": true,
+      "verdict": "INSUFFICIENT",
+      "score": 5.021157741546631,
+      "gap": 4.754476100206375
+    },
+    {
+      "query_id": 122708,
+      "lang": "hi",
+      "query": "शिशुजनन को परिभाषित करें",
+      "top_id": "1058657:7:hi",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 3.1297242641448975,
+      "gap": 1.9027326107025146
+    },
+    {
+      "query_id": 124921,
+      "lang": "en",
+      "query": "define overflow incontinence",
+      "top_id": "124921:2:en",
+      "correct": true,
+      "verdict": "SUFFICIENT",
+      "score": 4.7190165519714355,
+      "gap": 0.26588010787963867
+    },
+    {
+      "query_id": 126329,
+      "lang": "hi",
+      "query": "प्रतिबिंब और अपवर्तन को परिभाषित करें",
+      "top_id": "126329:9:hi",
+      "correct": true,
+      "verdict": "INSUFFICIENT",
+      "score": 1.036744475364685,
+      "gap": 0.22498828172683716
+    },
+    {
+      "query_id": 127626,
+      "lang": "en",
+      "query": "define stylized",
+      "top_id": "127626:3:en",
+      "correct": true,
+      "verdict": "SUFFICIENT",
+      "score": 9.505632400512695,
+      "gap": 2.2922277450561523
+    },
+    {
+      "query_id": 127803,
+      "lang": "hi",
+      "query": "सिंटैक्स को परिभाषित करें",
+      "top_id": "127803:5:hi",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 6.069879055023193,
+      "gap": 5.953950852155685
+    },
+    {
+      "query_id": 128114,
+      "lang": "en",
+      "query": "define the institute of medicine",
+      "top_id": "128114:2:en",
+      "correct": true,
+      "verdict": "SUFFICIENT",
+      "score": 10.858333587646484,
+      "gap": 0.7984762191772461
+    },
+    {
+      "query_id": 129687,
+      "lang": "hi",
+      "query": "परिभाषा: प्राइम फेसी",
+      "top_id": "129687:8:hi",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 9.416133880615234,
+      "gap": 1.5979037284851074
+    },
+    {
+      "query_id": 130485,
+      "lang": "en",
+      "query": "definition cyanocobalamin",
+      "top_id": "130485:6:en",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 10.760687828063965,
+      "gap": 0.16678524017333984
+    },
+    {
+      "query_id": 131137,
+      "lang": "hi",
+      "query": "परिभाषित सकल मजदूरी",
+      "top_id": "131137:2:hi",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 3.3142526149749756,
+      "gap": 1.251694917678833
+    },
+    {
+      "query_id": 131626,
+      "lang": "en",
+      "query": "definition of a dental cavity",
+      "top_id": "131626:0:en",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 4.102076053619385,
+      "gap": 1.3635170459747314
+    },
+    {
+      "query_id": 134354,
+      "lang": "hi",
+      "query": "ज्ञानोदयकारी की परिभाषा",
+      "top_id": "134354:4:hi",
+      "correct": true,
+      "verdict": "INSUFFICIENT",
+      "score": 2.965174913406372,
+      "gap": 0.13754606246948242
+    },
+    {
+      "query_id": 134599,
+      "lang": "en",
+      "query": "definition of family readiness",
+      "top_id": "134599:4:en",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 10.249635696411133,
+      "gap": 0.793914794921875
+    },
+    {
+      "query_id": 134956,
+      "lang": "hi",
+      "query": "वैश्विक व्यावसायिक वातावरण की परिभाषा",
+      "top_id": "134956:0:hi",
+      "correct": true,
+      "verdict": "SUFFICIENT",
+      "score": 10.261164665222168,
+      "gap": 6.435749053955078
+    },
+    {
+      "query_id": 135395,
+      "lang": "en",
+      "query": "definition of imminent menace",
+      "top_id": "135395:9:en",
+      "correct": false,
+      "verdict": "INSUFFICIENT",
+      "score": 3.2334179878234863,
+      "gap": 0.07439303398132324
+    },
+    {
+      "query_id": 135599,
+      "lang": "hi",
+      "query": "अन्तर्वार्ता आदेश की परिभाषा",
+      "top_id": "135599:4:hi",
+      "correct": true,
+      "verdict": "SUFFICIENT",
+      "score": 2.620561122894287,
+      "gap": 3.197447657585144
+    },
+    {
+      "query_id": 136036,
+      "lang": "en",
+      "query": "definition of malignant neoplasm",
+      "top_id": "136036:4:en",
+      "correct": true,
+      "verdict": "SUFFICIENT",
+      "score": 6.378294467926025,
+      "gap": 1.3258399963378906
+    },
+    {
+      "query_id": 139199,
+      "lang": "en",
+      "query": "definition of upset price",
+      "top_id": "139199:9:en",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 10.936758041381836,
+      "gap": 0.22049236297607422
+    },
+    {
+      "query_id": 140336,
+      "lang": "hi",
+      "query": "प्रत्यावर्तन परिभाषा",
+      "top_id": "1091080:6:hi",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 6.93650484085083,
+      "gap": 0.9178357124328613
+    },
+    {
+      "query_id": 141473,
+      "lang": "en",
+      "query": "derry imaging npi number",
+      "top_id": "141473:2:en",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 10.938912391662598,
+      "gap": 0.022710800170898438
+    },
+    {
+      "query_id": 144847,
+      "lang": "hi",
+      "query": "क्या राजकुमार के बच्चे थे?",
+      "top_id": "144847:0:hi",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 7.19077730178833,
+      "gap": 0.1833181381225586
+    },
+    {
+      "query_id": 149398,
+      "lang": "hi",
+      "query": "सक्रिय परिवहन और सुगम प्रसार के अंतर और समानताएँ",
+      "top_id": "149398:8:hi",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 6.909506320953369,
+      "gap": 3.8475184440612793
+    },
+    {
+      "query_id": 152736,
+      "lang": "en",
+      "query": "disney hakuna matata meaning",
+      "top_id": "152736:5:en",
+      "correct": true,
+      "verdict": "SUFFICIENT",
+      "score": 10.981600761413574,
+      "gap": 5.198600769042969
+    },
+    {
+      "query_id": 154154,
+      "lang": "hi",
+      "query": "स्पेनिश में विचलित",
+      "top_id": "1090523:4:hi",
+      "correct": false,
+      "verdict": "INSUFFICIENT",
+      "score": -0.5723935961723328,
+      "gap": 0.19777131080627441
+    },
+    {
+      "query_id": 155409,
+      "lang": "en",
+      "query": "do bunnies eat roses",
+      "top_id": "155409:6:en",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 3.9102280139923096,
+      "gap": 5.228671669960022
+    },
+    {
+      "query_id": 155684,
+      "lang": "hi",
+      "query": "क्या नागरिक मांगें पृष्ठभूमि जांच पर दिखाई देती हैं?",
+      "top_id": "155684:2:hi",
+      "correct": true,
+      "verdict": "SUFFICIENT",
+      "score": 9.769548416137695,
+      "gap": 1.6430339813232422
+    },
+    {
+      "query_id": 156297,
+      "lang": "en",
+      "query": "do file format arcgis",
+      "top_id": "156297:2:en",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 4.39459753036499,
+      "gap": 2.3681976795196533
+    },
+    {
+      "query_id": 156299,
+      "lang": "hi",
+      "query": "क्या खोखलेपन से दर्द होता है?",
+      "top_id": "1055191:6:hi",
+      "correct": false,
+      "verdict": "INSUFFICIENT",
+      "score": -0.03880077973008156,
+      "gap": 1.0569084249436855
+    },
+    {
+      "query_id": 156484,
+      "lang": "en",
+      "query": "do gnats bite humans",
+      "top_id": "156484:2:en",
+      "correct": true,
+      "verdict": "SUFFICIENT",
+      "score": 9.304521560668945,
+      "gap": 8.887468814849854
+    },
+    {
+      "query_id": 159253,
+      "lang": "hi",
+      "query": "क्या टैम्पोन आपकी मासिक धर्म अवधि को छोटा कर देते हैं?",
+      "top_id": "159253:2:hi",
+      "correct": true,
+      "verdict": "SUFFICIENT",
+      "score": 5.903548240661621,
+      "gap": 4.485912442207336
+    },
+    {
+      "query_id": 159901,
+      "lang": "en",
+      "query": "do weight gainer shakes work",
+      "top_id": "159901:2:en",
+      "correct": true,
+      "verdict": "SUFFICIENT",
+      "score": -0.6511468291282654,
+      "gap": 0.15255284309387207
+    },
+    {
+      "query_id": 164204,
+      "lang": "en",
+      "query": "does california require tax extension filing deadline 1031 exchange",
+      "top_id": "164204:0:en",
+      "correct": true,
+      "verdict": "SUFFICIENT",
+      "score": 10.676246643066406,
+      "gap": 5.083459377288818
+    },
+    {
+      "query_id": 164641,
+      "lang": "hi",
+      "query": "नारिस ट्रम्प का समर्थन नहीं करता है",
+      "top_id": "164641:9:hi",
+      "correct": false,
+      "verdict": "INSUFFICIENT",
+      "score": 8.52661418914795,
+      "gap": 3.077125072479248
+    },
+    {
+      "query_id": 165116,
+      "lang": "en",
+      "query": "does cream of chicken soup have gluten",
+      "top_id": "165116:8:en",
+      "correct": true,
+      "verdict": "SUFFICIENT",
+      "score": 10.856319427490234,
+      "gap": 0.05506610870361328
+    },
+    {
+      "query_id": 165135,
+      "lang": "hi",
+      "query": "क्या क्रीस्टर खांसी का कारण बनता है?",
+      "top_id": "165135:3:hi",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 4.670041084289551,
+      "gap": 1.8403501510620117
+    },
+    {
+      "query_id": 165332,
+      "lang": "en",
+      "query": "does dell cover batteries in warranty?",
+      "top_id": "165332:0:en",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 5.357395172119141,
+      "gap": 0.48657894134521484
+    },
+    {
+      "query_id": 174612,
+      "lang": "hi",
+      "query": "दोकी मतलब",
+      "top_id": "174612:1:hi",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 7.415144920349121,
+      "gap": 0.5153646469116211
+    },
+    {
+      "query_id": 177290,
+      "lang": "en",
+      "query": "ears popping causes",
+      "top_id": "177290:1:en",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 10.656681060791016,
+      "gap": 0.5225467681884766
+    },
+    {
+      "query_id": 180438,
+      "lang": "hi",
+      "query": "स्थायी विरासत का अर्थ है",
+      "top_id": "117058:8:hi",
+      "correct": false,
+      "verdict": "INSUFFICIENT",
+      "score": 1.463626742362976,
+      "gap": 3.31356418132782
+    },
+    {
+      "query_id": 181494,
+      "lang": "en",
+      "query": "esophageal tumor symptoms",
+      "top_id": "181494:9:en",
+      "correct": true,
+      "verdict": "SUFFICIENT",
+      "score": 8.527918815612793,
+      "gap": 0.2482919692993164
+    },
+    {
+      "query_id": 182656,
+      "lang": "hi",
+      "query": "किण्वन के उदाहरण",
+      "top_id": "182656:6:hi",
+      "correct": true,
+      "verdict": "SUFFICIENT",
+      "score": 7.563410758972168,
+      "gap": 0.9322395324707031
+    },
+    {
+      "query_id": 182895,
+      "lang": "en",
+      "query": "excel function to determine how many different values in a column",
+      "top_id": "182895:2:en",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 2.9812614917755127,
+      "gap": 1.0875736474990845
+    },
+    {
+      "query_id": 186615,
+      "lang": "hi",
+      "query": "तन्तुमय रंध्र स्तन रोग के कारण होता है।",
+      "top_id": "186615:2:hi",
+      "correct": true,
+      "verdict": "SUFFICIENT",
+      "score": -0.26623019576072693,
+      "gap": 0.05728417634963989
+    },
+    {
+      "query_id": 188375,
+      "lang": "en",
+      "query": "folies-bergère definition",
+      "top_id": "188375:6:en",
+      "correct": false,
+      "verdict": "INSUFFICIENT",
+      "score": -1.039535641670227,
+      "gap": 1.1775702238082886
+    },
+    {
+      "query_id": 188789,
+      "lang": "hi",
+      "query": "स्वस्थ आँखों के लिए खाद्य पदार्थ",
+      "top_id": "1100457:8:hi",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 5.009736061096191,
+      "gap": 2.9957275390625
+    },
+    {
+      "query_id": 188797,
+      "lang": "en",
+      "query": "foods for liver health",
+      "top_id": "188797:8:en",
+      "correct": true,
+      "verdict": "SUFFICIENT",
+      "score": 9.403674125671387,
+      "gap": 1.4170923233032227
+    },
+    {
+      "query_id": 194294,
+      "lang": "hi",
+      "query": "जियोडिस एडवर्ड्सविल इल फोन नंबर",
+      "top_id": "194294:9:hi",
+      "correct": true,
+      "verdict": "SUFFICIENT",
+      "score": 10.824888229370117,
+      "gap": 2.9662976264953613
+    },
+    {
+      "query_id": 194601,
+      "lang": "en",
+      "query": "germanys population density per km",
+      "top_id": "194601:1:en",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 10.544427871704102,
+      "gap": 0.2076091766357422
+    },
+    {
+      "query_id": 195678,
+      "lang": "hi",
+      "query": "गोल्डस्टार इवेंट फोन नंबर",
+      "top_id": "195678:7:hi",
+      "correct": true,
+      "verdict": "SUFFICIENT",
+      "score": 10.97327995300293,
+      "gap": 2.5496511459350586
+    },
+    {
+      "query_id": 199619,
+      "lang": "en",
+      "query": "headaches nausea and fatigue symptoms",
+      "top_id": "199619:3:en",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 5.313142776489258,
+      "gap": 1.6649260520935059
+    },
+    {
+      "query_id": 202008,
+      "lang": "en",
+      "query": "highest cause of death in zimbabwe",
+      "top_id": "202008:3:en",
+      "correct": true,
+      "verdict": "INSUFFICIENT",
+      "score": 1.8767156600952148,
+      "gap": 0.12524819374084473
+    },
+    {
+      "query_id": 203688,
+      "lang": "hi",
+      "query": "ब्याज दरों का इतिहास",
+      "top_id": "203688:7:hi",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 2.5607452392578125,
+      "gap": 2.23835226893425
+    },
+    {
+      "query_id": 203837,
+      "lang": "en",
+      "query": "hiv signs and symptoms",
+      "top_id": "203837:9:en",
+      "correct": true,
+      "verdict": "SUFFICIENT",
+      "score": 9.331282615661621,
+      "gap": 2.8755340576171875
+    },
+    {
+      "query_id": 205675,
+      "lang": "en",
+      "query": "host of tony awards",
+      "top_id": "205675:1:en",
+      "correct": true,
+      "verdict": "SUFFICIENT",
+      "score": 4.717219829559326,
+      "gap": 2.8711884021759033
+    },
+    {
+      "query_id": 206806,
+      "lang": "hi",
+      "query": "कार निर्माता किस तारीख की है",
+      "top_id": "545362:8:hi",
+      "correct": false,
+      "verdict": "INSUFFICIENT",
+      "score": 1.3362447023391724,
+      "gap": 1.70954167842865
+    },
+    {
+      "query_id": 208176,
+      "lang": "en",
+      "query": "how big are bottlenose dolphins",
+      "top_id": "208176:4:en",
+      "correct": true,
+      "verdict": "SUFFICIENT",
+      "score": 9.411215782165527,
+      "gap": 5.0379791259765625
+    },
+    {
+      "query_id": 208230,
+      "lang": "hi",
+      "query": "कितने बड़े ऑक्टोपस होते हैं",
+      "top_id": "208230:4:hi",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 3.9849843978881836,
+      "gap": 2.5164674520492554
+    },
+    {
+      "query_id": 209841,
+      "lang": "en",
+      "query": "how can I build wealth",
+      "top_id": "209841:2:en",
+      "correct": true,
+      "verdict": "SUFFICIENT",
+      "score": 6.031147480010986,
+      "gap": 0.8919296264648438
+    },
+    {
+      "query_id": 209899,
+      "lang": "hi",
+      "query": "मैं अपने पीसी विंडोज़ 10 पर स्क्रीनशॉट कैसे ले सकता हूँ?",
+      "top_id": "209899:7:hi",
+      "correct": true,
+      "verdict": "SUFFICIENT",
+      "score": 8.19491195678711,
+      "gap": 2.8083276748657227
+    },
+    {
+      "query_id": 215855,
+      "lang": "hi",
+      "query": "विली हच की मृत्यु कैसे हुई",
+      "top_id": "215855:8:hi",
+      "correct": false,
+      "verdict": "INSUFFICIENT",
+      "score": 7.745481014251709,
+      "gap": 0.1188054084777832
+    },
+    {
+      "query_id": 230686,
+      "lang": "hi",
+      "query": "न्यू मैक्सिको से कितनी दूर है कैल?",
+      "top_id": "230686:0:hi",
+      "correct": true,
+      "verdict": "SUFFICIENT",
+      "score": 5.2871623039245605,
+      "gap": 5.699762016534805
+    },
+    {
+      "query_id": 232234,
+      "lang": "en",
+      "query": "how far is savannah ga from the coast",
+      "top_id": "232234:8:en",
+      "correct": true,
+      "verdict": "SUFFICIENT",
+      "score": 9.118438720703125,
+      "gap": 3.50315523147583
+    },
+    {
+      "query_id": 234044,
+      "lang": "hi",
+      "query": "स्पेस स्टेशन कितनी तेजी से यात्रा करता है",
+      "top_id": "234044:9:hi",
+      "correct": false,
+      "verdict": "SUFFICIENT",
+      "score": 6.150089263916016,
+      "gap": 1.102980136871338
+    }
+  ]
+}

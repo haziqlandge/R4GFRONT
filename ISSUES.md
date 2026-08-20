@@ -1552,3 +1552,94 @@ reproducibility check this harness has had.
 another hour per value **and would be fitting a published number to the
 evaluation set**, which `Rules.md` 5 forbids. 92 is the specified value and it
 stays.
+
+---
+
+## I33 - an LLM judge is not the correctness signal either, and Hit@1 is noisier than published
+
+**Two findings, one measurement.** Raised from a proposal to cross-check our
+answers against an external model, and from watching a rival system (pucho.me)
+decline after a confidently wrong extraction.
+
+### The proposal, and the version of it worth testing
+
+The original idea was to compare our answer against an LLM's answer and warn the
+user on disagreement. An LLM council killed that unanimously, and correctly: the
+corpus peaks in 2017 (`bench/results/2026-08-20-193717-corpus-vintage.json`), so
+a current model disagrees hardest on the answers **most faithful** to the corpus.
+The flag would be anti-correlated with correctness.
+
+**Context sufficiency is a different question and survives that objection.** It
+never asks "is this true", only "do these passages answer this question".
+Staleness cannot poison it: passages about India's population do answer a
+question about India's population whatever the number says. That is the
+mechanism pucho.me uses, and `DONT-FORGET.md` 10 already recorded the base rate -
+gpt-oss-20b returns INSUFFICIENT_CONTEXT on 50% of queries given our top-3. What
+had never been measured is whether that judgement **correlates with our top-1
+being wrong**. A signal that fires on half of everything is useless if it fires
+at random.
+
+### Finding 1: it fires at random. Our own score is better.
+
+`scripts/11_llm_judge.py`, 115 queries from the frozen set, both languages,
+sufficiency-only prompt, `openai/gpt-oss-20b`
+(`bench/results/2026-08-20-195750-llm-judge-sufficiency.json`):
+
+| target | LLM judge AUC | our rerank score AUC |
+|---|---|---|
+| strict gold (the exact labelled passage) | **0.542** | 0.616 |
+| topical (the right passage group) | **0.632** | 0.696 |
+
+0.500 is a coin flip. **The judge is worse than the signal we already compute for
+free**, on both readings. As a detector of a wrong answer it scores precision
+0.706 at recall **0.185** - it catches under a fifth of them.
+
+It says SUFFICIENT on 90.0% of our right answers and 81.5% of our wrong ones.
+That 8.5-point gap is the entire signal.
+
+So the answer to "is an LLM judge the correctness signal our own scores failed to
+be" is **no**, and I31's conclusion stands: this system has no usable correctness
+signal. Three candidates have now been measured and rejected - absolute score
+(0.606), margin over second (0.586), and an LLM sufficiency judge (0.542).
+
+**Caveat, stated because it bounds the claim:** this is one model, and a small
+one. A stronger judge might separate better. It would still have to beat 0.696 to
+be worth anything, and it could not run live regardless - I7 caps Groq at 12,000
+tokens per window, and the fast path cannot contain a network call
+(`Latency.md` 2).
+
+### Finding 2, unplanned and more important: Hit@1 is dominated by label noise
+
+Of the 65 answers this study scored as WRONG, **49 (75%) retrieved a passage from
+the same query candidate set** - the right topic cluster, just not the one
+MS MARCO labelled `is_selected`. Only 16 were genuinely off-topic.
+
+Under a topical target, **99 of 115 (86%) are right**, against 43% under strict
+gold.
+
+`config.py` already suspected this where `ROUTE_TAU_HIGH` is set - "a
+topically-correct but unlabelled passage scores zero here and is still useful to
+a reader" - and I26 notes that sparse `is_selected` labels inflate the number.
+This quantifies it for the first time: **three quarters of the exact-gold misses
+are not off-topic retrieval failures.**
+
+**What this does and does not license.** It does NOT mean the system is 86%
+correct: the same query candidate set contains passages that do not answer the
+question, so "right group" is weaker than "right answer", and the LLM judge -
+which agreed on 88% of those rows - is itself near chance and cannot settle it.
+What it does mean is that **I26 62.1% is a statement about exact gold labels and
+must not be quoted as "62% of answers are useless"**. Those are different claims
+and the gap between them is large.
+
+The honest published sentence stays what `DONT-FORGET.md` 7 already says: the
+floor knows when a question is outside the corpus and does not know when the
+answer it found is wrong.
+
+### A trap worth not re-paying
+
+`gpt-oss-20b` is a REASONING model. With `max_tokens: 8` it spends the budget in
+its `reasoning` field and returns `finish_reason: "length"` with an **empty**
+`content` string, so the first run of this study collected zero samples and
+reported nothing wrong. `config.py` already records this exact behaviour for
+`qwen3.6-27b` one model over. The verdict costs 53 completion tokens; 64 is the
+floor, with `reasoning_effort: "low"`.
