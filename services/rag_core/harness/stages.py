@@ -197,6 +197,12 @@ def build_pipeline(rt: Runtime) -> Pipeline:
         # the answer stage that still have to run.
         deadline = max(ctx.trace.remaining_ms - RERANK_DEADLINE_MARGIN_MS, 0.0)
         ranked, scored = rt.reranker.rerank(ctx.query, pairs, deadline_ms=deadline)
+        if scored < len(pairs):
+            # The stage still closes "ok": it ran, and it returned every candidate
+            # it was given, reordered as far as the budget allowed. What it did not
+            # do is rerank all of them, and that has to be readable in the trace
+            # rather than inferred from a suspiciously round stage time.
+            ctx.trace.note(f"deadline: scored {scored} of {len(pairs)}")
         reordered = [(best[pid][0], score) for pid, score in ranked]
         return ctx.with_data(
             hits=reordered, reranked=True, rerank_scored=scored,

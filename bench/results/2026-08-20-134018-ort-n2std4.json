@@ -1,0 +1,84 @@
+{
+  "generated_utc": "2026-08-20T13:40:18.618117+00:00",
+  "what": "does the embedder's ORT thread pool steal cores from the cross-encoder",
+  "host": "deployed box",
+  "depth": 3,
+  "n": 60,
+  "warmup": 10,
+  "rows": [
+    {
+      "arm": "A reranker alone",
+      "with_embedder": false,
+      "spinning": true,
+      "embed_threads": null,
+      "rerank_threads": 4,
+      "n": 50,
+      "rerank_depth3_ms": {
+        "p50": 57.27,
+        "p90": 73.17,
+        "p99": 92.41,
+        "p100": 92.41
+      }
+    },
+    {
+      "arm": "B embedder+reranker, spinning",
+      "with_embedder": true,
+      "spinning": true,
+      "embed_threads": 4,
+      "rerank_threads": 4,
+      "n": 50,
+      "rerank_depth3_ms": {
+        "p50": 122.52,
+        "p90": 142.24,
+        "p99": 164.04,
+        "p100": 164.04
+      },
+      "embed_ms": {
+        "p50": 14.29,
+        "p90": 19.14,
+        "p99": 27.0,
+        "p100": 27.0
+      }
+    },
+    {
+      "arm": "C same, spinning off",
+      "with_embedder": true,
+      "spinning": false,
+      "embed_threads": 4,
+      "rerank_threads": 4,
+      "n": 50,
+      "rerank_depth3_ms": {
+        "p50": 73.83,
+        "p90": 89.72,
+        "p99": 114.02,
+        "p100": 114.02
+      },
+      "embed_ms": {
+        "p50": 8.69,
+        "p90": 9.98,
+        "p99": 11.8,
+        "p100": 11.8
+      }
+    },
+    {
+      "arm": "D same, embedder 1 thread",
+      "with_embedder": true,
+      "spinning": true,
+      "embed_threads": 1,
+      "rerank_threads": 4,
+      "n": 50,
+      "rerank_depth3_ms": {
+        "p50": 58.9,
+        "p90": 74.0,
+        "p99": 93.27,
+        "p100": 93.27
+      },
+      "embed_ms": {
+        "p50": 8.05,
+        "p90": 9.99,
+        "p99": 13.58,
+        "p100": 13.58
+      }
+    }
+  ]
+}

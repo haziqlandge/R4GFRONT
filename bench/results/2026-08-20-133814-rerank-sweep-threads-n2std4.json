@@ -1,0 +1,110 @@
+{
+  "generated_utc": "2026-08-20T13:38:14.044074+00:00",
+  "what": "cross-encoder per-pair cost by ONNX thread count and truncation length",
+  "host": "deployed box",
+  "note": "the live service was up during this sweep; it was idle apart from health polls",
+  "pairs": 120,
+  "warmup_pairs": 20,
+  "rows": [
+    {
+      "p50": 26.59,
+      "p90": 38.46,
+      "p99": 52.54,
+      "p100": 74.45,
+      "mean": 28.03,
+      "n": 100,
+      "threads": 1,
+      "max_tokens": 256,
+      "token_len_p50": 88,
+      "token_len_p100": 210,
+      "truncated_share": 0.0,
+      "depth3_ms": {
+        "p50": 81.89,
+        "p90": 103.77,
+        "p99": 132.39,
+        "p100": 180.34
+      },
+      "depth5_ms": {
+        "p50": 137.68,
+        "p90": 164.46,
+        "p99": 196.93,
+        "p100": 238.93
+      }
+    },
+    {
+      "p50": 17.78,
+      "p90": 24.15,
+      "p99": 31.91,
+      "p100": 43.9,
+      "mean": 18.57,
+      "n": 100,
+      "threads": 2,
+      "max_tokens": 256,
+      "token_len_p50": 88,
+      "token_len_p100": 210,
+      "truncated_share": 0.0,
+      "depth3_ms": {
+        "p50": 54.6,
+        "p90": 66.62,
+        "p99": 82.28,
+        "p100": 108.18
+      },
+      "depth5_ms": {
+        "p50": 91.68,
+        "p90": 106.42,
+        "p99": 123.93,
+        "p100": 146.94
+      }
+    },
+    {
+      "p50": 20.06,
+      "p90": 27.26,
+      "p99": 35.46,
+      "p100": 48.23,
+      "mean": 20.87,
+      "n": 100,
+      "threads": 3,
+      "max_tokens": 256,
+      "token_len_p50": 88,
+      "token_len_p100": 210,
+      "truncated_share": 0.0,
+      "depth3_ms": {
+        "p50": 61.38,
+        "p90": 74.97,
+        "p99": 91.46,
+        "p100": 119.33
+      },
+      "depth5_ms": {
+        "p50": 103.02,
+        "p90": 119.46,
+        "p99": 138.66,
+        "p100": 163.1
+      }
+    },
+    {
+      "p50": 17.88,
+      "p90": 25.35,
+      "p99": 31.23,
+      "p100": 41.93,
+      "mean": 18.91,
+      "n": 100,
+      "threads": 4,
+      "max_tokens": 256,
+      "token_len_p50": 88,
+      "token_len_p100": 210,
+      "truncated_share": 0.0,
+      "depth3_ms": {
+        "p50": 55.3,
+        "p90": 67.8,
+        "p99": 81.31,
+        "p100": 104.17
+      },
+      "depth5_ms": {
+        "p50": 93.3,
+        "p90": 108.82,
+        "p99": 124.2,
+        "p100": 144.62
+      }
+    }
+  ]
+}

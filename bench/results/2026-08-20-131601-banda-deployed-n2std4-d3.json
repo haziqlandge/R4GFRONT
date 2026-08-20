@@ -1,0 +1,56 @@
+{
+  "generated_utc": "2026-08-20T13:14:37.246750+00:00",
+  "band": "A",
+  "host": "n2-standard-4 asia-south1-a",
+  "note": "Measured through the deployed service. Latency.md 6 requires published figures to come from here.",
+  "method": {
+    "queries": 250,
+    "warmup": 30,
+    "percentile": "nearest",
+    "clock": "time.perf_counter_ns in-process"
+  },
+  "config": {
+    "rerank_top_k": 3,
+    "onnx_threads_serving": 4
+  },
+  "langs": {
+    "en": {
+      "n": 250,
+      "p50": 137.7,
+      "p70": 144.61,
+      "p90": 157.12,
+      "p99": 192.45,
+      "p100": 212.84,
+      "mean": 137.49,
+      "over_200ms": 2,
+      "stage_median_ms": {
+        "input_guard": 0.28,
+        "embed_query": 14.08,
+        "dense_search": 1.08,
+        "rerank": 119.85,
+        "route": 0.1,
+        "answer_extractive": 0.06,
+        "output_guard": 0.27
+      }
+    },
+    "hi": {
+      "n": 249,
+      "p50": 150.64,
+      "p70": 160.86,
+      "p90": 176.81,
+      "p99": 216.94,
+      "p100": 220.3,
+      "mean": 152.57,
+      "over_200ms": 7,
+      "stage_median_ms": {
+        "input_guard": 0.32,
+        "embed_query": 16.3,
+        "dense_search": 1.07,
+        "rerank": 131.47,
+        "route": 0.1,
+        "answer_extractive": 0.06,
+        "output_guard": 0.34
+      }
+    }
+  }
+}

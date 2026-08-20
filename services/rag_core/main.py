@@ -35,6 +35,7 @@ from .config import (
     DEFAULT_STRATEGY,
     INT8_MODEL,
     ONNX_DIR,
+    ONNX_THREADS_EMBED_SERVING,
     ONNX_THREADS_SERVING,
     RERANK_MODEL_FILE,
     RERANK_TOKENIZER_FILE,
@@ -58,10 +59,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     started = time.perf_counter()
     load_env()
 
+    # One thread, not ONNX_THREADS_SERVING. Two ORT sessions on 4 vCPUs oversubscribe
+    # and the embedder's spinning pool was costing the reranker half its cores; see
+    # the measurement above ONNX_THREADS_EMBED_SERVING in config.py.
     embedder = Embedder(
         ONNX_DIR / INT8_MODEL,
         ONNX_DIR / TOKENIZER_FILE,
-        threads=ONNX_THREADS_SERVING,
+        threads=ONNX_THREADS_EMBED_SERVING,
     )
     index = DenseIndex(DEFAULT_STRATEGY)
     index.load()

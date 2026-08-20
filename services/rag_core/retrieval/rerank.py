@@ -179,11 +179,27 @@ class CrossEncoder:
         n = len(candidates)
         scores = np.zeros(n, dtype=np.float32)
         scored = 0
+        slowest_pair_ms = 0.0
         for i, (_, text) in enumerate(candidates):
             if deadline_ms is not None and i > 0:
-                if (time.perf_counter() - started) * 1000.0 >= deadline_ms:
+                elapsed_ms = (time.perf_counter() - started) * 1000.0
+                # PREDICTIVE, not reactive. Asking "have I already overrun?" cannot
+                # keep the promise: nothing interrupts a pair once ONNX has it, so
+                # a check that passes with 5 ms left still spends a whole pair and
+                # lands 20 ms over. The stop condition has to be "will the NEXT
+                # pair fit", which needs an estimate of what a pair costs.
+                #
+                # The estimate is the slowest pair scored SO FAR IN THIS CALL, not
+                # the mean. Cost tracks sequence length, the candidates for one
+                # query vary in length, and a mean underestimates exactly the case
+                # that breaks the budget - the long passage sitting at rank 5.
+                # Overestimating costs one pair of reranking on a query that was
+                # near the line anyway; underestimating costs the guarantee.
+                if elapsed_ms + slowest_pair_ms > deadline_ms:
                     break
+            pair_started = time.perf_counter()
             scores[i] = self.score(query, [text])[0]
+            slowest_pair_ms = max(slowest_pair_ms, (time.perf_counter() - pair_started) * 1000.0)
             scored += 1
 
         # Unscored candidates sort below every scored one, and the stable sort then

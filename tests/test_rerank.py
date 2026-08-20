@@ -13,6 +13,7 @@ shape, it just ranks badly.
 from __future__ import annotations
 
 import sys
+import time
 from pathlib import Path
 
 import numpy as np
@@ -182,3 +183,35 @@ def test_no_deadline_scores_everything() -> None:
     ranked, scored = ce.rerank("a question", cands)
     assert scored == 5
     assert [s for _, s in ranked] == sorted([s for _, s in ranked], reverse=True)
+
+
+@needs_model
+def test_deadline_stops_before_a_pair_it_cannot_afford() -> None:
+    """The deadline has to be predictive, not reactive.
+
+    Nothing can interrupt a pair once ONNX has it (ISSUES.md I25), so a check
+    that only asks "have I already overrun?" will pass with a sliver of budget
+    left, spend a whole pair anyway, and finish over the line. That is how the
+    deployed box produced Band A P100s above 200 ms while every stage reported
+    success. The loop must instead refuse to START a pair that will not fit.
+
+    Measured against a deadline sized to fit roughly two pairs: the call must
+    come back inside it, and must have scored fewer than everything.
+    """
+    ce = CrossEncoder(MODEL_PATH, TOKENIZER_PATH, threads=2)
+    cands = [(str(i), f"a passage about topic number {i} " * 40) for i in range(8)]
+
+    # one pair, timed, to size the deadline in this machine's units
+    t0 = time.perf_counter()
+    ce.score("a question", [cands[0][1]])
+    one_pair_ms = (time.perf_counter() - t0) * 1000.0
+
+    deadline = one_pair_ms * 2.5
+    t1 = time.perf_counter()
+    _, scored = ce.rerank("a question", cands, deadline_ms=deadline)
+    elapsed_ms = (time.perf_counter() - t1) * 1000.0
+
+    assert scored < len(cands), "a deadline that fits 2 of 8 pairs must stop early"
+    assert elapsed_ms <= deadline + one_pair_ms, (
+        f"overran: {elapsed_ms:.1f} ms against a {deadline:.1f} ms deadline"
+    )

@@ -115,6 +115,21 @@ class Trace(BaseModel):
         self.spans.append(span)
         return span
 
+    def note(self, detail: str) -> None:
+        """Annotate the span that is currently open.
+
+        A stage that DEGRADED rather than failed has nothing to say through its
+        status: it ran, it returned, and it will close "ok". But Latency.md 4.1
+        already requires a skipped stage to be visible in the trace, and a
+        truncated one is the same claim about the same budget - "rerank scored 4
+        of 5" is the difference between a result and a partial result, and the
+        waterfall is where a reader looks for it.
+        """
+        for sp in reversed(self.spans):
+            if sp.end_ns is None:
+                sp.detail = detail
+                return
+
     def serialize(self) -> dict[str, Any]:
         """Exactly the `trace` object from Architecture.md section 9."""
         return {
@@ -140,4 +155,6 @@ def span(trace: Trace, name: str) -> Iterator[Span]:
         raise
     else:
         if s.end_ns is None:
-            s.close(status=s.status)
+            # detail=s.detail, not the default None: a stage that called
+            # trace.note() during its run must not have that erased on close.
+            s.close(status=s.status, detail=s.detail)

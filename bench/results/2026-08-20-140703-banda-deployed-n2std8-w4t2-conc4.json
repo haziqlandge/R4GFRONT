@@ -1,0 +1,266 @@
+{
+  "generated_utc": "2026-08-20T14:06:49.026937+00:00",
+  "band": "A",
+  "measured_from": "public HTTPS origin; band A is the in-process trace.total_ms",
+  "url": "https://shrutirag.duckdns.org/api/core",
+  "health": {
+    "status": "ok",
+    "strategy": "c1",
+    "chunks": 379240,
+    "startup_seconds": 5.76,
+    "reranker": "multi",
+    "generative": true,
+    "passage_store": "exact"
+  },
+  "note": "n2-standard-8, 4 uvicorn workers x 2 ONNX threads, depth 5, predictive deadline",
+  "method": {
+    "queries": 250,
+    "passes": 1,
+    "warmup": 20,
+    "concurrency": 4,
+    "mode": "fast",
+    "percentile": "nearest",
+    "clock": "time.perf_counter_ns in-process (band A) / client-side (wall)",
+    "budget_ms": 200.0
+  },
+  "langs": {
+    "en": {
+      "n": 250,
+      "n_requested": 250,
+      "non_200": [],
+      "band_a_total_ms": {
+        "p50": 139.35,
+        "p70": 149.58,
+        "p90": 164.87,
+        "p95": 170.5,
+        "p99": 187.33,
+        "p100": 189.52,
+        "mean": 139.83,
+        "sd": 18.86
+      },
+      "client_wall_ms": {
+        "p50": 173.37,
+        "p70": 183.39,
+        "p90": 203.11,
+        "p95": 220.32,
+        "p99": 303.31,
+        "p100": 416.19,
+        "mean": 176.92,
+        "sd": 31.82
+      },
+      "over_budget": {
+        "count": 0,
+        "share": 0.0,
+        "query_ids": []
+      },
+      "stage_median_ms": {
+        "answer_extractive": 0.07,
+        "answer_generative": 0.02,
+        "dense_search": 1.05,
+        "embed_query": 8.66,
+        "input_guard": 0.32,
+        "output_guard": 0.32,
+        "rerank": 128.02,
+        "route": 0.11
+      },
+      "stage_p100_ms": {
+        "answer_extractive": 0.21,
+        "answer_generative": 0.19,
+        "dense_search": 1.87,
+        "embed_query": 19.19,
+        "input_guard": 0.56,
+        "output_guard": 0.75,
+        "rerank": 179.69,
+        "route": 0.19
+      },
+      "path_distribution": {
+        "EXTRACTIVE": 238,
+        "NONE": 12
+      },
+      "partial_reranks": 25,
+      "skipped_stages": 5,
+      "worst_12": [
+        {
+          "query_id": 209841,
+          "total_ms": 189.52,
+          "wall_ms": 220.32,
+          "stages": {
+            "input_guard": 0.25,
+            "embed_query": 7.887,
+            "dense_search": 1.207,
+            "rerank": 179.693,
+            "route": 0.117,
+            "answer_extractive": 0.077,
+            "answer_generative": 0.049,
+            "output_guard": 0.0
+          }
+        },
+        {
+          "query_id": 287790,
+          "total_ms": 188.25,
+          "wall_ms": 240.55,
+          "stages": {
+            "input_guard": 0.392,
+            "embed_query": 11.174,
+            "dense_search": 0.927,
+            "rerank": 175.421,
+            "route": 0.081,
+            "answer_extractive": 0.051,
+            "answer_generative": 0.023,
+            "output_guard": 0.0
+          }
+        },
+        {
+          "query_id": 95598,
+          "total_ms": 187.33,
+          "wall_ms": 230.68,
+          "stages": {
+            "input_guard": 0.402,
+            "embed_query": 9.589,
+            "dense_search": 1.268,
+            "rerank": 175.661,
+            "route": 0.106,
+            "answer_extractive": 0.073,
+            "answer_generative": 0.019,
+            "output_guard": 0.0
+          }
+        },
+        {
+          "query_id": 419839,
+          "total_ms": 175.35,
+          "wall_ms": 214.38,
+          "stages": {
+            "input_guard": 0.331,
+            "embed_query": 10.663,
+            "dense_search": 1.117,
+            "rerank": 162.671,
+            "route": 0.112,
+            "answer_extractive": 0.214,
+            "answer_generative": 0.029,
+            "output_guard": 0.0
+          }
+        },
+        {
+          "query_id": 429942,
+          "total_ms": 175.23,
+          "wall_ms": 209.11,
+          "stages": {
+            "input_guard": 0.226,
+            "embed_query": 8.612,
+            "dense_search": 1.238,
+            "rerank": 164.778,
+            "route": 0.098,
+            "answer_extractive": 0.066,
+            "answer_generative": 0.018,
+            "output_guard": 0.0
+          }
+        },
+        {
+          "query_id": 363783,
+          "total_ms": 173.92,
+          "wall_ms": 213.31,
+          "stages": {
+            "input_guard": 0.412,
+            "embed_query": 8.602,
+            "dense_search": 0.79,
+            "rerank": 163.202,
+            "route": 0.119,
+            "answer_extractive": 0.087,
+            "answer_generative": 0.02,
+            "output_guard": 0.483
+          }
+        },
+        {
+          "query_id": 194601,
+          "total_ms": 173.88,
+          "wall_ms": 201.05,
+          "stages": {
+            "input_guard": 0.207,
+            "embed_query": 8.517,
+            "dense_search": 1.001,
+            "rerank": 163.314,
+            "route": 0.114,
+            "answer_extractive": 0.082,
+            "answer_generative": 0.024,
+            "output_guard": 0.442
+          }
+        },
+        {
+          "query_id": 326509,
+          "total_ms": 173.72,
+          "wall_ms": 303.46,
+          "stages": {
+            "input_guard": 0.271,
+            "embed_query": 7.402,
+            "dense_search": 0.581,
+            "rerank": 165.001,
+            "route": 0.074,
+            "answer_extractive": 0.051,
+            "answer_generative": 0.014,
+            "output_guard": 0.188
+          }
+        },
+        {
+          "query_id": 131626,
+          "total_ms": 172.2,
+          "wall_ms": 202.71,
+          "stages": {
+            "input_guard": 0.281,
+            "embed_query": 8.358,
+            "dense_search": 0.956,
+            "rerank": 161.694,
+            "route": 0.103,
+            "answer_extractive": 0.106,
+            "answer_generative": 0.019,
+            "output_guard": 0.499
+          }
+        },
+        {
+          "query_id": 320970,
+          "total_ms": 171.91,
+          "wall_ms": 303.31,
+          "stages": {
+            "input_guard": 0.253,
+            "embed_query": 7.635,
+            "dense_search": 0.913,
+            "rerank": 162.418,
+            "route": 0.089,
+            "answer_extractive": 0.053,
+            "answer_generative": 0.014,
+            "output_guard": 0.381
+          }
+        },
+        {
+          "query_id": 385809,
+          "total_ms": 171.82,
+          "wall_ms": 206.35,
+          "stages": {
+            "input_guard": 0.325,
+            "embed_query": 8.447,
+            "dense_search": 0.845,
+            "rerank": 161.25,
+            "route": 0.093,
+            "answer_extractive": 0.099,
+            "answer_generative": 0.023,
+            "output_guard": 0.564
+          }
+        },
+        {
+          "query_id": 74950,
+          "total_ms": 171.46,
+          "wall_ms": 203.16,
+          "stages": {
+            "input_guard": 0.373,
+            "embed_query": 8.996,
+            "dense_search": 0.99,
+            "rerank": 160.191,
+            "route": 0.109,
+            "answer_extractive": 0.121,
+            "answer_generative": 0.022,
+            "output_guard": 0.466
+          }
+        }
+      ]
+    }
+  }
+}

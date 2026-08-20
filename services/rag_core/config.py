@@ -161,7 +161,7 @@ RERANK_MAX_TOKENS: Final[int] = 256
 # Depth 10 leaves no reserve at P100 against a 200 ms budget, and the deploy target
 # n2-standard-2 is 2 vCPU = one physical core plus a hyperthread against this box's
 # six cores. Depth 5 has room to survive that move; depth 10 does not.
-RERANK_TOP_K: Final[int] = 3
+RERANK_TOP_K: Final[int] = 5
 
 # CORRECTED ON THE DEPLOYED BOX, 20 Aug. Depth 5 does not fit there.
 #
@@ -195,6 +195,34 @@ RERANK_TOP_K: Final[int] = 3
 #
 # To revert: set this to 5 and expect en P50 ~172 ms, hi ~189 ms, and the
 # headline claim to be false on the deployed box.
+
+# AND THEN REVERTED, THE SAME DAY, BECAUSE THE PREMISE WAS WRONG.
+#
+# The block above is kept rather than deleted: it is a correct reading of a real
+# measurement, and the measurement was of a bug. Depth 5 cost 161 ms on that box
+# because the embedder's ONNX thread pool was spinning on cores the cross-encoder
+# needed (see ONNX_THREADS_EMBED_SERVING below). One thread for the embedder took
+# the same depth 5 to 97 ms without touching the depth at all.
+#
+# Re-measured through the deployed service afterwards, 250 frozen queries x 2
+# passes per language, 30 warmup discarded
+# (bench/results/2026-08-20-135850-banda-deployed-n2std4-d5-final.json):
+#
+#            depth 3                    depth 5
+#     en   P50  64.48  P100 122.91   P50 102.48  P100 181.34
+#     hi   P50  75.88  P100 147.88   P50 120.66  P100 182.33
+#     over 200 ms: 0 of 998         over 200 ms: 0 of 998
+#
+# Both fit. Depth 5 is the better answer on the numbers the previous block
+# already established - hi Hit@1 0.307 against 0.290, and clearly better MRR and
+# nDCG, which order citations two and three. Nothing was gained by staying at 3
+# except margin, and the margin is now held by a mechanism instead: the rerank
+# deadline stops before a pair it cannot afford (retrieval/rerank.py) rather than
+# after one, which is what removed the last 8 over-budget queries.
+#
+# The lesson is the one Rules.md 5 keeps making: a lever pulled against a number
+# nobody explained buys the wrong thing. Depth was traded for latency that a
+# session option gave back for free.
 
 # Wall clock held back from the reranker's deadline for the work that must still
 # happen after it: the argsort, routing, building the answer and serializing. Those
@@ -264,8 +292,78 @@ FUSED_TOP_K: Final[int] = 50  # what fusion hands to the reranker in Phase 5
 # goes here: the number that matters is the one the deployed box can use. 12
 # threads showed a P99 of 15.58ms from hyperthread contention, so this is not a
 # free dial to turn up - see ISSUES.md I6.
-ONNX_THREADS_SERVING: Final[int] = 4
+#
+# SERVING = 2 SINCE 20 AUG, AND IT DID NOT COST A MILLISECOND.
+#
+# The paragraph above reasons that a thread count should track the deploy target's
+# vCPUs. Measurement says the cross-encoder stops scaling at two. Per pair on the
+# deployed box, 120 real pairs each (scripts/07b_rerank_sweep.py,
+# bench/results/2026-08-20-133814-rerank-sweep-threads-n2std4.json):
+#
+#     threads   P50     P90     P100
+#         1    26.59   38.46   74.45
+#         2    17.78   24.15   43.90
+#         3    20.06   27.26   48.23
+#         4    17.88   25.35   41.93
+#
+# Two threads and four threads are the same number. A 12-layer 384-hidden encoder
+# over a ~120-token pair simply does not have four threads of work in it, and the
+# third and fourth workers spend their time synchronising.
+#
+# That turns spare vCPUs into a THROUGHPUT dial instead of a latency one. Every
+# Band A stage is synchronous ONNX or C++ that never yields, so one uvicorn
+# process serves exactly one request at a time no matter how many cores it has -
+# measured directly: at four concurrent clients on the 4-vCPU box, per-request
+# Band A was unchanged at P50 101 ms while client wall clock went to P50 418 and
+# P100 698. That is a queue, and it is the number a judge with a browser sees.
+#
+# So the deployment runs `uvicorn --workers N` with N = vCPUs / 2, and this stays
+# at 2. On the 8-vCPU box that is 4 workers, and at four concurrent clients wall
+# clock falls from 698 ms P100 to 416 while Band A stays inside budget. The
+# worker count lives in deploy/etc/shruti-core.service; it is a deployment shape,
+# not a model parameter, so it does not belong in this file - but the two numbers
+# have to be chosen together, which is why it is written down here.
+ONNX_THREADS_SERVING: Final[int] = 2
 ONNX_THREADS_BUILD: Final[int] = 8
+
+# THE EMBEDDER DOES NOT GET THE SAME NUMBER, AND THAT IS THE WHOLE POINT.
+#
+# `rag_core` holds two ONNX sessions and a request uses both: the embedder runs
+# first, the cross-encoder second. Each session owns its own intra-op thread
+# pool, and ORT's pool SPINS after finishing a task instead of sleeping at once,
+# so the embedder's workers were still burning cores while the reranker ran.
+# Giving both sessions 4 threads is 8 spinning workers on 4 vCPUs.
+#
+# Measured on the deployed n2-standard-4, same pairs, same order
+# (scripts/07c_ort_contention.py, bench/results/2026-08-20-134018-ort-n2std4.json
+# and -134156-ort-n2std4-d5.json). Figures are the rerank stage, not the request:
+#
+#     arm                              depth 3 P50   depth 5 P50   embed P50
+#     reranker alone, no embedder          57.27         97.20          -
+#     embedder 4 threads (what shipped)   122.52        161.31        14.29
+#     embedder 4 threads, spinning off     73.83        121.87         8.69
+#     embedder 2 threads                       -       139.13        12.19
+#     EMBEDDER 1 THREAD                    58.90         97.27         8.40
+#     embedder 1 thread, spinning off     (n/a)         122.64         7.13
+#
+# One thread for the embedder recovers the standalone reranker cost exactly, and
+# the embedder itself gets FASTER doing it - 14.29 ms to 8.40 - because it stops
+# fighting its own oversubscribed pool on a 4-vCPU box. That is the rare dial
+# that costs nothing on either side.
+#
+# Disabling spinning is NOT the fix, though it looked like one: it helps the
+# session that is being starved and hurts the reranker, whose own pool spins
+# productively between the pairs of one rerank call. Arm E is worse than arm D
+# at both depths. Leave `session.intra_op.allow_spinning` at its default.
+#
+# This is the same shape of finding as ISSUES.md I6 - more threads is not more
+# speed - but at the level of two sessions competing rather than one session
+# oversubscribing. Latency.md 8 lever 4 says to pin threads and measure; it did
+# not anticipate that the two sessions have to be tuned against each other.
+#
+# A query embeds in 8.4 ms on one thread. There is nothing to reclaim by raising
+# this, and everything to lose: the reranker is ~85% of the budget.
+ONNX_THREADS_EMBED_SERVING: Final[int] = 1
 
 # --------------------------------------------------------------------------
 # Guardrails, layer 1. Architecture.md 7, guardrails/input_guard.py. Phase 6.

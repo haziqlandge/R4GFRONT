@@ -12,7 +12,22 @@ WorkingDirectory=/home/haziqlandge/app/services
 Environment=PYTHONIOENCODING=utf-8
 # Bound to loopback on purpose: only Caddy reaches these, so the services are
 # not exposed even though the firewall allows 80 and 443.
-ExecStart=/home/haziqlandge/app/.venv/bin/python -m uvicorn rag_core.main:app --host 127.0.0.1 --port 8000
+# FOUR WORKERS, AND THE NUMBER IS NOT ARBITRARY.
+#
+# Every Band A stage is synchronous ONNX or C++ that never yields to the event
+# loop, so one uvicorn process serves exactly one request at a time however many
+# cores the box has. Measured on the 4-vCPU box at four concurrent clients:
+# per-request Band A was unchanged at P50 101 ms while client wall clock went to
+# P50 418 and P100 698. Nothing was slow; requests were queueing.
+#
+# The cross-encoder stops scaling at two threads (config.py,
+# ONNX_THREADS_SERVING), so the rule is workers = vCPUs / 2 and the spare cores
+# buy concurrency instead of a faster single request. On this 8-vCPU box that is
+# 4 workers x 2 threads, and at four concurrent clients wall P100 falls from
+# 698 ms to 416 while Band A stays inside budget at every concurrency measured
+# (1, 4 and 8). Raising it further oversubscribes: each worker also loads its own
+# ~2.5 GB of index and models.
+ExecStart=/home/haziqlandge/app/.venv/bin/python -m uvicorn rag_core.main:app --host 127.0.0.1 --port 8000 --workers 4
 Restart=always
 RestartSec=5
 
