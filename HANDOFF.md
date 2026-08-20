@@ -244,6 +244,37 @@ The two modes are identical for any top-1 above 1.877, which is every sample
 question on the page. Do not assume the toggle is decoration - it is not, it is
 just invisible on the demo path.
 
+### The one open piece of work: swapping the aside to Gemini
+
+The aside runs on Groq today because Groq was already keyed and wired. Gemini
+would be better for one specific reason, and it is not speed: it supports
+`tools: [{"type": "google_search"}]`, which would make the panel show genuinely
+CURRENT facts instead of a model's training-time memory. Groq cannot do that at
+all, and "current" is the entire point of showing an external source beside a
+2017 corpus.
+
+Researched 21 Aug so nobody has to do it again:
+
+- **Model:** `gemini-3.5-flash-lite` - "our fastest, most cost-effective 3.5
+  model for high-throughput execution". With
+  `generation_config: {"thinking_level": "minimal"}`, which the docs call the
+  lowest-latency setting. That matters here for the same reason it mattered on
+  Groq: these are reasoning models and the thinking is what ate the token cap.
+- **API:** the Interactions API, `POST https://generativelanguage.googleapis.com/v1beta/interactions`,
+  header `x-goog-api-key`, body `{"model": ..., "input": ...}`. Not the older
+  `generateContent` shape.
+- **Key:** `aistudio.google.com/apikey`. **AI Studio, never Vertex** - see
+  `DONT-FORGET.md` 8A for why that distinction costs money.
+- **Rate limits:** Google stopped publishing free-tier RPM/TPD in the docs; they
+  are shown per-account at `aistudio.google.com/rate-limit`. Read them before
+  assuming the panel can fire on every question.
+
+**Where it plugs in:** `GroqClient.aside()` in `answering/generative.py` is the
+only thing that would change, behind the existing `/v1/aside` endpoint. No
+frontend change, no markup change, and analytics is untouched because it never
+saw the aside in the first place. Keep the null-on-failure contract: a missing
+aside must stay a section that does not appear, never an error.
+
 ### Live on the site
 
 Every answer now carries its corpus vintage - "a web corpus whose coverage peaks

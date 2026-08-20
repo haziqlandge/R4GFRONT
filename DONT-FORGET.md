@@ -283,6 +283,20 @@ where it prints them.
   `degenerate_dropped: 2` in every index meta is that, not a bug.
 - **Non-ASCII through `curl` on Windows silently mangles** (I12). Test Hindi
   through the browser or a Python client, never a Windows shell.
+- **Google has TWO Gemini products and only one of them is free.** They are not
+  interchangeable and the difference is your remaining credit:
+
+  | | Google AI Studio (`ai.google.dev`) | Vertex AI (`aiplatform.googleapis.com`) |
+  |---|---|---|
+  | billing account | **not required** | required |
+  | the GCP trial credits keeping this site alive | **untouched** | **consumed** |
+  | how you get in | a key from `aistudio.google.com/apikey` | enable the API on the project |
+
+  Google's docs: "New accounts begin on the Free Tier... up to the models' free
+  tier rate limits", and "AI Studio usage remains free of charge unless users
+  link a paid API key." **Get an AI Studio key. Do not enable
+  `aiplatform.googleapis.com`** - that bills the same credits that pay for the
+  `n2-standard-8`, and `Memory.md` A12 already re-priced that runway once.
 - **Sarvam has TWO speech-to-text sockets and only one of them emits partials.**
   `wss://api.sarvam.ai/speech-to-text/ws` is the legacy streaming endpoint and
   Sarvam's own comparison table gives its interim results as "None; only a final
@@ -623,6 +637,11 @@ were copied.
   right topic, wrong labelled position. I26's 62.1% is a statement about exact
   `is_selected` labels and must not be quoted as "62% of answers are useless".
   This is the most likely thing for a reader to get wrong about this project.
+- **The aside could be Gemini and probably should be.** Groq answers from
+  training-time memory; `gemini-3.5-flash-lite` with `google_search` grounding
+  would answer from the live web, which is what "external source" beside a 2017
+  corpus is actually for. `HANDOFF.md` 1B has the model, the endpoint shape and
+  the key source; 8A above has the billing trap. Blocked only on a key.
 - **The `accurate` mode aside calls Groq on every question.** It is outside
   Band A and outside analytics by construction (`ISSUES.md` I34), but it draws
   on the same 12,000-token window as the generative fallback (I7), so a judge

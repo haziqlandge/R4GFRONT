@@ -1707,4 +1707,10 @@ Paste this when starting a fresh session on this project:
 > its "misses" retrieve the right passage group — never quote 62.1% as "62% of
 > answers are useless".
 >
+> The one open piece of engineering is swapping the `accurate`-mode aside from
+> Groq to `gemini-3.5-flash-lite` with Google Search grounding, so it shows
+> current facts rather than training-time memory. `HANDOFF.md` 1B has the model,
+> the endpoint and where it plugs in. Use an **AI Studio** key, never Vertex -
+> `DONT-FORGET.md` 8A explains which one bills the credits that pay for the box.
+>
 > Tell me which phase we are on and what its exit criterion is before writing any code.
