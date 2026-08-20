@@ -32,6 +32,7 @@ from .answering.schemas import (
 from .answering.generative import GroqClient
 from .config import (
     BUDGET_MS,
+    GROQ_MODEL,
     DEFAULT_STRATEGY,
     INT8_MODEL,
     ONNX_DIR,
@@ -220,6 +221,29 @@ async def answer(req: AnswerRequest) -> AnswerResponse:
     )
     ctx = await pipeline.run(ctx)
     return _to_response(ctx, req.trace)
+
+
+@app.post("/v1/aside")
+async def aside(req: AnswerRequest) -> dict[str, object]:
+    """The model's own answer, with no retrieved context. NOT part of Band A.
+
+    A separate endpoint rather than a field on /v1/answer, and that is the whole
+    design. Band A is "transcript in to response serialized" and it must contain
+    no network call; folding this into the answer would put a ~500 ms Groq round
+    trip inside the number the submission rests on. The browser paints our
+    answer first and asks for this afterwards, so the measured path is untouched
+    and a slow or dead Groq costs a panel that never appears.
+
+    Never returns an error to the caller. `text: null` means "no aside", which
+    the page renders as nothing at all.
+    """
+    if not STATE.get("ready"):
+        raise InvalidQuery("service still warming")
+    rt: Runtime = STATE["runtime"]  # type: ignore[assignment]
+    if rt.groq is None:
+        return {"text": None, "model": None}
+    text = await rt.groq.aside(req.query)
+    return {"text": text, "model": GROQ_MODEL if text else None}
 
 
 @app.exception_handler(RagCoreError)

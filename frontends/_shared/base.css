@@ -219,14 +219,84 @@ svg { display: block; }
    sits under the first word as it arrives. */
 .sh-transcript[data-live="true"]:empty::before { content: none; }
 
-/* Corpus vintage. Deliberately NOT styled as a warning: it is true of every
-   answer, so an alarm colour on all of them would be noise. It reads as
-   provenance, which is what it is. */
-.sh-vintage {
-  margin-top: 8px;
+/* The two answer footnotes: corpus vintage, and what the corpus IS. Footnotes,
+   not warning boxes - both are true of every answer, so an alarm-coloured
+   banner on all of them would be noise a reader learns to skip. Only the glyph
+   carries the warn colour; the words sit at provenance weight. */
+.sh-note-head {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
   font-family: var(--font-mono);
   font-size: 11px;
   line-height: 1.5;
+  letter-spacing: 0.02em;
+  color: var(--fg-3);
+  cursor: help;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+}
+.sh-note-head:hover,
+.sh-note-head:focus-visible { color: var(--fg-2); }
+.sh-note-glyph { color: var(--warn); font-size: 10px; }
+.sh-note-head:hover .sh-note-glyph { filter: brightness(1.25); }
+
+/* The provenance sentence and its glyph share a line, and the glyph hangs off
+   the end of the sentence rather than starting a new one. */
+.sh-provenance { margin: 8px 0 0; }
+.sh-provenance .sh-note-head { margin-left: 6px; vertical-align: baseline; }
+
+.sh-note-body {
+  margin: 10px 0 0;
+  max-width: 62ch;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.6;
+  color: var(--fg-3);
+  border-left: 1px solid var(--line-strong);
+  padding-left: 8px;
+}
+.sh-note-body p { margin: 0; }
+
+/* The unverified aside. Its own framed section below the answer, and styled to
+   be READ rather than skimmed - this is the panel that shows a reader why a
+   2017 corpus said what it said, so the text itself has to be comfortable.
+   What separates it from an answer is the frame and the labels, not shouting:
+   the refusal colour lives on the section rule and the header, never on the
+   prose. */
+.win-aside { border-style: dashed; }
+.win-aside > .win-title { color: var(--halt); }
+
+.sh-aside { display: grid; gap: 10px; }
+
+.sh-aside-head {
+  display: flex; align-items: baseline; gap: 7px;
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  letter-spacing: .03em;
+  color: var(--halt);
+}
+.sh-aside-glyph { flex: none; }
+
+.sh-aside-text {
+  margin: 0;
+  max-width: 68ch;
+  font-size: clamp(15px, 1.65vw, 18px);
+  line-height: 1.55;
+  color: var(--fg);
+}
+
+.sh-aside-foot {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.5;
+  letter-spacing: .03em;
   color: var(--fg-3);
 }
 
@@ -650,7 +720,19 @@ body[data-chat="off"] .sh-form { display: none; }
 .doc-toc-menu[hidden] { display: none; }
 .doc-toc-menu a { font-size: 12px; padding: 7px 10px; }
 
-@media (max-width: 760px) {
+/* 900, not 760, and the 140 px is a tablet bug rather than taste.
+
+   `>run` only appears once the bar is pinned, and it is `margin-left: auto` -
+   so between 760 and 900 the nine links filled the row and the button wrapped
+   onto a second line beneath them, right-aligned, which reads as broken rather
+   than as a menu.
+
+   Measured in the browser: the nine links are 690 px intrinsically, and with
+   the run button and the shell's 27 px gutters the full row needs about 815 px
+   of viewport. 900 is deliberately ~85 px clear of that, because the figure
+   moves with the reader's font and being early costs a dropdown while being
+   late costs the wrap this comment exists about. */
+@media (max-width: 900px) {
   .doc-toc { flex-wrap: nowrap; gap: 8px; }
   .doc-toc-links { display: none; }
   .doc-toc-picker { display: block; }
@@ -951,7 +1033,10 @@ html { scroll-behavior: auto; }
 @media (max-width: 900px) {
   .sh-answered { grid-template-columns: 1fr; gap: 20px; }
   .sh-answer-side {
-    padding-left: 0; border-left: 0;
+    /* Keeps a little inset when the left rule is dropped for the stacked
+       layout. At 0 the labels and the note underneath sit flush against the
+       window frame and read as clipped. */
+    padding-left: 2px; padding-right: 2px; border-left: 0;
     border-top: 1px solid var(--line); padding-top: 14px;
     grid-template-columns: repeat(2, 1fr); column-gap: 20px;
   }

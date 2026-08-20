@@ -170,8 +170,39 @@ export const VINTAGE = {
   src: "bench/results/2026-08-20-193717-corpus-vintage.json",
   peakYear: 2017,
   lastCoveredYear: 2018,
-  line: "Quoted from a web corpus whose coverage peaks in 2017 and ends in 2018. Anything time-sensitive is out of date, and that is the corpus, not a bug.",
+  // Deliberately a footnote, not a banner. It is true of every answer, so an
+  // alarm-coloured box on all of them would be noise a reader learns to skip -
+  // the badge sits in the metadata column and opens only if someone asks.
+  badge: "older source data · may be outdated",
+  detail:
+    "This system retrieves the closest relevant passage from a web corpus whose "
+    + "coverage peaks in 2017 and ends in 2018, then quotes it verbatim. Two things "
+    + "follow: answers may not reflect current conditions, and the closest passage "
+    + "is not always the one that answers your question.",
   short: "corpus: 2017-2018 web snapshot",
+};
+
+/**
+ * The second footnote: what the corpus is, as opposed to how old it is.
+ *
+ * A visitor who types a general question assumes a web-scale index behind it.
+ * This is a frozen 295,890-passage slice, and the retriever always returns its
+ * closest match - so "closest" and "answers the question" are not the same
+ * thing here, and ISSUES.md I26 and I31 are the measurement of that gap. Saying
+ * it costs nothing and pre-empts the most reasonable complaint a stranger can
+ * have about the demo.
+ *
+ * Figures come from CORPUS below, which reads slice_manifest.json, rather than
+ * being retyped here - two copies of a number is two chances for one to drift.
+ */
+export const SCOPE = {
+  src: "artifacts/slice_manifest.json",
+  badge: "",
+  detail:
+    "This is a frozen slice of MS MARCO - 295,890 passages, not the billions a "
+    + "web-scale search index holds. The system returns the closest passage it "
+    + "has, which is not always one that answers your question, and the passage "
+    + "that would answer it may simply not be in the slice.",
 };
 
 /* ------------------------------------------------------------------ */

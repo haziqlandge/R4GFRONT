@@ -121,6 +121,28 @@ export function openLiveTranscript({ onPartial, onFinal, onError } = {}) {
   };
 }
 
+/**
+ * The model's own answer, with no corpus behind it. Accurate mode only.
+ *
+ * Requested AFTER ours has painted, never before, so nothing here is inside the
+ * 200 ms band. Resolves to null on any failure - a missing aside is a panel
+ * that does not appear, and must never be the reason an answer looks broken.
+ */
+export async function aside(query) {
+  try {
+    const res = await fetch(`${RAG_CORE}/v1/aside`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query }),
+    });
+    if (!res.ok) return null;
+    const body = await res.json();
+    return body?.text || null;
+  } catch {
+    return null;
+  }
+}
+
 export async function health() {
   const out = { core: null, gateway: null };
   try {
@@ -300,7 +322,15 @@ export class Analytics {
 
   get count() { return this.samples.length; }
 
-  /** Nearest rank percentile, matching numpy.percentile(method="nearest"). */
+  /** Nearest-rank percentile, the same rule as numpy.percentile(method="nearest").
+   *
+   * One difference, stated because this file is read next to published figures:
+   * at an exact half-rank JS rounds up and numpy rounds to even, so a two-sample
+   * P50 can pick the upper value here and the lower there. It cannot affect
+   * anything published - those figures come from the Python harness, never from
+   * this - and it is invisible above a handful of samples, which is the range
+   * where the panel already refuses to call P100 a tail measurement.
+   */
   static pct(sorted, p) {
     if (!sorted.length) return null;
     const i = Math.min(sorted.length - 1, Math.max(0, Math.round((p / 100) * (sorted.length - 1))));

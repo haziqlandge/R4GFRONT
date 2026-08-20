@@ -623,6 +623,11 @@ were copied.
   right topic, wrong labelled position. I26's 62.1% is a statement about exact
   `is_selected` labels and must not be quoted as "62% of answers are useless".
   This is the most likely thing for a reader to get wrong about this project.
+- **The `accurate` mode aside calls Groq on every question.** It is outside
+  Band A and outside analytics by construction (`ISSUES.md` I34), but it draws
+  on the same 12,000-token window as the generative fallback (I7), so a judge
+  clicking repeatedly in accurate mode can exhaust it. The panel then simply
+  stops appearing, which is the intended degradation and not an error.
 - **The realtime STT relay is built and switched OFF** (`LIVE_TRANSCRIPT` in
   `frontends/_shared/app.js`). Read that constant's comment before turning it on:
   under `language_code=auto` Sarvam streams romanised Hindi partials, and pinning

@@ -57,14 +57,27 @@ body { font-size: 15px; }
 ::-moz-selection { background: var(--accent); color: var(--accent-fg); }
 
 .topbar { border-bottom: 1px dashed var(--line-strong); }
-.brand { text-transform: lowercase; letter-spacing: 0; text-decoration: none; }
+/* The wordmark and the team mark share one face, so the two things in the bar
+   that are NAMES read as a pair and everything else stays monospace. Cinzel is
+   caps-only by design, so lowercase input renders as small caps rather than
+   as lowercase - which is why this drops the lowercase transform the terminal
+   theme applies everywhere else. */
+.brand {
+  font-family: "Cinzel", "Optima", "Palatino Linotype", Palatino, Georgia, serif;
+  font-weight: 600;
+  font-size: 17px;
+  letter-spacing: 0.10em;
+  text-transform: none;
+  text-decoration: none;
+}
+/* The docs page keeps a word beside the name. It stays monospace: it is a
+   label, not part of the mark. */
+.brand small { font-family: var(--font-mono); letter-spacing: 0; }
 a.brand:hover { color: var(--accent); }
 a.brand:hover small { color: var(--fg-3); }
 
 .btn { text-transform: lowercase; }
-.seg { display: inline-flex; border: 1px solid var(--line-strong); }
-.seg button { padding: 5px 11px; font-size: 12px; color: var(--fg-3); }
-.seg button[data-on="true"] { background: var(--accent); color: var(--accent-fg); }
+
 
 /* min-width:0 all the way down. Every one of these is a grid item, and a grid
    item that refuses to shrink below its content is how one wide table drags the
@@ -307,10 +320,55 @@ a.brand:hover small { color: var(--fg-3); }
   .inputrow { grid-template-columns: 1fr; gap: 16px; }
   .miccol { justify-items: start; }
 
+  /* Breathing room on a phone. At 18px the answer text, the citation rows and
+     the stats column all run close enough to the frame to read as clipped -
+     and the stats column is the worst of them, because its values are
+     right-aligned and land hard against the border once the left rule is
+     dropped for the stacked layout. */
+  .win-body { padding: 20px 16px 18px; }
+  .win-output .win-body { padding-bottom: 20px; }
+  .sh-answer-side { padding-right: 2px; }
+  .sh-cite-head { padding-right: 12px; }
+
   /* A phone gets the essentials. Each of these is a second reading of something
      already on screen, or a hint about a key the device does not have, and
      stacking all of them is what made the page feel crammed rather than dense.
      Nothing measured is hidden: the waterfall still prints the band it is
      reporting, and the boundary is stated in full on the documentation page. */
   .boundary, .sh-side-note, .term-esc, .mickey { display: none; }
+}
+
+.seg { display: inline-flex; border: 1px solid var(--line-strong); }
+.seg button { padding: 5px 11px; font-size: 12px; color: var(--fg-3); }
+.seg button[data-on="true"] { background: var(--accent); color: var(--accent-fg); }
+
+/* The team mark, centred between the brand and the controls.
+   Cinzel is engraved Roman capitals - elegant and upright, never italic, which
+   is what was asked for and also the only kind of "calligraphic" that survives
+   next to a monospace terminal face without looking like a different website.
+   The stack falls back through the system serifs, so a blocked or slow font
+   request costs polish and never legibility. */
+.brandmark {
+  font-family: "Cinzel", "Optima", "Palatino Linotype", Palatino, Georgia, serif;
+  font-weight: 600;
+  font-style: normal;
+  font-size: 17px;
+  letter-spacing: 0.30em;
+  text-indent: 0.30em;   /* the tracking adds a trailing gap; this re-centres it */
+  line-height: 1;
+  color: var(--fg-2);
+  white-space: nowrap;
+  user-select: none;
+}
+.brandmark-star {
+  color: var(--accent);
+  font-size: 0.82em;
+  vertical-align: 0.06em;
+}
+
+/* The team mark is the first thing to go when the bar gets tight: the brand
+   already names the project, and at tablet width the mark was competing with
+   the mode toggle and the links for a row that has to stay one line. */
+@media (max-width: 900px) {
+  .brandmark { display: none; }
 }

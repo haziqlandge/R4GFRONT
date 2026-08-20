@@ -222,6 +222,28 @@ mean I26's 62.1% is a statement about exact `is_selected` labels and must never
 be quoted as "62% of answers are useless". If anyone re-opens the quality
 question, that is the first thing to understand.
 
+### The unverified aside, and the two modes
+
+`accurate` now shows a second framed section below the answer - the same
+question answered by the model from its own knowledge, headed "external source -
+not from corpus", with no citation and no grounding check. `fast` does not show
+it and makes no network call at all.
+
+Three things about it that are load-bearing (`ISSUES.md` I34):
+
+- **It is requested after the answer paints, on its own endpoint.** Band A still
+  contains zero network calls and every published latency figure is unchanged.
+- **Analytics records our retrieval only.** The aside never reaches
+  `analytics.record`, so the session percentiles still describe this pipeline.
+- **It labels, it never adjudicates.** I33 rejected an external model that
+  *verifies* our answer, because on a 2017 corpus the disagreement fires hardest
+  on the answers most faithful to it. Showing both is fine; letting one overrule
+  the other is the thing that failed measurement.
+
+The two modes are identical for any top-1 above 1.877, which is every sample
+question on the page. Do not assume the toggle is decoration - it is not, it is
+just invisible on the demo path.
+
 ### Live on the site
 
 Every answer now carries its corpus vintage - "a web corpus whose coverage peaks

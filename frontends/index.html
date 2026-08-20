@@ -5,15 +5,19 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>shruti · voice rag, measured</title>
 <meta name="description" content="Speak a question, get a cited answer from MSMARCO-XI in under 200ms, or an honest refusal.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600&display=swap">
 <link rel="stylesheet" href="/_shared/base.css">
 <link rel="stylesheet" href="theme.css">
 </head>
 <body>
 <div class="shell">
   <header class="topbar">
-    <a class="brand" href="index.html">shruti <small>voice rag, measured</small></a>
+    <a class="brand" href="index.html">shruti</a>
     <span class="topbar-spacer"></span>
-    <span class="sh-health" data-sh="health"></span>
+    <span class="brandmark" aria-label="OK4T">OK<span class="brandmark-star" aria-hidden="true">✦</span>T</span>
+    <span class="topbar-spacer"></span>
     <span class="seg" role="group" aria-label="Answer mode">
       <button data-mode="fast" type="button">fast</button>
       <button data-mode="accurate" type="button">accurate</button>
@@ -56,6 +60,13 @@
     <section class="win win-output">
       <h2 class="win-title">output</h2>
       <div class="win-body" data-sh="answer"></div>
+    </section>
+
+    <!-- Its own frame on purpose. Nothing in here came from the corpus, nothing
+         is cited, and it must never read as a continuation of the answer above. -->
+    <section class="win win-aside" data-sh="aside" hidden>
+      <h2 class="win-title">unverified</h2>
+      <div class="win-body"></div>
     </section>
 
     <div class="cols">

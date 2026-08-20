@@ -541,6 +541,25 @@ GROQ_MODEL: Final[str] = "openai/gpt-oss-20b"
 GROQ_TEMPERATURE: Final[float] = 0.0
 GROQ_MAX_TOKENS: Final[int] = 160
 
+# The unverified aside gets its own, larger budget and its own reasoning setting.
+#
+# 160 is right for the generative PATH, where the model paraphrases passages it
+# has been handed. It is wrong for the aside, which answers from its own
+# knowledge - and gpt-oss-20b is a REASONING model, so it spends tokens thinking
+# before it writes anything. At 160 the thinking ate the budget and the answer
+# arrived cut off mid-sentence: "Eric Adams is the".
+#
+# This is the same trap config.py already records for qwen3.6-27b, and the one
+# scripts/11_llm_judge.py hit at max_tokens 8, where the reasoning consumed the
+# whole cap and `content` came back an empty string. Measured there: a
+# one-word verdict cost 53 completion tokens.
+#
+# 320 with reasoning_effort "low" leaves room for the thinking AND two finished
+# sentences. The aside is not on the fast path, so the extra tokens cost latency
+# nobody is measuring rather than budget somebody published.
+ASIDE_MAX_TOKENS: Final[int] = 320
+ASIDE_REASONING_EFFORT: Final[str] = "low"
+
 # Hard ceiling on the call. Generous relative to the 352ms floor and deliberately
 # finite: an unbounded wait on the fallback path turns a slow answer into a hung
 # request, and the extractive answer is already in hand by the time this runs.

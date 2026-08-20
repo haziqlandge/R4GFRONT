@@ -20,11 +20,10 @@
  *   data-sh="error"      inline error line
  *   data-sh="form"       text fallback form, containing data-sh="input"
  *   data-sh="samples"    container that gets sample question buttons
- *   data-mode="fast"     any button that switches answer mode
  */
 
-import { Recorder, Analytics, ask, transcribe, openLiveTranscript, health, fmt, esc, SAMPLE_QUERIES } from "./core.js";
-import { renderAnswer, renderWaterfall, renderAnalytics, renderHealth } from "./ui.js";
+import { Recorder, Analytics, ask, aside, transcribe, openLiveTranscript, health, fmt, esc, SAMPLE_QUERIES } from "./core.js";
+import { renderAnswer, renderAside, renderWaterfall, renderAnalytics, renderHealth } from "./ui.js";
 import { BANDS, ROUTING, PROJECT } from "./data.js";
 
 export function boot() {
@@ -33,10 +32,27 @@ export function boot() {
     mic: $("mic"), orb: $("orb"), state: $("state"), transcript: $("transcript"),
     answer: $("answer"), waterfall: $("waterfall"), analytics: $("analytics"),
     health: $("health"), total: $("total"), stt: $("stt"), error: $("error"),
-    form: $("form"), input: $("input"), samples: $("samples"),
+    form: $("form"), input: $("input"), samples: $("samples"), aside: $("aside"),
   };
 
   const analytics = new Analytics();
+
+  /* ---------------------------------------------------------------- *
+   * Two modes, and only one of them may touch the network.
+   *
+   *   fast      extractive only. No LLM call can happen, which is what makes
+   *             the published Band A figure describe every request on this path.
+   *   accurate  the same answer, plus the generative band for mid-confidence
+   *             queries, plus the unverified aside below the answer.
+   *
+   * They are identical for any top-1 above the 1.877 routing threshold, which
+   * is every sample question on this page (7.66 to 10.56). Measured on the
+   * deployed service, the band where they differ:
+   *
+   *     who is narendra modi                 2.63   both ANSWERED, ~105 ms
+   *     who is the prime minister of india   1.20   fast ANSWERED 100 ms /
+   *                                                 accurate ABSTAINED 506 ms
+   * ---------------------------------------------------------------- */
   let mode = "fast";
   let sttMs = null;
   let raf = 0;
@@ -117,6 +133,45 @@ export function boot() {
     el.error.hidden = !msg;
   };
 
+  /* ---------------------------------------------------------------- *
+   * The placeholder shrinks to fit, rather than switching at a breakpoint.
+   *
+   * "type a question in english or hindi" is 308 px in the input's face and
+   * clips on a phone, where the box is a little over 200. A media query would
+   * work for one font at one zoom; measuring the actual box does not care which
+   * of those changed, and the mic column collapsing at 620 changes the width
+   * without changing the viewport class.
+   *
+   * Longest first. The last entry is the floor and ships even if nothing fits,
+   * because an empty placeholder is worse than a cramped one.
+   * ---------------------------------------------------------------- */
+  const PLACEHOLDERS = [
+    "type a question in english or hindi",
+    "type a question in eng or hindi",
+    "type ques in eng or hindi",
+    "type in eng or hindi",
+  ];
+
+  const fitPlaceholder = () => {
+    if (!el.input) return;
+    const cs = getComputedStyle(el.input);
+    const avail = el.input.clientWidth
+      - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    if (!(avail > 0)) return;  // display:none while the text box is off
+    fitPlaceholder.ctx ||= document.createElement("canvas").getContext("2d");
+    const ctx = fitPlaceholder.ctx;
+    ctx.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+    const pick = PLACEHOLDERS.find((t) => ctx.measureText(t).width <= avail);
+    el.input.placeholder = pick || PLACEHOLDERS[PLACEHOLDERS.length - 1];
+  };
+
+  if (el.input && typeof ResizeObserver === "function") {
+    // The input itself, not the window: it is what has to hold the text, and it
+    // resizes for reasons the window does not (the chat toggle, the mic column).
+    new ResizeObserver(fitPlaceholder).observe(el.input);
+  }
+  fitPlaceholder();
+
   const recorder = new Recorder({
     // Every PCM frame goes two places: the buffer that /v1/stt/file would upload,
     // and the live socket, when one is open.
@@ -167,10 +222,31 @@ export function boot() {
     if (!query?.trim()) return;
     setError("");
     document.body.dataset.busy = "true";
+    renderAside(el.aside, null);   // clear the previous question's aside first
     try {
       const res = await ask(query, mode);
+
+      // ANALYTICS SEES OUR RETRIEVAL AND NOTHING ELSE. `res` is the /v1/answer
+      // trace; the aside below is a separate request on a separate endpoint and
+      // is never recorded. The percentiles on this page describe this system's
+      // pipeline, and folding an external model's round trip into them would
+      // make them describe neither.
       analytics.record(res, sttMs);
       paint(res);
+
+      // Accurate only, and deliberately AFTER paint(). Our answer is already on
+      // screen and already timed by the time this is requested, so the panel
+      // costs nothing against the 200 ms band - the fast path still makes zero
+      // network calls, and this one is not on it.
+      if (mode === "accurate") {
+        aside(query).then((text) => {
+          // The mode can change, or another question can be asked, while this is
+          // in flight. Only paint if the answer it belongs to is still showing.
+          if (mode === "accurate" && el.transcript?.textContent === query) {
+            renderAside(el.aside, text);
+          }
+        });
+      }
     } catch (err) {
       setError(`Could not reach the answer service on port 8000. Is rag_core running? (${err.message})`);
     } finally {
@@ -294,6 +370,9 @@ export function boot() {
       document.querySelectorAll("[data-mode]").forEach((b) => {
         b.dataset.on = String(b.dataset.mode === mode);
       });
+      // Leaving accurate takes the aside with it: it belongs to that mode, and
+      // a stale panel under a fast answer would claim a comparison nobody ran.
+      if (mode !== "accurate") renderAside(el.aside, null);
     });
     btn.dataset.on = String(btn.dataset.mode === mode);
   });
@@ -347,11 +426,10 @@ export function boot() {
     off() { return chat.set(false); },
     toggle() { return chat.set(!chat.visible); },
   };
-  // OFF by default: this is a voice demo and the microphone should be the first
-  // thing a visitor reaches for. The box is still in the DOM and still wired -
-  // Ctrl + . , shruti.chat.on() or "on chat" in the page console bring it back
-  // in one action, which is what a judge with no microphone needs.
-  document.body.dataset.chat = "off";
+  // ON by default. It was briefly off so the page would read voice-first, but a
+  // visitor who cannot or will not talk to a laptop needs the box in front of
+  // them, not one keystroke away behind a shortcut nobody advertises.
+  document.body.dataset.chat = "on";
 
   const typing = (t) =>
     t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable);

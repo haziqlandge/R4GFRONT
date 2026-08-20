@@ -1660,3 +1660,77 @@ its `reasoning` field and returns `finish_reason: "length"` with an **empty**
 reported nothing wrong. `config.py` already records this exact behaviour for
 `qwen3.6-27b` one model over. The verdict costs 53 completion tokens; 64 is the
 floor, with `reasoning_effort: "low"`.
+
+---
+
+## I34 - the unverified aside: showing the model beside the answer, never instead of it
+
+**Not a defect. A feature with a rejected twin, recorded so nobody rebuilds the
+twin by accident.**
+
+### What ships
+
+In `accurate` mode only, a second framed section appears below the answer,
+headed **"external source - not from corpus"**. It holds the same question
+answered by `openai/gpt-oss-20b` from its own knowledge, with no retrieval, no
+citation and no grounding check, and it says so in its own footer.
+
+The contrast is the point. Ask "who is narendra modi" and the corpus answers
+with a passage about Venkaiah Naidu at a confidence of 2.63 - faithful to a
+corpus that peaks in 2017 - while the aside says Modi has been Prime Minister
+since 2014. A reader can see, in one screen, that the first answer is a correct
+quotation of an old page rather than a bug.
+
+### What was rejected, and why this is not that
+
+`ISSUES.md` I33 records a council review rejecting an external model as a
+**verifier** - one that compares the two answers and warns the user when they
+disagree. That fails on measurement: the corpus peaks in 2017, so a current
+model disagrees hardest on the answers most FAITHFUL to it, and the flag ends up
+anti-correlated with correctness.
+
+**This labels; it does not adjudicate.** Nothing about the aside changes,
+retracts, re-ranks or annotates the answer above it. Both are shown, both are
+attributed, and the reader decides. That distinction is the entire reason this
+is defensible and the verifier was not.
+
+### Three constraints it is built to respect
+
+1. **It is not in Band A, and cannot be.** `/v1/aside` is a separate endpoint,
+   requested by the browser AFTER the answer has painted. The fast path still
+   makes zero network calls, and the published latency figures describe exactly
+   what they did before. Folding it into `/v1/answer` would have put a ~700 ms
+   Groq round trip inside the number the submission rests on.
+2. **Analytics never sees it.** The session percentiles record the `/v1/answer`
+   trace only. Mixing an external model's round trip into a distribution that
+   describes our pipeline would make it describe neither.
+3. **It shares the generative path's circuit breaker.** Both draw on one rate
+   limit (I7, 12,000 tokens per window), and an aside must never be the reason
+   the real fallback is unavailable. Any failure returns null and the section
+   simply does not appear.
+
+### The token trap, paid for a third time
+
+The first version came back cut off mid-sentence: **"Eric Adams is the"**.
+`GROQ_MAX_TOKENS` is 160, which is right for the generative path where the model
+paraphrases passages it was handed, and wrong here - `gpt-oss-20b` is a
+REASONING model and spends tokens thinking before it writes.
+
+This project has now hit that trap three times: `config.py` records it for
+`qwen3.6-27b`, `scripts/11_llm_judge.py` hit it at `max_tokens: 8` where the
+reasoning consumed the entire cap and `content` came back an empty string, and
+now the aside. `ASIDE_MAX_TOKENS = 320` with `reasoning_effort: "low"` leaves
+room for the thinking and two finished sentences.
+
+**If a Groq answer looks truncated or empty, check the token cap against the
+reasoning budget before suspecting anything else.**
+
+### Where it could go
+
+`gemini-3.5-flash-lite` - "our fastest, most cost-effective 3.5 model for
+high-throughput execution" - with `thinking_level: "minimal"` would be faster,
+and unlike Groq it supports `tools: [{"type": "google_search"}]`, which would
+make the aside show genuinely CURRENT facts rather than a model's training-time
+memory. It needs a Google **AI Studio** key, which is free tier and requires no
+billing account; Vertex AI on the GCP project would bill the trial credits that
+keep the site alive. The swap is behind `/v1/aside` and touches no frontend.

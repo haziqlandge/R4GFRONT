@@ -36,6 +36,8 @@ from typing import Final, Sequence
 import httpx
 
 from ..config import (
+    ASIDE_MAX_TOKENS,
+    ASIDE_REASONING_EFFORT,
     GROQ_CONNECT_TIMEOUT_MS,
     GROQ_CONTEXT_PASSAGES,
     GROQ_MAX_TOKENS,
@@ -61,6 +63,29 @@ SYSTEM_PROMPT: Final[str] = (
     "Answer in the same language as the question. "
     "If the passages do not contain the answer, reply with exactly: INSUFFICIENT_CONTEXT. "
     "Be concise: two sentences at most."
+)
+
+# THE OTHER PROMPT: the model answering as itself, with no passages at all.
+#
+# Everything above constrains the model to the corpus, which is what makes the
+# generative PATH safe. This one deliberately does the opposite, and it is not a
+# contradiction because it never becomes the answer: it is shown beside our
+# answer, labelled as unverified and uncited, so a reader can see where a 2017
+# corpus and a current model disagree.
+#
+# Why that is worth showing rather than hiding: the corpus peaks in 2017
+# (bench/results/2026-08-20-193717-corpus-vintage.json), so it says India's
+# population is 1.21 billion and bitcoin costs $1,242. Both are faithful
+# quotations and both look like defects. Putting the model's answer next to
+# ours turns the most confusing thing about the demo into the most transparent.
+#
+# What this must NEVER do is overrule our answer. A council review rejected
+# exactly that: disagreement is measured against a stale corpus, so the flag
+# would fire hardest on the answers most FAITHFUL to it. Label, never adjudicate.
+ASIDE_PROMPT: Final[str] = (
+    "Answer the question from your own knowledge, in the same language as the "
+    "question. Be direct and factual. Two sentences at most. "
+    "If you are not confident, say so plainly rather than guessing."
 )
 
 # The model's own abstention token. Returned verbatim so the router can turn it
@@ -191,3 +216,48 @@ class GroqClient:
         if not text or _is_abstention(text):
             return None
         return text
+
+    async def aside(self, query: str) -> str | None:
+        """The model answering as itself, with no retrieved context.
+
+        Never part of the pipeline and never inside Band A. It is requested by
+        the browser AFTER our answer has already painted, on its own endpoint,
+        so no measured latency figure moves and the fast path still makes zero
+        network calls. Returns None on any failure - a missing aside is a panel
+        that does not appear, never a broken answer.
+
+        It shares the circuit breaker with the generative path on purpose: the
+        two draw on one rate limit (ISSUES.md I7, 12,000 tokens per window), and
+        an aside must never be the reason the real fallback is unavailable.
+        """
+        if not self.configured or self._client is None or not self.breaker.allows():
+            return None
+
+        payload = {
+            "model": self.model,
+            "temperature": GROQ_TEMPERATURE,
+            "max_tokens": ASIDE_MAX_TOKENS,
+            "reasoning_effort": ASIDE_REASONING_EFFORT,
+            "messages": [
+                {"role": "system", "content": ASIDE_PROMPT},
+                {"role": "user", "content": query},
+            ],
+        }
+
+        async def _call() -> str:
+            assert self._client is not None
+            resp = await self._client.post(GROQ_URL, json=payload)
+            if resp.status_code == 429:
+                raise RateLimited("groq", "rate limited")
+            if resp.status_code >= 400:
+                raise UpstreamUnavailable("groq", f"HTTP {resp.status_code}")
+            data = resp.json()
+            return _clean(data["choices"][0]["message"]["content"] or "")
+
+        try:
+            text = await call_with_policy(
+                _call, self.breaker, timeout_ms=GROQ_TIMEOUT_MS, retries=0
+            )
+        except (UpstreamUnavailable, RateLimited, httpx.HTTPError):
+            return None
+        return text or None

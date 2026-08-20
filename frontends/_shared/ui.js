@@ -9,7 +9,7 @@
  */
 
 import { fmt, esc } from "./core.js";
-import { VINTAGE } from "./data.js";
+import { SCOPE, VINTAGE } from "./data.js";
 
 /* ------------------------------------------------------------------ */
 /* Answer, citations, abstention                                       */
@@ -158,11 +158,18 @@ export function renderAnswer(el, res, floor = -1.103) {
         ${rest ? `<p class="sh-answer-rest">${esc(rest)}</p>` : ""}
         <div class="sh-answer-meta">
           <span class="sh-badge" data-path="${esc(res.path)}">${esc(res.path)}</span>
-          <span class="sh-fineprint">${res.path === "EXTRACTIVE"
-            ? "Quoted from the passage below. No model wrote this."
-            : "Written by the fallback model from the passages below."}</span>
+          <button class="sh-note-head" type="button" aria-expanded="false"
+                  aria-controls="sh-note-vintage"
+                  title="${esc(VINTAGE.detail)}"><span class="sh-note-label">${esc(VINTAGE.badge)}</span><span class="sh-note-glyph" aria-hidden="true">⚠</span></button>
         </div>
-        <p class="sh-vintage">${esc(VINTAGE.line)}</p>
+        <div class="sh-note-body" id="sh-note-vintage" hidden><p>${esc(VINTAGE.detail)}</p></div>
+        <p class="sh-fineprint sh-provenance">${res.path === "EXTRACTIVE"
+          ? "Quoted from data retrieved below"
+          : "Written by the fallback model from the data retrieved below"}<button
+            class="sh-note-head" type="button" aria-expanded="false"
+            aria-controls="sh-note-scope"
+            title="${esc(SCOPE.detail)}"><span class="sh-note-glyph" aria-hidden="true">⚠</span></button></p>
+        <div class="sh-note-body" id="sh-note-scope" hidden><p>${esc(SCOPE.detail)}</p></div>
         ${cites ? `<ol class="sh-cites">${cites}</ol>` : ""}
       </div>
       <aside class="sh-answer-side">
@@ -185,6 +192,22 @@ export function renderAnswer(el, res, floor = -1.103) {
         <p class="sh-side-note">Score is the cross encoder reading your question against the passage. Higher means it answers the question, not merely shares its topic.</p>
       </aside>
     </div>`;
+
+  // Same expand pattern as a citation, so the page has one way of doing this.
+  // `title` covers hover; the click is for touch, where hover does not exist.
+  // Both footnotes expand the same way, and each names the panel it controls via
+  // aria-controls rather than being found by walking the DOM - the buttons sit
+  // at different depths (one inside the meta row, one inside a paragraph), and
+  // nextElementSibling was wrong for both.
+  el.querySelectorAll(".sh-note-head").forEach((btn) => {
+    const body = el.querySelector(`#${btn.getAttribute("aria-controls")}`);
+    if (!body) return;
+    btn.addEventListener("click", () => {
+      const open = !body.hidden;
+      body.hidden = open;
+      btn.setAttribute("aria-expanded", String(!open));
+    });
+  });
 
   el.querySelectorAll(".sh-cite-head").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -368,6 +391,39 @@ function publishedTable(published) {
 /* ------------------------------------------------------------------ */
 /* Health                                                              */
 /* ------------------------------------------------------------------ */
+
+/**
+ * The unverified aside, drawn BELOW the answer and visibly not part of it.
+ *
+ * It is the model talking, with no passage behind it and no citation possible,
+ * so it gets the refusal colour rather than the answer's. The point is the
+ * CONTRAST: on a corpus that peaks in 2017 this is where a reader sees that
+ * "1.21 billion" is a faithful quotation of an old page rather than a bug.
+ *
+ * It never overrules the answer above it and never hides it. A council review
+ * rejected letting a current model retract a corpus-grounded answer, because on
+ * a stale corpus the disagreement fires hardest on the answers most faithful to
+ * it. This labels; it does not adjudicate.
+ */
+export function renderAside(el, text, model) {
+  if (!el) return;
+  const body = el.querySelector(".win-body");
+  if (!body) return;
+  if (!text) { body.innerHTML = ""; el.hidden = true; return; }
+  el.hidden = false;
+  body.innerHTML = `
+    <div class="sh-aside">
+      <p class="sh-aside-head">
+        <span class="sh-aside-glyph" aria-hidden="true">⚠</span>
+        <span>external source · not from corpus</span>
+      </p>
+      <p class="sh-aside-text">${esc(text)}</p>
+      <p class="sh-aside-foot">
+        no source · no citation · outside the grounding check${
+          model ? ` · ${esc(model)}` : ""}
+      </p>
+    </div>`;
+}
 
 export function renderHealth(el, h) {
   const core = h.core?.status === "ok";
