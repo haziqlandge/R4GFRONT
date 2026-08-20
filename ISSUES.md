@@ -1564,7 +1564,7 @@ decline after a confidently wrong extraction.
 ### The proposal, and the version of it worth testing
 
 The original idea was to compare our answer against an LLM's answer and warn the
-user on disagreement. An LLM council killed that unanimously, and correctly: the
+user on disagreement. A council review killed that unanimously, and correctly: the
 corpus peaks in 2017 (`bench/results/2026-08-20-193717-corpus-vintage.json`), so
 a current model disagrees hardest on the answers **most faithful** to the corpus.
 The flag would be anti-correlated with correctness.

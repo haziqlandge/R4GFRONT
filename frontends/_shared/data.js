@@ -153,14 +153,14 @@ export const STAGES = {
  * Both are correct QUOTATIONS of a corpus that stopped being current years ago,
  * and both look like bugs to anyone who does not know that.
  *
- * An LLM council reviewing a proposal to bolt an external model onto the answer
+ * A council review of a proposal to bolt an external model onto the answer
  * path as a live fact-checker landed on this instead, and the reasoning is the
  * part worth keeping: "may be incorrect but was pulled from our dataset" is
  * unconditionally true of every extractive answer this system will ever return.
  * A caveat that is always true does not need a network call to decide when to
  * show it. Show it always, at zero latency, zero dependency and zero rate limit.
  *
- * THE DATE IS MEASURED, NOT ASSUMED. The council's own draft said "2016" and
+ * THE DATE IS MEASURED, NOT ASSUMED. The first draft of this line said "2016" and
  * nothing in this repo establishes that; the corpus describes Venkaiah Naidu as
  * Vice-President "since 11 August 2017". Counting every four-digit year in the
  * English half puts the peak at 2017 with 2,457 mentions and the cliff at 2018,

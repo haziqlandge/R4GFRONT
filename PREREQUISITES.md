@@ -272,7 +272,7 @@ Do not spend time rediscovering these.
 
 ---
 
-## 7. What to read next, and how to start your Claude session
+## 7. What to read next, and how to start a session
 
 Read in this order. `Memory.md` first — it carries the *why*, which is the expensive part to reconstruct.
 
@@ -283,7 +283,7 @@ Read in this order. `Memory.md` first — it carries the *why*, which is the exp
 5. [`ISSUES.md`](ISSUES.md) — measured open problems
 6. [`Architecture.md`](Architecture.md), [`Latency.md`](Latency.md) — design and budget
 
-Per-box cold-session prompts are in [`HANDOFF.md`](HANDOFF.md) §7. Paste yours into a fresh Claude session after finishing §3.
+Per-box cold-session prompts are in [`HANDOFF.md`](HANDOFF.md) §7. Paste yours into a fresh session after finishing §3.
 
 ### Two working rules that are easy to get wrong
 

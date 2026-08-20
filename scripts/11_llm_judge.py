@@ -7,7 +7,7 @@ threshold, so the system currently answers confidently and has no idea when it
 is wrong (I26: 62.1% wrong under strict labelling).
 
 WHY THIS SIGNAL IS DIFFERENT FROM THE ONE A COUNCIL REJECTED
-A council reviewing a proposal to fact-check our answers against an external LLM
+A council review of a proposal to fact-check our answers against an external LLM
 killed it, correctly: the corpus peaks in 2017, so a current model disagrees
 hardest on the answers MOST faithful to the corpus, and the flag ends up
 anti-correlated with correctness.

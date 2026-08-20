@@ -605,6 +605,20 @@ were copied.
 - **Band C has four samples, not a distribution.** The mic path works in both
   languages, on the deployed box, verified by a person; how long it takes across
   many utterances is still unmeasured. Observed speech: 366, 705, 798, 1016 ms.
+- **There is no correctness signal, and three candidates have now failed.**
+  Absolute rerank score AUC 0.606, margin over second 0.586, an LLM
+  context-sufficiency judge 0.542, where 0.500 is a coin flip (`ISSUES.md` I31,
+  I33). Do not build a fourth without reading those two entries. In particular
+  the live external-LLM cross-checker is rejected on measurement, not on taste.
+- **Hit@1 is measuring labels as much as retrieval.** 75% of the answers scored
+  wrong in the I33 study retrieved a passage from the same query candidate set -
+  right topic, wrong labelled position. I26's 62.1% is a statement about exact
+  `is_selected` labels and must not be quoted as "62% of answers are useless".
+  This is the most likely thing for a reader to get wrong about this project.
+- **The realtime STT relay is built and switched OFF** (`LIVE_TRANSCRIPT` in
+  `frontends/_shared/app.js`). Read that constant's comment before turning it on:
+  under `language_code=auto` Sarvam streams romanised Hindi partials, and pinning
+  the language corrupts the other language's FINAL. `ISSUES.md` I30.
 - **The realtime STT socket is BUILT and DELIBERATELY OFF.** `/v1/stt/live`
   exists in `stt_gateway`, the browser client exists in `_shared/core.js`, both
   were tested end to end, and `LIVE_TRANSCRIPT` in `_shared/app.js` is `false`.

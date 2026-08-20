@@ -7,8 +7,8 @@ $1,242, and both are correct *quotations* of a corpus that stopped being current
 years ago.
 
 Saying so on screen turns the most embarrassing thing about the demo into the
-most honest thing about it - but only if the date is right. An LLM council
-reviewing this proposal recommended the line "extracted verbatim from a 2016 MS
+most honest thing about it - but only if the date is right. A council review
+of this proposal recommended the line "extracted verbatim from a 2016 MS
 MARCO snapshot". **Nothing in this repo establishes 2016**, and the corpus
 plainly contains material from later than that: it describes Venkaiah Naidu as
 Vice-President "since 11 August 2017" and Trump as the "45th and current

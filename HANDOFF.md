@@ -1,10 +1,10 @@
 # HANDOFF.md
 
-**For a teammate picking this up on their own machine, with or without an AI coding session.**
+**For a teammate picking this up on their own machine.**
 
 The repo is the handoff. This file covers only what the repo cannot: what a human has to do by hand, what was decided and why it is not in the code yet, and what is deliberately not committed.
 
-Last updated: 20 August 2026, after Phase 7. **It is deployed, the 200 ms claim now holds on the deployed box, and Phase 9 is the only phase left.** See section 1A.
+Last updated: 21 August 2026. **It is deployed, the 200 ms claim holds on the deployed box, C3 is built, and Phase 9 is the only phase left.** See section 1A for how to reach the box, and 1B for what changed on 21 August.
 
 > **On a brand-new machine, read [`PREREQUISITES.md`](PREREQUISITES.md) first.** It takes a bare box to a verified one. This file assumes that is done.
 
@@ -167,6 +167,67 @@ phases old.
 from any machine and measures the deployed service. Band A comes from
 `trace.total_ms`, which `rag_core` measures inside its own process, so the
 network hop is reported separately as wall clock and never mixed in.
+
+---
+
+## 1B. What changed on 21 August, and what it means for the claims
+
+Four things landed after the Phase 7 write-up. None of them changed the served
+architecture; three of them changed what may honestly be *said* about it.
+
+### C3 is built. It lost, and the loss is the finding.
+
+`DONT-FORGET.md` 2 used to say C3 was never built. It is built now
+(`chunking/c3_semantic.py`, 61 minutes, 346,383 chunks) and it is significantly
+**worse** than C1 on Recall@10 in both languages. Seven strategies are now
+measured, not six, and the comparison was **re-run from scratch with all seven in
+one process** rather than appending a row - `ISSUES.md` I21 is about exactly that
+mistake. Every pre-existing row reproduced to three decimals.
+
+Why it lost: C3 cuts at sentence boundaries and does not overlap; C1 is a
+96-token window with 24 tokens of overlap. **On this corpus the overlap is doing
+the work, not the boundary placement.** `ISSUES.md` I32.
+
+### Answers now come back in the language they were asked in
+
+Top-1 used to arrive in the other language on 1.8% of queries. Those queries
+scored 0.0% on Hit@1 and 66.7% once the language tag is ignored - six of nine had
+found the RIGHT passage and were counted as total misses, because gold ids are
+language-tagged. Fixed by answering from the parallel twin, which exists for 100%
+of passage groups. Hit@1 37.1% to 38.2%. `ISSUES.md` I31.
+
+### There is still no correctness signal, and that is now measured three ways
+
+| candidate | AUC vs our own correctness |
+|---|---|
+| absolute rerank score | 0.606 |
+| margin over second | 0.586 |
+| an LLM context-sufficiency judge | 0.542 |
+
+0.500 is a coin flip. **Do not build a fourth one without reading `ISSUES.md`
+I31 and I33 first.** In particular, do not build the live external-LLM
+cross-checker: a council review killed it unanimously, the reasoning is in I33,
+and the short version is that the corpus peaks in 2017 so a current model
+disagrees hardest on the answers most FAITHFUL to it.
+
+### Hit@1 is measuring labels more than retrieval
+
+The single most important thing on this list. Of 65 answers scored wrong in the
+I33 study, **49 (75%) retrieved a passage from the same query candidate set** -
+right topic, wrong labelled position. Under a topical target 99 of 115 (86%) are
+right, against 43% under strict gold.
+
+**This does not license "the system is 86% correct"** and I33 says why. It does
+mean I26's 62.1% is a statement about exact `is_selected` labels and must never
+be quoted as "62% of answers are useless". If anyone re-opens the quality
+question, that is the first thing to understand.
+
+### Live on the site
+
+Every answer now carries its corpus vintage - "a web corpus whose coverage peaks
+in 2017 and ends in 2018" - measured by `scripts/10_corpus_vintage.py` rather
+than assumed. It is unconditional on purpose: the caveat is true of every
+extractive answer, so nothing has to decide when to show it.
 
 ---
 
@@ -462,7 +523,7 @@ Do not rediscover these.
 
 ---
 
-## 7. Starting an AI coding session on this repo
+## 7. Starting a session on this repo
 
 Finish `PREREQUISITES.md` first — the prompts below assume a verified box.
 

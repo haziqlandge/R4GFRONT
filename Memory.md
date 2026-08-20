@@ -2,7 +2,7 @@
 
 Rolling context log for team OK4T, Task 2.
 
-**Purpose.** If a session ends, a laptop dies, a teammate joins late, or a new AI coding session starts cold, this file is what gets read first. It carries the *why*, not just the *what*. Code shows what was built; this file shows what was considered and rejected, which is the part that is expensive to reconstruct.
+**Purpose.** If a session ends, a laptop dies, a teammate joins late, or a new session starts cold, this file is what gets read first. It carries the *why*, not just the *what*. Code shows what was built; this file shows what was considered and rejected, which is the part that is expensive to reconstruct.
 
 ---
 
@@ -203,7 +203,7 @@ Stated plainly in the README rather than quietly dropped, per `Rules.md` §1's n
 _Append below as phases complete. Newest at the bottom._
 
 ### [Phase 0] Foundation and measurement
-**Date:** 14 Aug 2026 | **Who:** Claude Code session | **Branch:** `main`
+**Date:** 14 Aug 2026 | **Who:** BENCH | **Branch:** `main`
 
 **What happened**
 Repo initialised, the eight planning docs moved to root, the full `Architecture.md` §5 tree created with named stubs. `.venv` on Python 3.12. Built `services/rag_core/harness/trace.py` (Span, Trace, `span()` context manager, `add_skipped()`, serialization matching the `Architecture.md` §9 contract) and `scripts/04_bench_latency.py` (warmup discard, `numpy.percentile` with `method="nearest"`, dated immutable JSON output, `--stub` and `--breakdown`). 15 tests in `tests/test_harness.py`, all passing.
@@ -236,7 +236,7 @@ Result: `bench/results/2026-08-14-170359-banda-stub.json`.
 ---
 
 ### [Phase 1] Corpus slice and freeze
-**Date:** 14 Aug 2026 | **Who:** Claude Code session | **Branch:** `main`
+**Date:** 14 Aug 2026 | **Who:** BENCH | **Branch:** `main`
 
 **What happened**
 `scripts/00_download_dataset.py` pulls `validation/hinval.parquet` (440 MB, 97,941 rows) and asserts the schema before anything else runs. `scripts/01_freeze_slice.py` samples 15,000 queries at seed 20260814, explodes them into 295,890 parallel English/Hindi `Passage` records, dedups, assigns disjoint test/dev/corpus_only splits, and writes `passages.parquet`, `queries.parquet`, `slice_manifest.json` and `bench/queries_250.jsonl`. `--verify` rebuilds from the manifest alone and matches.
@@ -275,7 +275,7 @@ Phase 2 index building. Phase 3 retrieval eval has free ground truth. Phase 5 th
 - `queries.parquet` carries `answer_en`/`answer_hi` that nothing consumes yet. Phase 5 calibration is where they earn their place.
 
 ### [Phase 2] Thin vertical slice, text only
-**Date:** 18 Aug 2026 | **Who:** Claude Code session | **Branch:** `p2-vertical-slice`
+**Date:** 18 Aug 2026 | **Who:** BENCH | **Branch:** `p2-vertical-slice`
 
 **What happened**
 One working query path end to end: text in, cited passage out, with a real measured P50. ONNX embedder fetched and parity-gated, C1 chunker, 379,242-chunk HNSW index, typed pipeline harness with the budget counter, `POST /v1/answer`, retrieval eval, and the benchmark. 35 tests green, `mypy --strict` clean across 34 files.
@@ -1052,7 +1052,7 @@ and 4 are built and the eval runs. Phase 7 deploy is now the top priority, then
 Phase 9.)* The frontend needs nothing further to be submittable.
 
 ### [Phase 7] Deploy, and the defect that had been hiding under the budget
-**Date:** 20 Aug 2026 | **Who:** Claude Code session | **Branch:** `front-v1`
+**Date:** 20 Aug 2026 | **Who:** BENCH | **Branch:** `front-v1`
 
 **What happened**
 The stack went live at **https://shrutirag.duckdns.org** — Caddy on 443 with a
@@ -1128,7 +1128,7 @@ only at concurrency 1.
 ---
 
 ### [Phase 3, reopened] C3 built, and the overlap turns out to be the thing
-**Date:** 21 Aug 2026 | **Who:** Claude Code session | **Branch:** `front-v1`
+**Date:** 21 Aug 2026 | **Who:** BENCH | **Branch:** `front-v1`
 
 **What happened**
 C3, semantic breakpoint chunking, was time-boxed out of Phase 3 with three days
@@ -1191,6 +1191,65 @@ and asks onnxruntime for 1.6 GB.
 
 **What did not change.** C1 remains the default and the served index. C3 is a
 seventh measured strategy and a published finding, not a candidate.
+
+### [Phase 6, reopened] Three correctness signals measured, three rejected
+**Date:** 21 Aug 2026 | **Who:** BENCH | **Branch:** `front-v1`
+
+**What happened**
+Raised from use rather than from a plan: the system answers unrelated questions
+with a passage that shares a word, and it sometimes answered an English question
+from a Hindi passage. Two different problems, and only one of them is fixable.
+
+**The language half is fixed and it was also a metric bug.** Top-1 arrived in the
+other language on 9 of 499 queries. Those nine scored 0.0% on Hit@1 and 66.7%
+once the language tag is ignored - six had found the RIGHT passage and were
+counted as total misses, because gold ids are language-tagged and a
+cross-language hit cannot match one by construction. Answering from the parallel
+twin, which exists for 100% of the 147,945 passage groups, took Hit@1 from 37.1%
+to 38.2% and mismatches to zero. `ISSUES.md` I31.
+
+**The relevance half is not fixable and is now measured three ways.** A proposal
+arrived to cross-check every answer against an external model and warn the user
+on disagreement. A council review rejected it unanimously and the reasoning is
+worth keeping: the corpus peaks in 2017, so a current model disagrees hardest on
+the answers MOST faithful to the corpus, and the flag would be anti-correlated
+with correctness.
+
+The version that survives that objection is context SUFFICIENCY - never "is this
+true", only "do these passages answer this question" - which is what a rival
+system uses. So it was measured, over 115 queries:
+
+| candidate signal | AUC |
+|---|---|
+| absolute rerank score | 0.606 |
+| margin over second | 0.586 |
+| LLM context-sufficiency judge | **0.542** |
+
+0.500 is a coin flip, and the judge is worse than the signal we already compute
+for free. `ISSUES.md` I33.
+
+**Why this approach**
+The proposal's own UI copy is what settled the design: "may be incorrect but was
+pulled from our dataset" is unconditionally true of every extractive answer this
+system will ever return. A caveat that is always true does not need a network
+call to decide when to show it. So it ships as a permanent line carrying the
+corpus vintage, at zero latency and zero dependency - and the vintage was
+MEASURED (`scripts/10_corpus_vintage.py`: mentions peak at 2017, cliff after
+2018) rather than taken from the draft copy, which said 2016 and had nothing
+behind it.
+
+**The finding nobody was looking for.** Of the 65 answers that study scored
+wrong, 49 - 75% - retrieved a passage from the same query candidate set. The
+right topic cluster, the wrong labelled position. Under a topical target 99 of
+115 are right, against 43% under strict gold. `config.py` suspected this where
+`ROUTE_TAU_HIGH` is set and I26 noted it; this is the first time it has been
+quantified. It does NOT mean the system is 86% correct, and I33 is careful about
+why - but it does mean 62.1% is a statement about `is_selected` labels rather
+than about how often a reader gets something useful.
+
+**Where to continue.** Phase 9. Nothing on this entry is a blocker for it.
+
+---
 
 ### [Phase 9] Videos, posting, submission
 _pending_
@@ -1605,7 +1664,7 @@ Track these explicitly. An unverified assumption that turns out false late is th
 
 ## Prompt for a cold session
 
-Paste this when starting a fresh AI coding session on this project:
+Paste this when starting a fresh session on this project:
 
 > You are working on team OK4T's HH Goa 2026 Task 2 submission: a voice-enabled RAG system with a 200ms latency target on the core pipeline.
 >
@@ -1624,8 +1683,18 @@ Paste this when starting a fresh AI coding session on this project:
 > machine and `DONT-FORGET.md` 6 explains why that matters.
 >
 > Read `DONT-FORGET.md` first, then `HANDOFF.md` 1A for how to reach and deploy
-> to the box. Before changing anything for latency reasons, read `ISSUES.md` I28
-> and step 0 of `Latency.md` 8 — the two most recent optimizations on this
-> project were both aimed at a number nobody had explained and both were wrong.
+> to the box, and 1B for what changed on 21 August. Before changing anything for
+> latency reasons, read `ISSUES.md` I28 and step 0 of `Latency.md` 8 — the two
+> most recent optimizations on this project were both aimed at a number nobody
+> had explained and both were wrong.
+>
+> Two things you will be tempted to build that are already measured and
+> rejected: a threshold that predicts whether an answer is wrong (three
+> candidates, best AUC 0.606 against a 0.500 coin flip — `ISSUES.md` I31 and
+> I33), and a live external-LLM cross-checker (rejected on measurement; the
+> corpus peaks in 2017, so a current model disagrees hardest on the answers most
+> FAITHFUL to it). Also: Hit@1 measures exact `is_selected` labels, and 75% of
+> its "misses" retrieve the right passage group — never quote 62.1% as "62% of
+> answers are useless".
 >
 > Tell me which phase we are on and what its exit criterion is before writing any code.

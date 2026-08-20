@@ -206,7 +206,7 @@ These are development-time tools, not runtime dependencies. Nothing here ships i
 | Vercel MCP | Frontend deploy, build log inspection, runtime error triage | Frontend only. `rag_core` does not deploy here. |
 | Google Drive | Video files, shared assets | Do not put keys or `.env` files here. |
 | Canva | Video 1 and Video 2 editing, thumbnails, social crops | Export at 1080x1080 for Instagram, 16:9 for X and LinkedIn. |
-| Claude Code | Implementation | Feed it `Rules.md` and the current phase from `Phases.md` at the start of every session. |
+| Coding agent | Implementation | Feed it `Rules.md` and the current phase from `Phases.md` at the start of every session. |
 
 **HARD.** No MCP connector, Firecrawl included, appears anywhere in `services/`. They are for the humans and the coding agent, not for the product.
 
