@@ -1,0 +1,20 @@
+[Unit]
+Description=Shruti rag_core
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=haziqlandge
+WorkingDirectory=/home/haziqlandge/app/services
+# Printing a Hindi transcript to a non-UTF8 console raises UnicodeEncodeError
+# and kills the request rather than garbling one log line.
+Environment=PYTHONIOENCODING=utf-8
+# Bound to loopback on purpose: only Caddy reaches these, so the services are
+# not exposed even though the firewall allows 80 and 443.
+ExecStart=/home/haziqlandge/app/.venv/bin/python -m uvicorn rag_core.main:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

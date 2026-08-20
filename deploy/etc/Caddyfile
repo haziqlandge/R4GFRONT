@@ -1,0 +1,55 @@
+# Shruti, one origin.
+#
+# Caddy serves the static site AND reverse proxies both services, so the browser
+# makes same-origin requests and CORS stops being something that can be
+# misconfigured. It also terminates TLS, which is not optional here: getUserMedia
+# requires a secure origin, so without a certificate the microphone silently
+# never prompts and the whole voice path is dead.
+#
+# The certificate is fetched and renewed automatically from Let's Encrypt.
+
+shrutirag.duckdns.org {
+	encode zstd gzip
+
+	# 8 MB is the gateway's own MAX_UPLOAD_BYTES; 12 MB here leaves room for
+	# multipart overhead while still bounding a hostile upload at the edge.
+	request_body {
+		max_size 12MB
+	}
+
+	# handle_path strips the prefix, so /api/core/v1/answer arrives at the
+	# service as /v1/answer and the app needs no knowledge of the mount point.
+	handle_path /api/core/* {
+		reverse_proxy 127.0.0.1:8000
+	}
+
+	handle_path /api/stt/* {
+		reverse_proxy 127.0.0.1:8001 {
+			# An utterance upload is larger and slower than a JSON call.
+			transport http {
+				read_timeout 60s
+			}
+		}
+	}
+
+	handle {
+		# Served from /var/www, not from the home directory. A home directory is
+		# 0750, so the caddy user cannot traverse into it and every request
+		# returns 403 with nothing useful in the log. Loosening the home
+		# directory would work and is the wrong trade; /var/www is where a web
+		# root belongs. deploy.sh syncs it.
+		root * /var/www/shruti
+		file_server
+	}
+
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+	}
+
+	# Logging goes to journald, which is where the packaged caddy.service is
+	# allowed to write. Pointing it at a file under /var/log/caddy fails at
+	# startup: the unit ships with a sandboxed ReadWritePaths and the directory
+	# is not in it, so Caddy exits 1 before it ever requests a certificate.
+	# journalctl -u caddy is the way to read these.
+}

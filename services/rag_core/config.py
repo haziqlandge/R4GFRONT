@@ -218,10 +218,20 @@ FUSED_TOP_K: Final[int] = 50  # what fusion hands to the reranker in Phase 5
 # would have moved this the wrong way. Real chunks are p50 72 tokens, long enough
 # that 8 threads already saturate 6 physical cores. See ISSUES.md I6.
 #
-# SERVING = 2. Six threads is fastest on this local box (1.97ms vs 2.49ms at 2),
-# but the deploy target is a 2-vCPU n2-standard-2 and a local optimum does not
-# transfer. 12 threads also shows a P99 of 15.58ms from hyperthread contention.
-ONNX_THREADS_SERVING: Final[int] = 2
+# SERVING = 4, and this number tracks the deploy target rather than this box.
+#
+# It was 2 for a 2-vCPU n2-standard-2. Deploying to that box on 20 Aug and
+# measuring the frozen 250 through it gave en P50 190.47 ms and hi P50 200.87 ms
+# against a 200 ms budget, roughly 3x the development machine and over the line
+# (ISSUES.md I8). The instance was resized to n2-standard-4 and this moved with
+# it, because ONNX Runtime is told its thread count explicitly (Rules.md 2.2)
+# and leaving it at 2 would have bought half the cores and none of the benefit.
+#
+# The local optimum is still 6 (1.97ms vs 2.49ms at 2) and is still not what
+# goes here: the number that matters is the one the deployed box can use. 12
+# threads showed a P99 of 15.58ms from hyperthread contention, so this is not a
+# free dial to turn up - see ISSUES.md I6.
+ONNX_THREADS_SERVING: Final[int] = 4
 ONNX_THREADS_BUILD: Final[int] = 8
 
 # --------------------------------------------------------------------------

@@ -14,7 +14,7 @@ Everything that is scored but is not code. Team OK4T.
 |---|---|---|---|
 | S1 | Submission form completed | https://forms.gle/MNvCjcv23Hn2Eeu58 | ☐ |
 | S2 | GitHub repo link, public | | ☐ |
-| S3 | Live working link | | ☐ |
+| S3 | Live working link | **https://shrutirag.duckdns.org** | ◐ live, text works; voice needs `.env` on the box |
 | S4 | Video 1, team/process, 90 seconds | | ☐ |
 | S5 | Video 2, end-to-end demo | | ☐ |
 | S6 | Both videos on Instagram, every member | | ☐ |

@@ -164,7 +164,39 @@ Reported statistics: P50, P70 (explicitly required by the brief), P90, P99, P100
 
 **To be filled in at Phase 5 and finalized at Phase 7. Estimates below are placeholders and must be replaced with measured values before submission. Do not ship this file with estimates in it.**
 
-### Band A: Core RAG, extractive path
+### Band A on the DEPLOYED service, 20 August 2026
+
+`n2-standard-2`, `asia-south1` (Mumbai), 250 frozen queries, 30 warmup runs
+discarded, `time.perf_counter_ns` inside the process, percentiles by nearest
+rank. **These are the numbers section 6 of this document has always said must be
+the published ones.**
+
+| | P50 | P70 | P90 | P99 | P100 |
+|---|---|---|---|---|---|
+| en | **190.47** | **198.31** | 216.12 | 247.00 | 250.90 |
+| hi | **200.87** | 208.98 | 221.72 | 250.77 | 256.57 |
+
+**The 200 ms target is missed on the deployed box.** English P50 is inside it by
+9.5 ms; English P70 sits at 198.31, which is the line rather than a margin;
+Hindi P50 is outside it. Every P90 and P100 is outside it.
+
+The development machine numbers below are roughly 3x faster and were measured on
+hardware the product does not run on. Both are published, which is the same
+discipline section 1 applies to the three bands: state the boundary and give the
+number on each side of it.
+
+Cause is clock and cores, not quantization. `avx512_vnni` is present on the
+deployed CPU so the int8 models are on their fast path. The box is a 2.80 GHz
+Xeon with one physical core plus a hyperthread; the development machine is a
+six-core i5 boosting to about 4.4 GHz. The cross-encoder is 94% of the budget
+spent and scales with both.
+
+Levers in section 8 apply in this order: a larger instance first, because it
+costs money and no quality; then rerank depth 5 to 3; then `ef_search`.
+
+---
+
+### Band A: Core RAG, extractive path, DEVELOPMENT machine
 
 **Phase 2 interim, 18 Aug 2026.** Local x86, dense retrieval only — no BM25, no
 reranker, no guardrails. These are not the final published numbers: Latency.md

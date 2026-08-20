@@ -697,7 +697,93 @@ it, is the better version of what the rule was asking for.
 - Ambiguity remains an open weakness, stated rather than closed.
 
 ### [Phase 7] Deploy and harden
-_pending_
+**Date:** 20 Aug 2026 | **Who:** BENCH | **Branch:** `front-v1`
+**Status: LIVE at https://shrutirag.duckdns.org, and the 200 ms claim does NOT
+hold on the deploy target. That is the finding.**
+
+**What happened**
+`rag_core` and `stt_gateway` under systemd on the GCP Mumbai VM, Caddy on 443
+serving the static site and reverse proxying both services, real Let's Encrypt
+certificate, DuckDNS hostname. Configs are versioned in `deploy/etc/`.
+
+**THE NUMBER, measured on the deployed box, 250 frozen queries, 30 warmup discarded**
+
+| | P50 | P70 | P90 | P99 | P100 |
+|---|---|---|---|---|---|
+| en, i5-12400F | 59.99 | 65.18 | 75.10 | 113.96 | 118.79 |
+| **en, n2-standard-2** | **190.47** | **198.31** | 216.12 | 247.00 | 250.90 |
+| hi, i5-12400F | 73.77 | 80.85 | 95.61 | 135.50 | 155.92 |
+| **hi, n2-standard-2** | **200.87** | 208.98 | 221.72 | 250.77 | 256.57 |
+
+**Roughly 3x slower, and the budget is missed.** English P50 clears 200 ms with
+9.5 ms to spare and its P70 is 198.31, which is the line. Hindi P50 is already
+over at 200.87. Every P90 and P100 is over.
+
+This is exactly what the Phase 5 entry predicted: *"Hindi P100 is 155.92 ms
+against a 200 ms budget on a 6-core box. The GCP target is 2 vCPU. This may not
+fit there. Re-measure before publishing (I8), and depth 3 is the lever if it does
+not."* The prediction was right and the lever is now needed.
+
+`ISSUES.md` I8 is closed by this measurement: every figure published before today
+came from a machine the product does not run on.
+
+**Why it is slower, and it is not a surprise**
+The box is an Intel Xeon at 2.80 GHz against the i5's ~4.4 GHz boost, and it has
+2 vCPU meaning one physical core plus a hyperthread against six real cores. The
+reranker is 94% of the budget spent and it is the part that scales with both.
+`avx512_vnni` IS present, so the int8 models are hitting their fast kernels and
+this is not a quantization fallback.
+
+**Levers, in the order they should be pulled**
+1. **Resize to `n2-standard-4`** and set `ONNX_THREADS_SERVING` from 2 to 4.
+   Costs money, costs no quality. Quota is not a constraint: `N2_CPUS` limit is
+   200 with 2 in use. ~$140/mo against ~$70, and the $300 credit still covers
+   the mid-September judging window.
+2. **Rerank depth 5 to 3.** Free, and costs quality: the Phase 5 depth sweep has
+   the curve.
+3. `ef_search` 64 to 48. Smallest effect, costs recall.
+
+Take them in that order, and re-measure after each rather than stacking them.
+
+**Surprises and gotchas, each of which cost real time**
+- **The frontend hardcoded `http://127.0.0.1:8000`.** A deployed page pointing
+  there asks the VISITOR's machine for an answer. It worked in development for
+  the obvious reason and would have failed for every judge. Fixed by computing
+  the base URL from `location.hostname`; see the `[P7]` commit.
+- **Caddy exits 1 if told to log to a file under `/var/log/caddy`.** The
+  packaged unit has a sandboxed `ReadWritePaths`. It fails *before* requesting a
+  certificate, so the symptom is "no HTTPS" rather than "cannot write log".
+- **Serving a web root out of a home directory returns 403.** Home is `0750` and
+  the `caddy` user cannot traverse it. Web root is `/var/www/shruti`.
+- **`gcloud compute ssh` on Windows generates a key labelled
+  `DESKTOP-<name>dmin`.** A backslash is not valid in a Linux username, so the
+  server refuses it, and the error is `Server refused our key` rather than
+  anything about the username. Fixed by registering the key under the real
+  account at instance level, which leaves any Cloud Shell key untouched.
+- **`pscp` does not expand `~`.** `gcloud compute scp` to `~/dir/` fails with
+  `unable to open ~/dir/: no such file or directory`. Use an absolute path.
+- **The repo is private, so the VM cannot clone it.** Shipped `git archive`
+  output instead, which is 2.7 MB and needs no credentials on the box. The repo
+  has to become public before submission anyway (`Submission.md` S2), after the
+  secret scan.
+- Home upload ran at roughly 0.5 MB/s, so 1,017 MB took about half an hour. Only
+  `index.bin` and `chunks.parquet` genuinely have to travel from a laptop: the
+  ONNX models are fetched from Hugging Face by the export scripts, and the VM's
+  link to HF is far faster. Worth knowing if this ever has to be redone.
+
+**No Docker.** `Phases.md` names a Dockerfile; a venv plus systemd plus Caddy is
+fewer moving parts than building a 2 GB image and pushing it to a registry, and
+the artifacts have to be copied either way. Recorded as a Rules.md 9 deviation.
+
+**Open threads**
+- **`.env` is not on the box.** It is gitignored, so the VM has no
+  `SARVAM_API_KEY` and no `GROQ_API_KEY`. Text answering works; **voice does not,
+  and the generative path is off.** `/api/stt/health` returns 503 `no_api_key`.
+  This is the last thing standing between the deployment and a full demo.
+- The resize decision above.
+- Re-bench after any lever, and republish. Everything in `data.js` and on the
+  documentation page is still the i5 number.
+- Secret scan over full git history before making the repo public.
 
 ### [Phase 8] Demo surfaces and polish
 **Date:** 19 Aug 2026 | **Who:** BENCH | **Branch:** `p4-p5-voice-rerank`

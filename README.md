@@ -2,6 +2,8 @@
 
 Team **OK4T** · HH Goa 2026, Shortlisting Task 2 · `#RAGInGoa`
 
+**Live: https://shrutirag.duckdns.org**
+
 Speak a question in Hindi or English, get an answer grounded in the AI4Bharat MSMARCO-XI corpus, cited, with a live per-stage latency breakdown — and a system that refuses to answer when it cannot ground the answer.
 
 ```
@@ -23,7 +25,16 @@ The brief asks for sub-200ms. We publish three bands and state the boundary for 
 | **B — Core RAG + generation** | Band A routed through the Groq LLM fallback. | reported honestly | **643.83 ms P50.** Over budget, published anyway |
 | **C — Full wall clock** | User stops speaking → answer painted. | reported honestly | Sarvam alone 527-911 ms. Reported separately |
 
-250 frozen queries, 30 warmup runs discarded, on an i5-12400F at 2 serving threads. The full table with P70 and P90, the per-stage breakdown and the boundary for each band are on the site's documentation page and in [`Latency.md`](Latency.md).
+250 frozen queries, 30 warmup runs discarded, on an i5-12400F at 2 serving threads.
+
+**The deployed numbers are worse and we publish those too.** Measured on the
+`n2-standard-2` in Mumbai on 20 August, same 250 queries: English P50 **190.47 ms**,
+P70 198.31, P100 250.90. Hindi P50 **200.87 ms**, P100 256.57. That box is a
+2.80 GHz Xeon with one physical core plus a hyperthread, against six cores
+boosting to 4.4 GHz, and the cross-encoder is 94% of the budget. **So the 200 ms
+target is met on the development machine and missed on the deployment.** The
+levers for closing it, in order, are a larger instance, then rerank depth 5 to 3,
+then `ef_search`. `ISSUES.md` I8 predicted this and is closed by it. The full table with P70 and P90, the per-stage breakdown and the boundary for each band are on the site's documentation page and in [`Latency.md`](Latency.md).
 
 A pipeline containing a hosted LLM call cannot reliably finish in 200 ms — time-to-first-token alone consumes the budget before retrieval starts. So the fast path contains no LLM call: when reranker confidence is high the answer is a verbatim span from a cited passage, which is both faster and structurally incapable of hallucinating. Full reasoning in [`Latency.md`](Latency.md).
 

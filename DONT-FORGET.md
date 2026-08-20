@@ -422,12 +422,52 @@ group treatment the unsafe patterns got.
 
 ---
 
+## 12A. IT IS DEPLOYED, and the 200 ms claim does not hold there (20 Aug)
+
+**https://shrutirag.duckdns.org** is live. Valid Let's Encrypt certificate,
+`rag_core` and `stt_gateway` under systemd bound to loopback, Caddy on 443
+serving the site and proxying `/api/core/*` and `/api/stt/*`. Configs in
+`deploy/etc/`.
+
+**Measured on the deployed box, 250 frozen queries, 30 warmup discarded:**
+
+| | P50 | P70 | P90 | P100 |
+|---|---|---|---|---|
+| en, i5-12400F | 59.99 | 65.18 | 75.10 | 118.79 |
+| **en, n2-standard-2** | **190.47** | **198.31** | 216.12 | 250.90 |
+| hi, i5-12400F | 73.77 | 80.85 | 95.61 | 155.92 |
+| **hi, n2-standard-2** | **200.87** | 208.98 | 221.72 | 256.57 |
+
+**Do not quote the 59.99 ms figure as the product's latency.** It is a real
+measurement on a machine the product does not run on, and `Latency.md` 6 has
+always required published numbers to come from the deployed service. I8 is
+closed by this and it closed against us.
+
+The box is a 2.80 GHz Xeon with 2 vCPU, meaning one physical core plus a
+hyperthread, against a six-core i5 boosting to ~4.4 GHz. The reranker is 94% of
+the budget and scales with both. `avx512_vnni` **is** present, so this is not an
+int8 fallback.
+
+**Levers, in this order, re-measuring after each rather than stacking them:**
+
+1. Resize to `n2-standard-4`, and change `ONNX_THREADS_SERVING` from 2 to 4 with
+   it. Costs money, costs no quality. `N2_CPUS` quota is 200 with 2 in use.
+2. Rerank depth 5 to 3. Free, costs quality.
+3. `ef_search` 64 to 48. Smallest effect, costs recall.
+
+**Voice does not work on the deployed box yet.** `.env` is gitignored so the VM
+has no `SARVAM_API_KEY` or `GROQ_API_KEY`. Text answering works,
+`/api/stt/health` returns 503 `no_api_key`, and the generative path is off.
+
+---
+
 ## 13. Still open
 
-- **Phase 7 deploy has not started.** Every published latency figure is from an
-  i5-12400F, not from the `n2-standard-2` target, which is 2 vCPU = 1 physical
-  core plus a hyperthread. Absolute numbers there will be **worse** (`ISSUES.md`
-  I8, and the rerank sweep says so in its own `note` field).
+- **Every published figure is still the i5 number.** `data.js`, the
+  documentation page, `README.md` and `Latency.md` results all predate the
+  deployment. They must be republished from the deployed box once a lever has
+  been pulled and the number settles. See 12A.
+- **`.env` on the VM**, without which there is no voice and no generative path.
 - **Band C has two samples, not a distribution.** The mic path works; how long
   it takes across many utterances is unmeasured.
 - The realtime STT socket (`/v1/stt/live`) is unwired, so partials and the

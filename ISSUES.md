@@ -22,7 +22,7 @@ Severity is about the submission, not about engineering neatness:
 | I5 | Hindi retrieval trails English by 0.19 Recall@10 | **P2** | Phase 3/5 |
 | I6 | Thread counts in config are wrong for both workloads | **P2** | now |
 | I7 | Groq free tier caps Band B at ~50 queries | **P2** | Phase 5 |
-| I8 | All benchmarks are local x86, not the deployed box | **P2** | Phase 7 |
+| I8 | All benchmarks are local x86, not the deployed box | **RESOLVED (measured 20 Aug, and it closed against us)** | Phase 7 |
 | I9 | `build_passage_map` reconstructs passages approximately | **P2** | Phase 5 |
 | I10 | Two degenerate `-` passages act as attractors | **P2** | Phase 3 |
 | I11 | Schedule: 3 days behind the original plan | **P1** | ongoing |
@@ -339,6 +339,38 @@ Worth noting for its own sake: 12 threads produces a **P99 of 15.58 ms** — a 6
 ---
 
 ## I8 — All benchmarks are local, not deployed
+
+**RESOLVED 20 Aug 2026, by deploying and measuring. The answer is that the
+headline number does not survive the move.**
+
+Measured on `n2-standard-2` in `asia-south1`, same 250 frozen queries, same 30
+warmup discards, through the live service:
+
+| | P50 | P70 | P90 | P100 |
+|---|---|---|---|---|
+| en, i5-12400F | 59.99 | 65.18 | 75.10 | 118.79 |
+| **en, deployed** | **190.47** | **198.31** | 216.12 | 250.90 |
+| hi, i5-12400F | 73.77 | 80.85 | 95.61 | 155.92 |
+| **hi, deployed** | **200.87** | 208.98 | 221.72 | 256.57 |
+
+About 3x slower. English P50 clears 200 ms by 9.5 ms and its P70 is 198.31,
+which is the line rather than a margin. Hindi P50 is over. All P90 and P100 are
+over.
+
+Not a quantization problem: `avx512_vnni` is present on the box, so the int8
+models are on their fast kernels. It is clock and cores. The Xeon runs at
+2.80 GHz against the i5's ~4.4 GHz boost, and 2 vCPU is one physical core plus a
+hyperthread against six real ones. The reranker is 94% of the budget spent and
+scales with both.
+
+**Levers, in order, re-measuring after each rather than stacking:** resize to
+`n2-standard-4` with `ONNX_THREADS_SERVING` 2 to 4 (costs money, no quality);
+rerank depth 5 to 3 (free, costs quality, curve is in the Phase 5 entry);
+`ef_search` 64 to 48 (smallest, costs recall).
+
+The original entry follows, and it was right.
+
+---
 
 **Severity: P2, but it invalidates the headline number if forgotten.** `Latency.md` §6 requires published figures to come from the deployed service. Everything so far is local x86 on a 12400F; the GCP box is a 2-vCPU `n2-standard-2`. Expect the numbers to move — the 3.31 ms P50 was measured with `ONNX_THREADS_SERVING=2`, which is the right setting for that box, but the cores are slower. Re-bench in Phase 7 and publish only those.
 
