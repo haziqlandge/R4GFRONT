@@ -19,11 +19,15 @@ from ..config import (
     BUDGET_MS,
     DENSE_TOP_K,
     GROQ_TIMEOUT_MS,
+    INPUT_MAX_CHARS,
+    INPUT_MAX_TOKENS,
     RERANK_DEADLINE_MARGIN_MS,
     RERANK_TOP_K,
     STAGE_BUDGET_MS,
     STAGE_TIMEOUT_MS,
 )
+from ..guardrails.input_guard import InputGuard
+from ..guardrails.output_guard import groundedness, invalid_citations
 from ..harness.errors import EmbedFailed, UpstreamUnavailable
 from ..retrieval.dense import DenseIndex
 from ..retrieval.embedder import Embedder
@@ -109,7 +113,40 @@ class Runtime:
 
 
 def build_pipeline(rt: Runtime) -> Pipeline:
+    # Handed the embedder's own tokenizer, because the count that matters is the
+    # one the model will actually process, not an approximation of it.
+    guard = InputGuard(
+        count_tokens=rt.embedder.token_count,
+        max_tokens=INPUT_MAX_TOKENS,
+        max_chars=INPUT_MAX_CHARS,
+    )
+
+    async def input_guard(ctx: Context) -> Context:
+        """Layer 1. Refuse before anything expensive happens.
+
+        This runs first and it is the only thing bounding `embed_query`.
+        ISSUES.md I25: a stage timeout cannot interrupt synchronous ONNX work, so
+        by the time the embedder has started on a 512-token input the 118 ms is
+        already spent. The refusal has to happen here or not at all.
+
+        A rejection is an ABSTENTION, not an error. Requirement 6 asks the system
+        to show that it knows when not to answer, and a 4xx is the system saying
+        the caller made a mistake, which is a different claim.
+        """
+        verdict = guard.check(ctx.query)
+        if verdict.ok:
+            return ctx.with_data(input_tokens=verdict.tokens)
+        return ctx.with_data(
+            blocked=True,
+            input_tokens=verdict.tokens,
+            hits=[],
+            route=Route("ABSTAIN", verdict.detail, abstain_reason=verdict.reason),
+        )
+
     async def embed_query(ctx: Context) -> Context:
+        # The point of the guard: a blocked question never reaches the model.
+        if ctx.data.get("blocked"):
+            return ctx
         try:
             vec = rt.embedder.encode_one(ctx.query, "query")
         except Exception as exc:  # noqa: BLE001 - re-raised as a typed error
@@ -117,6 +154,8 @@ def build_pipeline(rt: Runtime) -> Pipeline:
         return ctx.with_data(query_vector=vec)
 
     async def dense_search(ctx: Context) -> Context:
+        if ctx.data.get("blocked"):
+            return ctx
         vec: np.ndarray = ctx.data["query_vector"]
         rows = rt.index.search(vec, DENSE_TOP_K)
         hits = [(rt.index.chunk(row), score) for row, score in rows]
@@ -165,6 +204,11 @@ def build_pipeline(rt: Runtime) -> Pipeline:
         )
 
     async def route_stage(ctx: Context) -> Context:
+        # An earlier layer already decided. The router picks between paths for a
+        # question that reached retrieval; it does not get to overturn a refusal
+        # issued before the question was allowed in.
+        if ctx.data.get("blocked"):
+            return ctx
         hits = ctx.data.get("hits", [])
         top1 = hits[0][1] if hits else None
         gap = (hits[0][1] - hits[1][1]) if len(hits) > 1 else None
@@ -248,8 +292,76 @@ def build_pipeline(rt: Runtime) -> Pipeline:
             )
         return ctx.with_data(answer=text)
 
+    async def output_guard(ctx: Context) -> Context:
+        """Layer 4. Check what came back against what it was supposed to come from.
+
+        ISSUES.md I26 is the whole reason this is here rather than in a later
+        phase. The abstention floor calibrated in Phase 5 is an out-of-domain
+        detector: it refuses questions the corpus cannot answer and it cannot see
+        whether an answer is supported, so 92.5% of wrong top-1 answers clear it.
+        Nothing upstream of this stage looks at the answer text.
+
+        The extractive path scores 1.0 by construction, because its answer is a
+        span of the passage it cites. That is not a free pass, it is the
+        measurement that turns "structurally incapable of hallucinating" from a
+        claim into a number, so it is recorded rather than skipped.
+
+        A failure here abstains rather than downgrading to the extractive answer.
+        The generative path was chosen precisely because the router judged the
+        top passage was NOT clearly the answer, so falling back to quoting it
+        would return the thing we already decided was not good enough.
+        """
+        answer = ctx.data.get("answer")
+        citations = ctx.data.get("citations", [])
+        if not answer or not citations:
+            return ctx
+
+        score = groundedness(answer, [c.text for c in citations])
+        bad_cites = invalid_citations(answer, len(citations))
+        ctx = ctx.with_data(groundedness=score, invalid_citations=bad_cites)
+
+        decision: Route | None = ctx.data.get("route")
+        if decision is None or decision.decision != "GENERATIVE":
+            # The extractive path cannot fail this: its answer IS the passage.
+            # Guarding it would only ever fire on a bug in the span selector,
+            # and refusing a verbatim quote for being insufficiently like itself
+            # is not a failure mode worth building.
+            return ctx
+
+        if score < config.OUTPUT_MIN_GROUNDEDNESS:
+            return ctx.with_data(
+                answer=None,
+                citations=[],
+                route=Route(
+                    "ABSTAIN",
+                    f"groundedness {score:.2f} below the {config.OUTPUT_MIN_GROUNDEDNESS:.2f} floor",
+                    abstain_reason="UNGROUNDED_OUTPUT",
+                ),
+            )
+        if bad_cites:
+            return ctx.with_data(
+                answer=None,
+                citations=[],
+                route=Route(
+                    "ABSTAIN",
+                    f"cited passage {bad_cites[0]}, which was never retrieved",
+                    abstain_reason="UNGROUNDED_OUTPUT",
+                ),
+            )
+        return ctx
+
     return Pipeline(
         stages=[
+            # required: a guard that can be skipped for budget reasons is not a
+            # guard. It is also the cheapest stage in the pipeline, so the case
+            # where it would not fit cannot arise honestly.
+            FunctionStage(
+                "input_guard",
+                input_guard,
+                timeout_ms=STAGE_TIMEOUT_MS["input_guard"],
+                budget_ms=STAGE_BUDGET_MS["input_guard"],
+                required=True,
+            ),
             # required: without a query vector there is no retrieval, and no
             # honest way to answer. Degrading here would mean inventing one.
             FunctionStage(
@@ -297,6 +409,17 @@ def build_pipeline(rt: Runtime) -> Pipeline:
                 answer_generative,
                 timeout_ms=GROQ_TIMEOUT_MS + 500.0,
                 budget_ms=0.0,
+            ),
+            # Last, because it is the only stage that reads the answer. Not
+            # required: if it cannot run, the answer that was already computed
+            # is returned unchecked and the skip is visible in the trace, which
+            # is a better outcome than refusing an answer we simply did not get
+            # around to verifying.
+            FunctionStage(
+                "output_guard",
+                output_guard,
+                timeout_ms=STAGE_TIMEOUT_MS["output_guard"],
+                budget_ms=STAGE_BUDGET_MS["output_guard"],
             ),
         ],
         budget_ms=BUDGET_MS,

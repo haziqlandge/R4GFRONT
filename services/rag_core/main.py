@@ -189,7 +189,13 @@ def _to_response(ctx: Context, want_trace: bool) -> AnswerResponse:
         abstain_reason=abstain_reason,
         citations=citations,
         confidence=Confidence(
-            rerank_top1=ctx.data.get("top1"), score_gap=ctx.data.get("score_gap")
+            rerank_top1=ctx.data.get("top1"),
+            score_gap=ctx.data.get("score_gap"),
+            # Phase 6. Declared in the contract since Phase 2 and null until now.
+            # It is reported whether or not it gated anything, because the number
+            # is the evidence: an extractive answer scoring 1.0 is what makes
+            # "this cannot hallucinate" checkable rather than asserted.
+            groundedness=ctx.data.get("groundedness"),
         ),
         trace=view,
     )

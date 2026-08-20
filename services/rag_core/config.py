@@ -225,6 +225,85 @@ ONNX_THREADS_SERVING: Final[int] = 2
 ONNX_THREADS_BUILD: Final[int] = 8
 
 # --------------------------------------------------------------------------
+# Guardrails, layer 1. Architecture.md 7, guardrails/input_guard.py. Phase 6.
+# --------------------------------------------------------------------------
+
+# What calibrated these (Rules.md 6): ISSUES.md I1, measured on the frozen 250
+# query benchmark.
+#
+# The problem. One query, `query_id=156297`, is 7,168 characters of a single
+# Devanagari phrase repeating - a machine-translation loop in the source
+# dataset. It fills the embedder's 512-token window instead of the ~20 tokens a
+# real question uses and costs 118 ms in `embed_query`, against a Hindi P99 of
+# 5.89 ms. Nothing downstream can catch it: ISSUES.md I25 measured that a stage
+# timeout cannot interrupt synchronous ONNX work, so the bound has to be here.
+#
+# Why the bound is on TOKENS. Cost is linear in tokens at ~0.21 ms/token up to
+# the 512-token cap. A character limit bounds characters, and characters per
+# token are script dependent - English 4.56, Hindi 3.19, and an adversarial
+# input can push lower - so every character-only limit leaks:
+#
+#     char limit   worst admissible input   worst latency
+#        512              172 tokens            24.99 ms
+#       1024              343 tokens            56.02 ms
+#       2048              512 tokens           107.77 ms
+#
+# Measured token bounds, against the same worst case:
+#
+#     token cap   worst-case latency   legit hi rejected   legit en rejected
+#        32             5.79 ms               1                  0
+#        64            10.02 ms               1                  0
+#       128            18.15 ms               1                  0
+#
+# 64 bounds the worst case at 10.02 ms, and it clears the largest legitimate
+# query by 2.6x: legitimate Hindi is p99 24 tokens with a second-highest of 25,
+# English maxes at 16. It is also justified externally, which is what makes it
+# defensible rather than fitted: 64 tokens is roughly fifteen seconds of
+# continuous speech, and this is a voice product. A question nobody could say
+# out loud in fifteen seconds is not a question this system is for. That holds
+# whether or not query 156297 exists.
+INPUT_MAX_TOKENS: Final[int] = 64
+
+# The character pre-filter is a PERFORMANCE early-out, not the safety bound.
+# I1 measured it at 0.00007 ms against 0.04228 ms to tokenize, so it rejects
+# gross input 600x cheaper and before any allocation. It is set well above the
+# token bound's character equivalent (64 tokens is ~205 characters of Hindi) so
+# that it can never be the thing that refuses a real question.
+INPUT_MAX_CHARS: Final[int] = 512
+
+# --------------------------------------------------------------------------
+# Guardrails, layer 4. Architecture.md 7, guardrails/output_guard.py. Phase 6.
+# --------------------------------------------------------------------------
+
+# What calibrated this (Rules.md 6): measured separation on a worked example,
+# recorded in tests/test_output_guard.py so it stays checkable.
+#
+# The measure is content-word recall averaged with adjacent-pair recall, both
+# against the cited passages. Scores on one passage about Mount Everest:
+#
+#     1.000  a verbatim span                (what the extractive path returns)
+#     0.833  a FALSE sentence reassembled out of the passage's own words
+#     0.661  a true sentence with an invented number
+#     0.639  a TRUE paraphrase
+#     0.062  an answer about something else entirely
+#
+# Read that list carefully, because it says what this threshold can and cannot
+# do. The false reassembly outscores the true paraphrase. Lexical overlap
+# measures whether the wording is traceable to the source, which is a different
+# question from whether the answer is correct, and no cut on this axis
+# adjudicates claims.
+#
+# So the floor is set to catch the bottom of that list and nothing more: 0.35
+# sits well below the true paraphrase at 0.639 and well above the unsupported
+# answer at 0.062. It is deliberately not tuned upward to catch the reassembly,
+# because doing so would refuse honest paraphrases first.
+#
+# ISSUES.md I26 is why this layer exists at all: the retrieval score is an
+# out-of-domain detector and cannot see grounding, so this is the only place
+# that looks at what was actually said.
+OUTPUT_MIN_GROUNDEDNESS: Final[float] = 0.35
+
+# --------------------------------------------------------------------------
 # Routing thresholds. Architecture.md 3.6, answering/router.py.
 # --------------------------------------------------------------------------
 

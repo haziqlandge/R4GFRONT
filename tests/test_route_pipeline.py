@@ -43,6 +43,13 @@ class FakeEmbedder:
     def encode_one(self, text: str, kind: str) -> np.ndarray:
         return np.zeros((384,), dtype=np.float32)
 
+    def token_count(self, text: str) -> int:
+        """The real Embedder exposes this and the Phase 6 input guard is handed
+        it, so the fake has to carry it too. Whitespace words are close enough
+        for control-flow tests: what these assert is which stage runs, and the
+        queries here are all far inside the bound."""
+        return len(text.split())
+
 
 class FakeIndex:
     """Returns p2, p3, p1 - deliberately the WRONG order, so a test that passes
@@ -82,7 +89,17 @@ class FakeReranker:
 
 
 class FakeGroq:
-    def __init__(self, reply="composed answer", fail=False, configured=True) -> None:
+    # The default reply has to be GROUNDED in the fake passages, which it did not
+    # need to be before Phase 6. The output guard reads the answer and refuses
+    # one that is not supported by the passages it cites, so a placeholder like
+    # "composed answer" now correctly abstains and every routing test that used
+    # it would be asserting on the guard rather than on the routing.
+    def __init__(
+        self,
+        reply=PASSAGES["p1"],
+        fail=False,
+        configured=True,
+    ) -> None:
         self.reply = reply
         self.fail = fail
         self._configured = configured
