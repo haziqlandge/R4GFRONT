@@ -1127,6 +1127,71 @@ only at concurrency 1.
 
 ---
 
+### [Phase 3, reopened] C3 built, and the overlap turns out to be the thing
+**Date:** 21 Aug 2026 | **Who:** Claude Code session | **Branch:** `front-v1`
+
+**What happened**
+C3, semantic breakpoint chunking, was time-boxed out of Phase 3 with three days
+to freeze and recorded as "reasoned, not measured". With time available it was
+built, indexed and put through the J15 comparison. It took **61 minutes**.
+
+`chunking/c3_semantic.py`: sentences are embedded, the cosine distance between
+each consecutive pair is measured, and a chunk boundary is placed wherever that
+distance exceeds the 92nd percentile **of the whole corpus** rather than of the
+passage. The threshold came out at **0.2206** over 631,181 gaps and is recorded
+in `meta.json`, because the percentile is the recipe and the threshold is the
+reproduction.
+
+**The result, paired against C1 on 500 dev queries, 4000 resamples**
+(`bench/results/2026-08-20-190027-comparison-j15.json`):
+
+| | C1 | C3 | delta | 95% CI | significant |
+|---|---|---|---|---|---|
+| en Recall@10 | 0.878 | 0.848 | -0.030 | [-0.054, -0.006] | **YES** |
+| hi Recall@10 | 0.714 | 0.660 | -0.054 | [-0.078, -0.030] | **YES** |
+| en Hit@1 | 0.356 | 0.362 | +0.006 | [-0.026, +0.040] | no |
+| hi Hit@1 | 0.226 | 0.236 | +0.010 | [-0.014, +0.034] | no |
+
+**C3 loses, and the Hit@1 gain is not a win.** It points the other way from
+recall, and both intervals span zero. Reporting "C3 improves Hit@1" would be
+picking the one number that flatters a strategy that measurably hurt retrieval —
+the exact failure `ISSUES.md` I23 introduced paired tests to prevent.
+
+**Why this approach**
+The comparison was **re-run from scratch with all seven strategies in one
+process** rather than appending C3's row to the existing six. I21 is about a
+table assembled from separate runs, which compares the runs and not the
+strategies. Every pre-existing row reproduced to three decimals, which is also
+the first reproducibility check this project has had on that harness.
+
+**The finding worth keeping.** C3 cuts at sentence boundaries and does not
+overlap; C1 is a 96-token window with 24 tokens of overlap. Text near a boundary
+therefore lives in two C1 chunks and one C3 chunk, and C1 has 379,240 chunks
+against C3's 346,383. **On this corpus the overlap is doing the work, not the
+boundary placement.** Semantic coherence is the whole thesis of the strategy and
+it bought nothing measurable, because at p50 48 words and 3.14 sentences per
+passage there is not enough document for "follow the meaning" to have anything
+to follow.
+
+That now makes three strategies that lost to a 96-token window with overlap —
+C7 on contamination-free terms, C8 on Hindi, C3 on recall — and two that are
+C1 wearing a different payload. The baseline keeps winning, which is a result
+about the corpus rather than a failure to try.
+
+**A method note that cost an hour to learn.** The first throughput estimate for
+the sentence pass was 129 minutes, from a naive benchmark; the second was
+"27 to 32 minutes", extrapolated from C1's token throughput. Both were wrong,
+and the user was right to refuse the extrapolation and demand the real thing.
+Measured with the exact batching the implementation uses: **446 sentences/sec,
+~30 minutes**, and the predicted 62-minute total came in at 61.2. Length sorting
+is worth 2.5x to 3.3x on sentences against the 1.46x Phase 2 measured on chunk
+texts, because sentence length varies far more (p50 22 tokens, max 512). An
+unsorted batch of 128 crashes outright: one 512-token sentence pads the batch
+and asks onnxruntime for 1.6 GB.
+
+**What did not change.** C1 remains the default and the served index. C3 is a
+seventh measured strategy and a published finding, not a candidate.
+
 ### [Phase 9] Videos, posting, submission
 _pending_
 

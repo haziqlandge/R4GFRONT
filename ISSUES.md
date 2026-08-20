@@ -1488,3 +1488,67 @@ presentation bug is gone.
 This does not weaken the cross-lingual claim. The cross-lingual match still
 happens and is still what the reranker scored; the reader is simply shown the
 half of the parallel pair they can read.
+
+---
+
+## I32 — C3 semantic chunking loses to C1, and the overlap is why
+
+**Not a defect. A measured result, recorded because it contradicts the reason
+the strategy exists.** C3 was time-boxed out of Phase 3 and reported as
+"reasoned, not measured"; it was built on 21 August in 61 minutes and measured.
+
+### The result
+
+Paired against C1 on the same 500 dev queries, 4000 bootstrap resamples, one
+process, one query list, one embedder
+(`bench/results/2026-08-20-190027-comparison-j15.json`):
+
+| | C1 | C3 | delta | 95% CI | significant |
+|---|---|---|---|---|---|
+| en Recall@10 | 0.878 | 0.848 | **-0.030** | [-0.054, -0.006] | **YES** |
+| hi Recall@10 | 0.714 | 0.660 | **-0.054** | [-0.078, -0.030] | **YES** |
+| hi nDCG@10 | 0.453 | 0.432 | -0.021 | [-0.037, -0.006] | **YES** |
+| en Hit@1 | 0.356 | 0.362 | +0.006 | [-0.026, +0.040] | no |
+| hi Hit@1 | 0.226 | 0.236 | +0.010 | [-0.014, +0.034] | no |
+| en MRR@10 | 0.521 | 0.515 | -0.006 | [-0.030, +0.017] | no |
+
+**The Hit@1 gain is not a win and must not be quoted as one.** It points the
+opposite way from recall and both intervals span zero. Quoting it would be
+selecting the one metric that flatters a strategy which measurably hurt
+retrieval — which is what I23 introduced paired tests to prevent.
+
+### Why it lost
+
+C3 cuts at sentence boundaries and its chunks **do not overlap**. C1 is a
+96-token window with **24 tokens of overlap**, so text sitting near a boundary
+appears in two C1 chunks and only one C3 chunk. C1 therefore gets more chances
+to match a query, and it has 379,240 chunks against C3's 346,383 — 8.7% more,
+for 56 MB more index.
+
+**On this corpus the overlap is doing the work, not the boundary placement.**
+Semantic coherence is the entire thesis of the strategy and it bought nothing
+measurable. The corpus explains it: passages are p50 48 words and 3.14
+sentences, so there is not enough document for "follow the meaning" to have
+anything to follow. Semantic chunking is a technique for long documents, and
+`Architecture.md` 4.1 already noted that nothing here splits long documents.
+
+This is the third strategy to lose to a 96-token window with overlap — C7 on
+contamination-free terms, C8 on Hindi, now C3 on recall — and C5 and C6 are C1
+wearing a different payload. **The baseline keeps winning, which is a result
+about the corpus rather than a failure to try harder.**
+
+### What was done to keep the table honest
+
+The comparison was **re-run from scratch with all seven strategies in one
+process**, not appended to the existing six. I21 is about exactly that: a table
+assembled from separate runs compares the runs, not the strategies. Every
+pre-existing row reproduced to three decimals, which is also the first
+reproducibility check this harness has had.
+
+### Cost, for anyone tempted to tune it
+
+61 minutes on an i5-12400F at 8 threads: 927,069 sentences embedded in 29.9 min,
+346,383 chunks in 30.2 min, HNSW in 1.2 min. Retuning the percentile would cost
+another hour per value **and would be fitting a published number to the
+evaluation set**, which `Rules.md` 5 forbids. 92 is the specified value and it
+stays.

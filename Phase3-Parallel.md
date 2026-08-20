@@ -62,7 +62,7 @@ Write the sentence split to `artifacts/sentences.parquet` as a first-class artif
 
 Indic sentence segmentation is not `text.split(".")`. Devanagari uses the danda (`।`). `indic-nlp-library` is already on the allowlist for exactly this.
 
-**J3. C3 semantic breakpoint.** `[attended]` to write, `[unattended]` to build. Depends on J2.
+**J3. C3 semantic breakpoint.** `[attended]` to write, `[unattended]` to build. Depends on J2. **DONE 21 Aug 2026**, months after the box assignment stopped mattering - built in 61 minutes on BENCH, not EMBED, and it does NOT reuse J2's sentence embeddings because `artifacts/sentences.parquet` was never written. It embeds its own. Result: significantly WORSE than C1 on Recall@10 in both languages. See the reopened Phase 3 entry in `Memory.md` and `DONT-FORGET.md` 2.
 
 Split where consecutive-sentence cosine distance exceeds the 92nd percentile. **It reuses J2's sentence embeddings, which is the entire reason C2 and C3 are on the same box.** Recomputing them would double the cost of both jobs for nothing.
 

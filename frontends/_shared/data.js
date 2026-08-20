@@ -147,22 +147,27 @@ export const STAGES = {
 /* ------------------------------------------------------------------ */
 
 export const CHUNKING = {
-  src: "bench/results/2026-08-19-000658-comparison-j15.json",
-  method: "500 dev queries, one process, one query list, one embedder, scored on distinct passages. Paired bootstrap against C1.",
-  // Honesty note that has to travel with this table. SIX strategies were built,
-  // indexed and run through the J15 comparison, and all six rows below come out
-  // of that one file. But C5 and C6 reuse C1's byte-identical index BY
-  // CONSTRUCTION - they change the payload and the parent lookup, never the
-  // vectors - so their equal scores are a property of the design rather than
-  // two more confirmations of it. Both facts have to be on screen: dropping the
-  // rows hides work that was done, and showing them unmarked pads C1's column
-  // with its own reflection.
+  src: "bench/results/2026-08-20-190027-comparison-j15.json",
+  method: "500 dev queries, one process, one query list, one embedder, scored on distinct passages. Paired bootstrap against C1, 4000 resamples.",
+  // Honesty note that has to travel with this table. SEVEN strategies were
+  // built, indexed and run through the J15 comparison, and all seven rows below
+  // come out of ONE file - the comparison was re-run from scratch when C3 was
+  // added rather than appending C3's numbers to the older six. ISSUES.md I21 is
+  // about exactly that: a table assembled from separate runs compares the runs,
+  // not the strategies. Every pre-existing row reproduced to three decimals.
+  //
+  // C5 and C6 reuse C1's byte-identical index BY CONSTRUCTION - they change the
+  // payload and the parent lookup, never the vectors - so their equal scores are
+  // a property of the design rather than two more confirmations of it. Both
+  // facts have to be on screen: dropping the rows hides work that was done, and
+  // showing them unmarked pads C1's column with its own reflection.
   measured: [
     { id: "C1", name: "Fixed size, 96 tokens, 24 overlap", en: 0.878, hi: 0.714, hit1: 0.356, chunks: 379240, mb: 1080, verdict: "default" },
     { id: "C8", name: "Late chunking", en: 0.886, hi: 0.692, hit1: 0.366, chunks: 379240, mb: 1080, verdict: "tied on English, worse on Hindi" },
     { id: "C5", name: "Metadata aware", en: 0.878, hi: 0.714, hit1: 0.356, chunks: 379240, mb: 1080, verdict: "same index as C1", derived: true },
     { id: "C6", name: "Hierarchical parent child", en: 0.878, hi: 0.714, hit1: 0.356, chunks: 379240, mb: 1080, verdict: "same index as C1", derived: true },
     { id: "C7", name: "Doc2query, query aligned", en: 0.864, hi: 0.674, hit1: 0.352, chunks: 403240, mb: 1122, verdict: "significantly worse" },
+    { id: "C3", name: "Semantic breakpoint", en: 0.848, hi: 0.660, hit1: 0.362, chunks: 346383, mb: 1022, verdict: "significantly worse on recall" },
     { id: "C2", name: "Sentence window", en: 0.354, hi: 0.416, hit1: 0.124, chunks: 927069, mb: 2029, verdict: "significantly worse" },
   ],
   derived: [
@@ -170,8 +175,7 @@ export const CHUNKING = {
     { id: "C6", name: "Hierarchical parent child", note: "Built, indexed and run. C1's chunks plus a query_id parent lookup, so it buys answer context rather than recall. Same exact zero delta, same reason." },
   ],
   notBuilt: [
-    { id: "C3", name: "Semantic breakpoint", note: "Time boxed out with three days to freeze. Reasoned, not measured. Reported as such." },
-    { id: "C4", name: "Proposition decomposition", note: "Killed on a cost model: 23.7 M output tokens, 7 to 18 days on available hardware." },
+    { id: "C4", name: "Proposition decomposition", note: "Killed on a cost model: 23.7 M output tokens, 7 to 18 days on available hardware. The arithmetic is the deliverable." },
   ],
   // ISSUES.md I20, severity P0. Not because anything broke - the shipped C7 is
   // clean - but because following the job spec literally would have put a
@@ -189,7 +193,7 @@ export const CHUNKING = {
     deeper: "Restricting to the corpus only split removes the leak but cannot rescue the strategy. Real doc2query indexes synthetic queries, so a stored query can resemble a future unseen one. This corpus gives each passage group exactly one real query, and for an evaluated passage that query IS the evaluation query. Either the query is indexed, which leaks, or the evaluated passage is unaugmented, which does nothing. There is no third option, and that is exactly what the honest numbers show.",
     conclusion: "So the assumption that doc2query would win here is neither confirmed nor refuted. It is untestable on this dataset, and that is the finding. The guard is in the code rather than in a habit: the chunker defaults to the corpus only split, any opt in stamps leaky true into the index metadata, and the leaky build writes to its own directory so it can never overwrite the published one.",
   },
-  headline: "Six strategies built, indexed and measured. Four of them are independent evidence; C5 and C6 reuse C1's index by construction and are marked as such. One reasoned out, one killed on arithmetic.",
+  headline: "Seven strategies built, indexed and measured in one process. Five of them are independent evidence; C5 and C6 reuse C1's index by construction and are marked as such. One killed on arithmetic. The 96 token window with overlap wins, and C3 is the reason we can say why: it cuts on meaning instead, does not overlap, and loses recall in both languages.",
 };
 
 export const CORPUS = {
@@ -434,8 +438,8 @@ export const REQUIREMENTS = [
   {
     n: 2, title: "Chunking",
     ask: "Vast. Not a single naive fixed size approach.",
-    did: "Eight strategies designed, six built and measured on identical queries, four of them independent evidence, one reasoned out, one killed on a published cost model.",
-    evidence: "English passages max at 205 words, so a 256 token chunker is inert here. The work is choosing the retrieval unit, not splitting documents.",
+    did: "Eight strategies designed, seven built and measured on identical queries in one process, five of them independent evidence, one killed on a published cost model.",
+    evidence: "English passages max at 205 words, so a 256 token chunker is inert here. The work is choosing the retrieval unit, not splitting documents. The baseline keeps winning, and C3 says why: it cuts on meaning and does not overlap, and loses recall to a 96 token window that does.",
     status: "met",
   },
   {

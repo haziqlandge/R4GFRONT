@@ -176,9 +176,9 @@ function chunkingSection() {
     <p class="doc-note"><strong>${esc(CHUNKING.headline)}</strong></p>
     <div class="doc-split">
       <div class="doc-split-col">
-        <h3 class="doc-h3">Two of those six are not independent evidence</h3>
+        <h3 class="doc-h3">Two of those seven are not independent evidence</h3>
         <ul class="doc-list">${derived}</ul>
-        <p class="doc-note">C5 and C6 were built, indexed and run through the same comparison as the rest, and their rows are above with the numbers that run produced. They also reuse C1's byte-identical index by construction, so a reader who counts six independent results is counting C1 three times. Both facts belong on the page: dropping the rows would hide work that was done, and showing them unmarked would pad C1's column with its own reflection.</p>
+        <p class="doc-note">C5 and C6 were built, indexed and run through the same comparison as the rest, and their rows are above with the numbers that run produced. They also reuse C1's byte-identical index by construction, so a reader who counts seven independent results is counting C1 three times. Both facts belong on the page: dropping the rows would hide work that was done, and showing them unmarked would pad C1's column with its own reflection.</p>
       </div>
       <div class="doc-split-col">
         <h3 class="doc-h3">Not measured, and said so</h3>

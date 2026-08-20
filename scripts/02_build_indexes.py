@@ -154,6 +154,19 @@ def main() -> int:
     except (registry.PendingStrategy, KeyError) as exc:
         raise SystemExit(str(exc).strip('"')) from None
 
+    # Offer a progress hook to any chunker that declares one. C3's sentence pass
+    # is ~35 minutes and every other strategy chunks in under a minute, so this
+    # is capability-based rather than a check on the strategy name: a future
+    # chunker with a slow phase opts in by having the attribute.
+    if getattr(chunker, "on_progress", "absent") is None:
+        sent_progress = Progress(total=0, label="sentences")
+
+        def _on_chunk_progress(done: int, total: int, elapsed: float) -> None:
+            sent_progress.total = total
+            sent_progress.report(done, elapsed)
+
+        chunker.on_progress = _on_chunk_progress  # type: ignore[attr-defined]
+
     print("")
     print(f"  strategy   {chunker.name}  {chunker.params()}")
     print(f"  backend    {args.backend}   device {args.device_tag}   threads {args.threads}")

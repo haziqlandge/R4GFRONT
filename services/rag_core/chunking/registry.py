@@ -30,6 +30,7 @@ from typing import Callable, Final
 from .base import Chunker
 from .c1_fixed import FixedChunker
 from .c2_sentence_window import SentenceWindowChunker
+from .c3_semantic import SemanticChunker
 from .c8_late import LateChunker
 from .c5_metadata import MetadataChunker
 from .c6_hierarchical import HierarchicalChunker
@@ -84,11 +85,7 @@ _FILENAMES: Final[dict[str, str]] = {
 STRATEGIES: Final[dict[str, Callable[..., Chunker]]] = {
     "c1": FixedChunker,
     "c2": SentenceWindowChunker,
-    "c3": _Pending(
-        "c3", "J3", "EMBED",
-        "semantic breakpoint at the 92nd percentile of consecutive-sentence "
-        "cosine distance. Reuses J2's sentence embeddings - do not recompute.",
-    ),
+    "c3": SemanticChunker,
     "c4": _Pending(
         "c4", "J4/J6/J7", "LLM",
         "proposition: local LLM decomposes each passage into atomic facts. "

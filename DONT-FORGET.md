@@ -33,23 +33,52 @@ exact, generative true, startup 6.6 s`.
 
 ---
 
-## 2. C3 was never built. Neither was C4. This is not a documentation lag.
+## 2. C3 IS built now. C4 is not, and will not be.
 
-The site says so and the site is right. Three independent proofs:
+**Changed 21 August 2026.** This section used to read "C3 was never built.
+Neither was C4." Half of that is now wrong, and the correction matters because
+the old sentence was itself a warning against "fixing" the site to claim C3 had
+been tested. It has been tested. **Seven strategies were built, indexed and
+measured: C1, C2, C3, C5, C6, C7, C8.**
 
-| evidence | file |
-|---|---|
-| The class raises on construction | `services/rag_core/chunking/c3_semantic.py` — `SemanticChunker.__init__` raises `NotImplementedError`, every method raises |
-| The registry marks it pending | `chunking/registry.py` — `"c3": _Pending("c3", "J3", "EMBED", ...)`, same for `"c4"` |
-| No artefact exists | `artifacts/indexes/` holds `c1 c2 c5 c6 c7 c7-leaky c8` and nothing else; no `bench/results/*` file mentions c3 or c4 |
+C3 was time-boxed out of Phase 3 with three days to freeze — a schedule
+casualty, not a costed impossibility. It cost **61 minutes** to build once
+someone had an hour: ~927,000 sentences embedded in 29.9 min, 346,383 chunks
+embedded in 30.2 min, HNSW in 1.2 min. `services/rag_core/chunking/c3_semantic.py`.
 
-`registry.implemented()` returns the six that are real. **Six strategies were
-built, indexed and measured: C1, C2, C5, C6, C7, C8.** C3 was time-boxed out
-with three days to freeze; C4 was killed on a cost model (23.7 M output tokens,
-7 to 18 days on available hardware). Both are reported as reasoned rather than
-measured, which is the correct and defensible claim.
+**C4 remains unbuilt and killed on its own cost model** — 23.7 M output tokens,
+7 to 18 days on the hardware available (`ISSUES.md` I22). Its reversal condition
+is a working CUDA box with continuous batching, which would make it a few hours
+rather than days. That is a different decision from C3's and must not be
+collapsed into it: C3 needed an hour of CPU, C4 needs an LLM.
 
-**Do not "fix" the site to say C3 was tested.** It was not.
+**And C3 lost.** Paired against C1 on the same 500 dev queries, 4000 bootstrap
+resamples (`bench/results/2026-08-20-190027-comparison-j15.json`):
+
+| | C1 | C3 | delta | 95% CI | significant |
+|---|---|---|---|---|---|
+| en Recall@10 | 0.878 | 0.848 | **-0.030** | [-0.054, -0.006] | **YES** |
+| hi Recall@10 | 0.714 | 0.660 | **-0.054** | [-0.078, -0.030] | **YES** |
+| en Hit@1 | 0.356 | 0.362 | +0.006 | [-0.026, +0.040] | no |
+| hi Hit@1 | 0.226 | 0.236 | +0.010 | [-0.014, +0.034] | no |
+
+**Do not quote the Hit@1 numbers as a C3 win.** They point the other way from
+recall and neither is significant; the confidence intervals span zero
+comfortably. The only significant differences are losses.
+
+**Why it lost, which is the interesting part.** C3 cuts at sentence boundaries
+and its chunks do not overlap. C1 is a 96-token window with 24 tokens of
+overlap, so text near a boundary appears in TWO C1 chunks and only one C3 chunk
+— C1 gets more chances to match. C3 has 346,383 chunks against C1's 379,240,
+8.7% fewer, and 56 MB less index.
+
+So on this corpus **the overlap is doing the work, not the boundary placement.**
+Semantic coherence is the entire thesis of the strategy and it bought nothing
+measurable. That is a real finding about short passages: at p50 48 words and
+3.14 sentences, there is not enough document for "follow the meaning" to have
+anything to follow.
+
+`registry.implemented()` returns seven. `registry.pending()` returns C4 alone.
 
 ---
 
