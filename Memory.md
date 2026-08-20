@@ -964,6 +964,8 @@ Four things came out of it, recorded because the class of error matters more
 than the instances.
 
 1. **C3 and C4 really were never built**, and the site was right to say so.
+   *(True when written. C3 was built on 21 Aug and measured; C4 is still unbuilt
+   and still cost-killed. See `ISSUES.md` I32.)*
    `c3_semantic.py` raises on construction, `registry.py` holds both as
    `_Pending`, and `artifacts/indexes/` contains exactly `c1 c2 c5 c6 c7
    c7-leaky c8`. Three independent proofs, none of them a document. Worth
@@ -1414,7 +1416,10 @@ Only genuinely aligned per-query arrays produce an exact zero.
 
 **Open threads**
 - **C3 (semantic breakpoint) NOT BUILT - a time-boxed call, not a measured
-  result.** Council review was right to push on this: the earlier justification
+  result.** *(Closed 21 Aug: built in 61 minutes and measured. It lost -
+  significantly worse than C1 on Recall@10 in both languages. The prior recorded
+  below turned out to be right for a reason nobody had stated: C1's OVERLAP is
+  what does the work, and C3 does not overlap. `ISSUES.md` I32.)* Council review was right to push on this: the earlier justification
   ("it would occupy a size band C1 already holds") extrapolates from C2 and C7,
   which fail by different mechanisms, and states a hypothesis with the confidence
   of a measurement. The honest version: with three days to freeze and Phases 4-8
@@ -1422,6 +1427,11 @@ Only genuinely aligned per-query arrays produce an exact zero.
   prior - that a ~77-token corpus leaves little room for any segmentation
   strategy to win - is weak evidence, not proof. **Report Phase 3 as 4 measured +
   1 reasoned-out + 1 cost-killed, never as "6 strategies tested".**
+  *(Superseded 21 Aug: C3 was built and measured, so the count is now 5 measured
+  + 2 derived + 1 cost-killed, and the reasoned-out slot is empty. The RULE
+  behind this bullet is the part that survives - never report a strategy as
+  tested when it was reasoned about, and never count C5 and C6 as independent
+  evidence. See `ISSUES.md` I32.)*
 - Ranking, not retrieval, is the bottleneck: Hit@1 0.356 against Recall@10 0.878.
   Chunking cannot close that; the Phase 5 reranker is where the headroom is.
 - The en/hi gap persists at ~0.16 and no strategy narrowed it.

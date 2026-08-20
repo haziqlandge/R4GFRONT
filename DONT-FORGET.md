@@ -195,6 +195,14 @@ sentence is "it knows when the question is outside the corpus", never "it knows
 when it is wrong". The site's guardrail section says all of this with the numbers
 attached — keep it that way.
 
+**And the 62.1% is itself misread in the other direction.** It measures the exact
+`is_selected` label. Measured 21 Aug (`ISSUES.md` I33): **75% of the answers it
+counts as wrong retrieve a passage from the same query candidate set** — right
+topic, wrong labelled position — and under a topical target 86% are right against
+43% under strict gold. That does not license "the system is 86% correct", and
+I33 is careful about why. It does mean **"62% of answers are useless" is wrong**,
+and it is the misreading a reader is most likely to arrive at unaided.
+
 **Updated 20 Aug: the output guard now exists** (`guardrails/output_guard.py`,
 live in the pipeline) and it is the layer that reads the answer rather than the
 scores. **It does not close the 62.1%, and do not say that it does.** It scores

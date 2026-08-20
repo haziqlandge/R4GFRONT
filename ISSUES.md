@@ -343,6 +343,15 @@ Worth noting for its own sake: 12 threads produces a **P99 of 15.58 ms** — a 6
 **RESOLVED 20 Aug 2026, by deploying and measuring. The answer is that the
 headline number does not survive the move.**
 
+> **AMENDED LATER THE SAME DAY: it does survive, and the reason it did not at
+> first was our own defect, not the box.** Published Band A on the deployed
+> service is now **en P50 95.89 / P100 183.35, hi P50 115.88 / P100 182.20, 0 of
+> 998 requests over 200 ms**. The figures below are real and were measured on
+> `n2-standard-2` while `rag_core` gave two ONNX sessions four intra-op threads
+> each on four vCPUs — see `ISSUES.md` I28, which took en P50 from 132.59 to
+> 64.48 without touching hardware. The entry is kept unedited below because the
+> lever order it recommends is what was tried, and none of it was the fix.
+
 Measured on `n2-standard-2` in `asia-south1`, same 250 frozen queries, same 30
 warmup discards, through the live service:
 
@@ -1016,6 +1025,14 @@ checked inside the work are better where the work can be chunked.
 
 **Severity: P0.** It corrects a claim the Phase 5 entry made about its own best result,
 and it changes what Phase 6 has to build.
+
+> **READ I33 BEFORE QUOTING THE 62.1% BELOW.** The number is correct and it is a
+> statement about **exact `is_selected` labels**, not about how often a reader
+> gets something useful. Measured later: **75% of the answers scored wrong
+> retrieve a passage from the same query candidate set** — right topic, wrong
+> labelled position. Under a topical target 86% are right against 43% under
+> strict gold. That does NOT mean the system is 86% correct, and I33 explains
+> why, but "62% of answers are useless" is a misreading of this entry.
 
 ### The claim that was made
 

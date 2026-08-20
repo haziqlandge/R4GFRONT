@@ -149,7 +149,7 @@ This is the single strongest reason the three-box split is the right move rather
 
 ## 6. RAM is the constraint that decides the winner
 
-`ISSUES.md` I4: one C1 index is 655 MB of `index.bin` plus 50 MB of chunk metadata, and the full serving footprint for one strategy is about 1.16 GB. The GCP box is `n2-standard-2` with 8 GB.
+`ISSUES.md` I4: one C1 index is 655 MB of `index.bin` plus 50 MB of chunk metadata, and the full serving footprint for one strategy is about 1.16 GB. The GCP box was `n2-standard-2` with 8 GB when this section was written; **it is now `n2-standard-8` with 32 GB** (grown twice on 20 Aug, see `ISSUES.md` I29 - the last resize bought concurrency rather than speed). The reasoning below still holds and is the reason a strategy is judged on footprint as well as recall; only the headroom changed, and it now has to accommodate FOUR uvicorn workers each holding its own copy, about 11 GB in total.
 
 Strategies that emit more chunks scale that footprint linearly. C2 sentence-window and C4 propositions plausibly emit two to three times C1's chunk count, which puts them at 1.3 to 2 GB of `index.bin` alone.
 

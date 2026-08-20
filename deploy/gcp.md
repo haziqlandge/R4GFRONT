@@ -20,12 +20,37 @@ Cloud Run is the obvious GCP answer for a FastAPI service and it is the wrong on
 |---|---|---|---|
 | `e2-medium` | 2 shared / 4 GB | ~$27 | **No.** Burstable. |
 | `e2-standard-2` | 2 / 8 GB | ~$49 | **No.** Still the `e2` burst model. |
-| **`n2-standard-2`** | **2 / 8 GB** | **~$70** | **Use this.** |
+| **`n2-standard-2`** | **2 / 8 GB** | **~$70** | Was the choice. Too small - see the note below. |
 | `c2-standard-4` | 4 / 16 GB | ~$150 | Upgrade path if rerank misses budget |
 
 **The `e2` family is burstable** — sustained CPU is throttled toward a baseline once burst credits run out. That is invisible at P50 and brutal at P100, and P100 is the number that fails. `Latency.md` §4 reserves 25 ms for jitter; a throttling vCPU eats that and more. `n2` gives consistent dedicated cores.
 
 At ~$70/mo the $300 credit covers roughly four months. The submission needs it live through the HH Goa selection rounds in mid-September, so this is comfortable.
+
+## 2A. What was actually deployed, and why it is not what section 2 says
+
+**This guide describes the box as chosen on 17 August. It grew twice on 20
+August** and the commands below still name the original size, which is correct
+as a starting point and wrong as a description of production.
+
+`n2-standard-2` missed the 200 ms budget on the deployed service - en P50
+190.47 ms, hi P50 200.87 - so it went to `n2-standard-4` and then
+`n2-standard-8`. **Read `ISSUES.md` I28 before concluding the box was the
+problem**: most of that cost was two ONNX sessions with four intra-op threads
+each fighting over four vCPUs, and fixing it took en P50 from 132.59 to 64.48
+without touching hardware.
+
+What the 8 vCPUs actually buy is **concurrency, not speed** (`ISSUES.md` I29):
+every Band A stage is synchronous and never yields, so one uvicorn process
+serves one request at a time. Production runs **4 workers x 2 ONNX threads**, and
+if the vCPU count changes both numbers move with it - the rule is
+workers = vCPUs / 2, paired with `ONNX_THREADS_SERVING = 2`.
+
+**Cost.** Roughly 4x the ~$70/mo this guide budgeted, taken deliberately for a
+judging window measured in weeks. Resizing down after judging is a task somebody
+has to do; `HANDOFF.md` 1A has the command.
+
+---
 
 ## 3. Provision
 
