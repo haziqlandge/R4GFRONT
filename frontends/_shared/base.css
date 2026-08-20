@@ -933,8 +933,21 @@ html { scroll-behavior: auto; }
 .doc-list { display: grid; gap: 10px; margin-top: 12px; }
 .doc-list li { font-size: 13.5px; line-height: 1.6; color: var(--fg-2); padding-left: 18px; position: relative; max-width: 68ch; }
 .doc-list li::before { content: ""; position: absolute; left: 0; top: 9px; width: 7px; height: 1px; background: var(--fg-3); }
-.doc-list-x li::before { content: "no"; top: 0; width: auto; height: auto; background: none; font-family: var(--font-mono); font-size: 9px; color: var(--halt); }
-.doc-list-x li { padding-left: 26px; }
+/* The "rejected on purpose" markers.
+   This was a literal 9px "no", which read as a stray typo rather than a mark and
+   sat above its own line: it kept the dash bullet's `top: 9px` offset while
+   being a glyph, not a 1px rule. An x is what `doc-list-x` was named for, needs
+   no reading at any size, and cannot be confused with the ">" that means a
+   terminal prompt everywhere else on this page. Sized and line-boxed like the
+   text so it lands on the first line rather than floating above it. */
+.doc-list-x li::before {
+  content: "\00d7";
+  top: 0; width: auto; height: auto; background: none;
+  font-family: var(--font-mono);
+  font-size: 14px; line-height: 1.55;
+  color: var(--halt);
+}
+.doc-list-x li { padding-left: 21px; }
 .doc-list-num { counter-reset: g; }
 .doc-list-num li { padding-left: 26px; }
 .doc-list-num li::before {

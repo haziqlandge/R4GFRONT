@@ -27,6 +27,11 @@
 
   --accent: #FFB000;
   --accent-fg: #140E00;
+  /* Same hue, ~15% down. The hover state for text that is clickable but must
+     not look like a link - see .footlink. Deliberately darker rather than
+     brighter: on this background brighter reads as "active/selected", and these
+     are quiet signature-line links, not navigation. */
+  --accent-dim: #D99700;
   --ok: #9BE35B;
   --warn: #FFB000;
   --halt: #FF5F56;
@@ -294,6 +299,29 @@ a.brand:hover small { color: var(--fg-3); }
 .term-esc { font-size: 10px; letter-spacing: .04em; color: var(--fg-3); white-space: nowrap; }
 
 
+/* The two footer links.
+ *
+ * Deliberately NOT styled as links. No underline, no link colour, no visited
+ * state - each keeps exactly the colour it had as a span, because the footer is
+ * a signature line and turning it into navigation would be louder than what it
+ * says. The whole affordance is the hover, which darkens to --accent-dim: it
+ * answers "is this clickable" on contact and says nothing before then.
+ *
+ * Source order matters here. `.footlink` resets the UA link colour and
+ * `.footprompt` puts the accent back, so `.footprompt` MUST come second - they
+ * have equal specificity and nothing else decides it. The hover rule outranks
+ * both on its own.
+ */
+.doc-footer a.footlink { color: inherit; text-decoration: none; }
+.doc-footer a.footprompt { color: var(--accent); }
+.doc-footer a.footlink:hover { color: var(--accent-dim); }
+/* Keyboard users get the same target. :focus-visible only, so a mouse click
+   does not leave a ring behind on a line that is mostly decorative. */
+.doc-footer a.footlink:focus-visible {
+  color: var(--accent-dim);
+  outline: 1px solid var(--accent-dim);
+  outline-offset: 3px;
+}
 .footprompt { color: var(--accent); }
 
 /* ------------------------------------------------------------------ */
