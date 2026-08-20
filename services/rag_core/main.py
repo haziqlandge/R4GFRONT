@@ -31,6 +31,8 @@ from .answering.schemas import (
 )
 from .answering.generative import GroqClient
 from .config import (
+    ASIDE_RATE_LIMIT,
+    ASIDE_RATE_WINDOW_SECONDS,
     BUDGET_MS,
     GROQ_MODEL,
     DEFAULT_STRATEGY,
@@ -46,6 +48,7 @@ from .config import (
 )
 from .harness.errors import InvalidQuery, RagCoreError
 from .harness.pipeline import Context, Pipeline
+from .harness.ratelimit import RateLimiter
 from .harness.stages import Runtime, build_pipeline
 from .harness.trace import Trace
 from .retrieval.dense import DenseIndex
@@ -53,6 +56,12 @@ from .retrieval.embedder import Embedder
 from .retrieval.rerank import CrossEncoder
 
 STATE: dict[str, object] = {"ready": False}
+
+# Module-level so it survives across requests. ISSUES.md I35, and the docstring
+# in harness/ratelimit.py for why this is not the circuit breaker's job.
+ASIDE_LIMIT: RateLimiter = RateLimiter(
+    ASIDE_RATE_LIMIT, ASIDE_RATE_WINDOW_SECONDS, "groq-aside"
+)
 
 
 @asynccontextmanager
@@ -102,6 +111,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     STATE["reranker"] = RERANKER if reranker is not None else None
     STATE["passage_store"] = "exact" if exact else "derived"
     STATE["generative"] = groq.configured
+    # Which model the aside would answer with, or null when there is no key.
+    # Reported for the same reason `reranker` is: a process that can serve the
+    # panel and one that cannot are both "ok" and behave differently.
+    STATE["aside_model"] = GROQ_MODEL if groq.configured else None
 
     # Warmup: a real query through the real pipeline, discarded. Now covers the
     # cross-encoder too, whose first inference is far slower than its steady state.
@@ -147,6 +160,11 @@ async def health() -> ORJSONResponse:
             "reranker": STATE.get("reranker"),
             "generative": STATE.get("generative"),
             "passage_store": STATE.get("passage_store"),
+            # The aside's model and the per-client cap it is behind. ISSUES.md I35.
+            "aside": {
+                "model": STATE.get("aside_model"),
+                "per_client_per_minute": ASIDE_RATE_LIMIT,
+            },
         },
     )
 
@@ -223,25 +241,87 @@ async def answer(req: AnswerRequest) -> AnswerResponse:
     return _to_response(ctx, req.trace)
 
 
+def client_key(request: Request) -> str:
+    """Who "per user" means, given that /v1/aside has no login and no session.
+
+    The client IP, and getting it right depends on where the request came from:
+
+      - Deployed, every request arrives from Caddy on 127.0.0.1, so the socket
+        peer is useless and X-Forwarded-For is the only signal.
+      - Locally there is no proxy, the socket peer is the client, and any
+        X-Forwarded-For present was put there by the client itself.
+
+    THE RIGHTMOST ENTRY, NOT THE LEFTMOST. The usual reading of
+    X-Forwarded-For is "leftmost is the original client", and it is wrong here.
+    Caddy APPENDS the real peer to whatever header arrived, so a client sending
+    `X-Forwarded-For: 1.2.3.4` produces `1.2.3.4, <their real IP>`. Trusting the
+    leftmost would let anyone mint a fresh identity per request by varying one
+    header, which is the entire limiter defeated by a one-line curl. With exactly
+    one trusted proxy in front, the rightmost entry is the one Caddy wrote and
+    the only one that cannot be forged.
+
+    If a second proxy is ever put in front of Caddy, this becomes wrong in the
+    other direction (it would bucket every client onto that proxy's IP) and needs
+    a trusted-hop count. Recorded rather than pre-built - see ISSUES.md I35.
+    A wrong answer here costs a shared bucket, never a wrong answer to a user.
+
+    Falls back to "unknown" so a missing peer degrades to one shared bucket
+    rather than to no limit at all.
+    """
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        hops = [h.strip() for h in forwarded.split(",") if h.strip()]
+        if hops:
+            return hops[-1]
+    return request.client.host if request.client else "unknown"
+
+
 @app.post("/v1/aside")
-async def aside(req: AnswerRequest) -> dict[str, object]:
+async def aside(req: AnswerRequest, request: Request) -> dict[str, object]:
     """The model's own answer, with no retrieved context. NOT part of Band A.
 
     A separate endpoint rather than a field on /v1/answer, and that is the whole
     design. Band A is "transcript in to response serialized" and it must contain
-    no network call; folding this into the answer would put a ~500 ms Groq round
-    trip inside the number the submission rests on. The browser paints our
-    answer first and asks for this afterwards, so the measured path is untouched
-    and a slow or dead Groq costs a panel that never appears.
+    no network call; folding this into the answer would put a ~500 ms round trip
+    inside the number the submission rests on. The browser paints our answer
+    first and asks for this afterwards, so the measured path is untouched and a
+    slow or dead upstream costs a panel that never appears.
+
+    ONE UPSTREAM: `openai/gpt-oss-20b` on Groq, capped at ASIDE_MAX_TOKENS (240),
+    answering from its own training-time memory with no retrieval at all. A
+    Gemini primary with google_search grounding was built and removed on 21 Aug -
+    ISSUES.md I35 records why, and why "the panel shows CURRENT facts" is not a
+    claim this endpoint can make.
+
+    BEHIND A PER-CLIENT CAP of ASIDE_RATE_LIMIT calls per minute (ISSUES.md I35).
+    The aside and the real generative fallback spend the same 12,000-token window
+    (I7), so an unbounded panel is a way for one visitor to take Band B away from
+    everyone. A capped client is refused here, before the network, which is also
+    what stops them recording failures against a breaker protecting other
+    visitors.
+
+    `configured` is checked BEFORE the limiter, not after. An unkeyed upstream
+    would otherwise burn a slot from a window it can never use, so a deployment
+    with no Groq key would spend a budget on nothing.
 
     Never returns an error to the caller. `text: null` means "no aside", which
-    the page renders as nothing at all.
+    the page renders as nothing at all - a rate-limited visitor sees exactly what
+    a visitor with a dead upstream sees, and neither sees a failure.
+
+    `model` names the model that answered, and the page prints it in the panel
+    footer. An unattributed panel would be the one unlabelled claim on a site
+    whose whole pitch is that every figure names its source.
     """
     if not STATE.get("ready"):
         raise InvalidQuery("service still warming")
     rt: Runtime = STATE["runtime"]  # type: ignore[assignment]
-    if rt.groq is None:
+
+    if rt.groq is None or not rt.groq.configured:
         return {"text": None, "model": None}
+
+    if not ASIDE_LIMIT.allow(client_key(request)):
+        return {"text": None, "model": None}
+
     text = await rt.groq.aside(req.query)
     return {"text": text, "model": GROQ_MODEL if text else None}
 

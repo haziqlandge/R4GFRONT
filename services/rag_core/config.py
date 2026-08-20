@@ -557,7 +557,18 @@ GROQ_MAX_TOKENS: Final[int] = 160
 # 320 with reasoning_effort "low" leaves room for the thinking AND two finished
 # sentences. The aside is not on the fast path, so the extra tokens cost latency
 # nobody is measuring rather than budget somebody published.
-ASIDE_MAX_TOKENS: Final[int] = 320
+#
+# LOWERED 320 -> 240 on 21 Aug. The aside is the ONLY thing standing between a
+# curious visitor and the 12,000-token window that the real generative fallback
+# also draws on (ISSUES.md I7), so the cap is now set as tight as it can be
+# without re-entering the truncation trap rather than as loose as it can afford.
+#
+# 240 is a measured floor, not a guess. Re-run at 240 on the five questions most
+# likely to run long - including the "who is the mayor of New York City" query
+# that produced the "Eric Adams is the" truncation at 160 - and in both scripts:
+# all five finish their sentences. 160 does not. If a Groq aside starts arriving
+# truncated again, this is the first number to look at, not the last.
+ASIDE_MAX_TOKENS: Final[int] = 240
 ASIDE_REASONING_EFFORT: Final[str] = "low"
 
 # Hard ceiling on the call. Generous relative to the 352ms floor and deliberately
@@ -570,6 +581,28 @@ GROQ_CONNECT_TIMEOUT_MS: Final[float] = 1500.0
 # already cites (answering/extractive.py MAX_CITATIONS), so both paths ground on
 # the same evidence and a citation index means the same thing on either.
 GROQ_CONTEXT_PASSAGES: Final[int] = 3
+
+# --------------------------------------------------------------------------
+# Aside rate limiting. Per CLIENT, not per process. ISSUES.md I35.
+# --------------------------------------------------------------------------
+#
+# Five calls per sixty seconds, per client, counted in a sliding window rather
+# than a fixed bucket - a fixed bucket lets 10 calls through across a boundary,
+# which is the burst this exists to bound.
+#
+# WHY IT EXISTS. One free-tier Groq key serves every visitor to one public site,
+# and the aside spends the same 12,000-token window as the real generative
+# fallback (ISSUES.md I7). DONT-FORGET.md 13 already recorded the failure mode:
+# "a judge clicking repeatedly in accurate mode can exhaust it", after which the
+# panel stops appearing for EVERYONE and the Band B fallback degrades with it. A
+# per-client cap turns one impatient visitor from a site-wide outage into a
+# personal pause.
+#
+# It is deliberately in front of the circuit breaker rather than behind it. The
+# breaker reacts to an upstream that has already been pushed over; this declines
+# to push it over. They are different jobs and both are wanted.
+ASIDE_RATE_LIMIT: Final[int] = 5
+ASIDE_RATE_WINDOW_SECONDS: Final[float] = 60.0
 
 # --------------------------------------------------------------------------
 # Latency contract. Latency.md section 4.
