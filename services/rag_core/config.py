@@ -161,7 +161,40 @@ RERANK_MAX_TOKENS: Final[int] = 256
 # Depth 10 leaves no reserve at P100 against a 200 ms budget, and the deploy target
 # n2-standard-2 is 2 vCPU = one physical core plus a hyperthread against this box's
 # six cores. Depth 5 has room to survive that move; depth 10 does not.
-RERANK_TOP_K: Final[int] = 5
+RERANK_TOP_K: Final[int] = 3
+
+# CORRECTED ON THE DEPLOYED BOX, 20 Aug. Depth 5 does not fit there.
+#
+# Everything above was measured on a six-core i5. On the n2-standard-4 the
+# frozen 250 at depth 5 gives en P50 172.14 ms and hi P50 188.95 ms, with 16 and
+# 71 queries over the 200 ms budget. The per-stage breakdown says why: rerank is
+# 152.88 ms of a 169.75 ms total, about 90% of everything.
+#
+# Depth 3, same box, same 250 queries:
+#     en  P50 137.39  P70 145.69  P90 158.19  P100 215.84   1/250 over budget
+#     hi  P50 149.19  P70 158.93  P90 177.62  P100 221.67   5/249 over budget
+#
+# The quality cost, measured rather than assumed (300 dev queries, paired, the
+# same candidate lists, 4000 resamples):
+#
+#     arm      en Hit@1  hi Hit@1   en MRR  hi MRR  en nDCG
+#     dense       0.360     0.233    0.516   0.369    0.572
+#     depth 3     0.400     0.290    0.512   0.375    0.539
+#     depth 5     0.390     0.307    0.537   0.421    0.588
+#
+# Read that carefully, because it is not the trade anyone expected. Depth 3 is
+# BETTER on English Hit@1 and worse on Hindi, and both differences are small
+# with heavily overlapping intervals - on top-1 the two depths are barely
+# distinguishable. Where depth 5 genuinely wins is MRR and nDCG, which is the
+# ordering BELOW rank one.
+#
+# That maps onto the product. The extractive path returns top-1 and nothing
+# else, so Hit@1 decides whether the answer is right; MRR and nDCG decide the
+# order of citations two and three. Trading citation ordering for 35 ms and a
+# true 200 ms claim on the machine this actually runs on is the right way round.
+#
+# To revert: set this to 5 and expect en P50 ~172 ms, hi ~189 ms, and the
+# headline claim to be false on the deployed box.
 
 # Wall clock held back from the reranker's deadline for the work that must still
 # happen after it: the argsort, routing, building the answer and serializing. Those
