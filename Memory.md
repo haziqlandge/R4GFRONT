@@ -1258,7 +1258,70 @@ _pending_
 
 ---
 
+### [Phase 8, reopened] 21 Aug 2026 — the aside is capped, and Gemini was built and reversed inside a day
+
+Two changes to the unverified aside, and one reversal. They arrived together and
+are easy to confuse, so the split first:
+
+| | outcome |
+|---|---|
+| per-client rate limit, 5 aside calls/minute | **shipped** |
+| `ASIDE_MAX_TOKENS` 320 → 240 | **shipped** |
+| the panel footer naming its model | **shipped** |
+| `gemini-3.5-flash-lite` as the primary aside, google_search grounded | **built, then removed the same day. See R5.** |
+
+**The rate limit is the real change and it is independent of Gemini.**
+`DONT-FORGET.md` 13 had already written down the failure in almost these words:
+a judge clicking repeatedly in accurate mode exhausts the shared window and the
+panel stops appearing for everyone. What made it worth acting on rather than
+noting is that the aside spends the same 12,000-token Groq window as the *real*
+generative fallback (`ISSUES.md` I7) — so one impatient visitor does not only
+lose their own panel, they take Band B away from the next visitor.
+
+**The thing worth carrying forward is that a circuit breaker is not a rate
+limit**, and this project had one and thought it was covered. The breaker reacts
+to an upstream that has already been pushed over. The limiter declines to push it
+over. They are different jobs, and the order matters: the limiter runs first, so
+a capped client never touches the network and therefore never records a failure
+against a breaker that is protecting other visitors.
+
+Three details that took longer to get right than the limiter itself:
+
+- **Sliding window, not a fixed bucket.** A fixed 60-second bucket admits 5 calls
+  at 0:59 and 5 more at 1:01 — double the intended rate, two seconds apart.
+  Bounding that burst is the whole job.
+- **"Per user" had to be defined.** `/v1/aside` has no login and no session, so a
+  user is a client IP — read from the **rightmost** `X-Forwarded-For` hop, not
+  the leftmost. Caddy appends the real peer to whatever header arrives, so the
+  usual leftmost-is-the-client reading would let anyone mint a fresh identity per
+  request by varying one header, defeating the limiter with a one-line curl.
+- **It is per process, and the box runs four workers**, so the real ceiling is
+  5 × 4 = 20 per client per minute. Recorded rather than fixed — a Redis for a
+  courtesy limit on a panel that is *allowed* to not appear is more moving parts
+  than the problem has.
+
+**`ASIDE_MAX_TOKENS` 320 → 240** was tightened for the same reason and
+re-measured rather than assumed: five questions most likely to run long,
+including the "who is the mayor of New York City" query that produced I34's
+`"Eric Adams is the"` truncation at 160, English and Hindi, all finishing their
+sentences. That is the **fourth** time this repo has paid for the
+reasoning-token trap.
+
+**And the "no frontend change" prediction was wrong.** The plan in `HANDOFF.md`
+1B said the swap was invisible to the browser. It was right about markup and
+wrong about content: this panel carries no citation and no grounding check, so an
+unattributed one is the only unlabelled claim on a site whose pitch is that every
+figure names its source. `core.js`'s `aside()` now returns `{text, model}` and the
+footer prints it. `renderAside()` had accepted that argument since Phase 8 and
+nothing had ever passed it — the change outlives the reason it was noticed.
+
+Detail: `ISSUES.md` **I35**. What a later session will get wrong about it:
+`DONT-FORGET.md` **14**.
+
+---
+
 ## Mid-phase log
+
 
 ### 14 Aug 2026 — API keys verified, and Groq's round trip confirms the dual-path thesis
 
@@ -1528,6 +1591,59 @@ budget, and a 3.31 ms wrong answer was worth nothing.
 
 _Log here whenever a prior decision is overturned. Include the original reasoning, what changed, and the new decision. These are the highest-value entries in the file._
 
+### R5: the aside stays on Groq. Gemini was built and removed inside a day.
+
+**The original reasoning**, carried in `HANDOFF.md` 1B and `ISSUES.md` I34 as
+"the one open piece of engineering": the aside exists to put an external source
+beside a corpus whose coverage peaks in 2017, and Groq answers from
+training-time memory, which is a second stale source. `gemini-3.5-flash-lite`
+supports `tools: [{"type": "google_search"}]` and would answer from the live web.
+Groq cannot ground on search at all. That argument was correct and is still
+correct.
+
+**What changed.** Two things, in order.
+
+First, the key did not work — and not in a way anybody would have predicted from
+the plan. It was valid: `GET /v1beta/models` returned 200 with all 50 models
+listed including the one we wanted. Every generation call returned
+**429 "Your prepayment credits are depleted"**, on both API shapes, in both
+languages, with and without the search tool. A prepay account with an empty
+balance, which is a third billing state neither `DONT-FORGET.md` 8A nor Google's
+own docs had prepared us for, and which looks like neither an auth failure nor a
+rate limit.
+
+Second, and decisively, **the owner called it: remove Gemini, and the key came
+out of `.env`.** That is a scope decision, not a measurement, and it is recorded
+as one.
+
+**The new decision.** The aside is Groq `openai/gpt-oss-20b`, capped at 240
+tokens, behind a five-per-minute per-client limit. `answering/gemini.py`,
+`scripts/12_probe_gemini.py` and `tests/test_aside_gemini.py` are deleted;
+`GeminiClient`, `Runtime.gemini` and every `GEMINI_*` constant are gone. **There
+is no dormant path and no feature flag** — a second upstream that exists but is
+never exercised is a liability, not an option, and this repo has enough of those
+recorded already.
+
+**What it costs, stated rather than smoothed over.** The panel cannot show
+current facts. Asked the price of bitcoin, `gpt-oss-20b` replies "I'm not able to
+provide the current price of Bitcoin." That was the entire argument for the swap
+and it is not being bought. It is a known limit of what the panel claims — headed
+"external source · not from corpus", no citation, outside the grounding check,
+model named — not a defect in it.
+
+**What was kept from the reversed work**, because none of it was Gemini-specific:
+the per-client rate limit, the 320 → 240 cap, and the footer naming its model.
+See the Phase 8 reopened entry above.
+
+**Reversal condition, if anyone wants to argue it back.** Three things have to be
+true and none of them is about code: a funded **AI Studio** project (never
+Vertex — 8A explains which one bills the credits paying for the box), a second
+free tier somebody is willing to run out of, and a reason that survives
+`ISSUES.md` I33. Note that I33 cuts the other way from intuition here: live-web
+grounding would make an external model *worse* as a verifier, not better, because
+it disagrees hardest with the answers most faithful to a 2017 corpus.
+
+
 ### R4: rerank depth back to 5, and serving threads back to 2
 **Date:** 20 Aug 2026 | **Overturns:** two decisions taken earlier the same day
 
@@ -1707,10 +1823,13 @@ Paste this when starting a fresh session on this project:
 > its "misses" retrieve the right passage group — never quote 62.1% as "62% of
 > answers are useless".
 >
-> The one open piece of engineering is swapping the `accurate`-mode aside from
-> Groq to `gemini-3.5-flash-lite` with Google Search grounding, so it shows
-> current facts rather than training-time memory. `HANDOFF.md` 1B has the model,
-> the endpoint and where it plugs in. Use an **AI Studio** key, never Vertex -
-> `DONT-FORGET.md` 8A explains which one bills the credits that pay for the box.
+> The `accurate`-mode aside is **Groq only**. A `gemini-3.5-flash-lite` primary
+> with Google Search grounding was built on 21 Aug and **removed the same day**
+> (`Memory.md` R5, `ISSUES.md` I35, `DONT-FORGET.md` 14) - there is no dormant
+> Gemini path and no key. Do not propose it again without reading R5's reversal
+> condition. What that day left behind and is staying: a **per-client rate limit
+> of 5 aside calls per minute**, `ASIDE_MAX_TOKENS` at 240, and the panel footer
+> naming its model. The panel cannot show current facts and that is a stated
+> limit, not a task.
 >
 > Tell me which phase we are on and what its exit criterion is before writing any code.

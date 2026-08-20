@@ -170,6 +170,23 @@ Thresholds are calibrated in Phase 5 against a labelled dev slice, not guessed. 
 
 **Abstain.** Return a structured refusal with the reason and the top scores, rendered in the UI as the "why I did not answer" panel.
 
+**The unverified aside is NOT a fourth path.** Added Phase 8, capped per client
+21 Aug. It is a separate endpoint (`POST /v1/aside`, section 9), requested by the
+browser *after* the answer has painted, in `accurate` mode only. It answers the
+same question with **no retrieval at all** and is drawn below the answer, in the
+refusal colour, labelled "external source · not from corpus" with the model
+named. It never overrules, retracts, re-ranks or annotates the answer above it —
+`ISSUES.md` I33 rejected exactly that on measurement. It labels; it does not
+adjudicate.
+
+Its upstream is Groq `openai/gpt-oss-20b`, capped at 240 output tokens, behind a
+per-client rate limit of five calls per minute — it shares the LLM fallback's key
+and therefore its 12,000-token window, so an unbounded panel is a way for one
+visitor to take Band B away from the next. It answers from training-time memory
+and **cannot show current facts**, which is a stated limit of the panel rather
+than a pending task: a search-grounded Gemini primary was built and removed on
+21 Aug (`Memory.md` R5). `ISSUES.md` I34 and I35.
+
 ### 3.8 The harness
 
 Not a wrapper around a prompt. A typed pipeline runner. See section 6.
@@ -519,7 +536,8 @@ Abstention is never silent. It returns a typed reason (`OFF_TOPIC`, `LOW_CONFIDE
 | Dense index | `hnswlib`, in-process | No network hop |
 | Lexical index | `bm25s` | Sub-5ms, pure numpy |
 | Reranker | `ms-marco-MiniLM-L-6-v2`, ONNX int8 | Confidence signal + accuracy |
-| LLM | Groq, `llama-3.3-70b-versatile` | Best-in-class TTFT among hosted providers |
+| LLM, grounded fallback | ~~Groq `llama-3.3-70b-versatile`~~ **Groq `openai/gpt-oss-20b`** | Best-in-class TTFT among hosted providers. The Llama entry 404s — Groq retired that lineup for this account, see `Rules.md` 3.3 |
+| LLM, unverified aside | **Groq `openai/gpt-oss-20b`**, 240 tokens, 5 calls/client/minute | Same key as the row above, so it is capped. A search-grounded Gemini primary was built and removed, `Memory.md` R5 |
 | Validation | Pydantic v2 | Structured I/O for the harness |
 | Tracing | OpenTelemetry SDK + custom span exporter | Feeds the UI waterfall |
 | Benchmarking | Custom `04_bench_latency.py` + `numpy.percentile` | Must control the measurement boundary exactly |
@@ -564,6 +582,31 @@ Response:
 ```
 
 The `trace` object is what `LatencyWaterfall.tsx` renders. It is the demo.
+
+### `POST /v1/aside`
+
+The unverified aside (section 3.7). Takes the same request body as `/v1/answer`
+and reads only `query`. **Deliberately outside Band A and outside analytics** —
+folding it into `/v1/answer` would put a network round trip inside the number the
+submission rests on.
+
+Response:
+```json
+{ "text": "string | null", "model": "openai/gpt-oss-20b | null" }
+```
+
+**It never returns an error.** `text: null` means "no aside", which the page
+renders as nothing at all, and it is what a caller gets for a dead upstream, an
+absent key, an exhausted quota and an exceeded rate limit alike — a visitor who
+is being throttled sees exactly what a visitor with a broken upstream sees.
+
+**Rate limited per client**, five calls per minute, sliding window
+(`ISSUES.md` I35). This is the only endpoint with a cap, because it is the only
+one that spends a shared free tier on a visitor's behalf outside the answer path.
+
+`model` names the model that answered and the page prints it in the panel footer.
+This panel carries no citation and sits outside the grounding check, so an
+unattributed one would be the only unlabelled claim on the site.
 
 ### `WS /v1/stt`
 

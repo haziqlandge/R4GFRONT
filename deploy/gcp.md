@@ -100,6 +100,13 @@ docker run -d --restart=always -p 80:8000 \
   --name rag-core ghcr.io/haziqlandge/rag-core:latest
 ```
 
+That one key serves both the generative fallback and the `accurate`-mode aside,
+out of the same 12,000-token window, which is why the aside is capped per client
+(`ISSUES.md` I35). No Google key is needed or wanted — see `Memory.md` R5, and
+note that if one is ever added it must be an **AI Studio** key, never Vertex AI,
+which would bill the same $300 trial credit the next section tells you to set an
+alarm on.
+
 `--restart=always` plus the `/health` keepalive in `Architecture.md` §10 covers process death and host reboots.
 
 ## 5. Set a budget alert before you walk away

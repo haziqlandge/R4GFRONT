@@ -6,6 +6,8 @@ The repo is the handoff. This file covers only what the repo cannot: what a huma
 
 Last updated: 21 August 2026. **It is deployed, the 200 ms claim holds on the deployed box, C3 is built, and Phase 9 is the only phase left.** See section 1A for how to reach the box, and 1B for what changed on 21 August.
 
+> **Newest change, 21 Aug (second pass):** the unverified aside gained a **per-client rate limit of 5 calls/minute** and a tighter 240-token cap. A Gemini primary with live-web grounding was built the same day and **removed** — the aside is Groq only, and there is no dormant Gemini path. See 1B, `ISSUES.md` I35 and `DONT-FORGET.md` 14 before proposing it again.
+
 > **On a brand-new machine, read [`PREREQUISITES.md`](PREREQUISITES.md) first.** It takes a bare box to a verified one. This file assumes that is done.
 
 ---
@@ -244,36 +246,58 @@ The two modes are identical for any top-1 above 1.877, which is every sample
 question on the page. Do not assume the toggle is decoration - it is not, it is
 just invisible on the demo path.
 
-### The one open piece of work: swapping the aside to Gemini
+### The aside stays on Groq. Gemini was built, tried and removed.
 
-The aside runs on Groq today because Groq was already keyed and wired. Gemini
-would be better for one specific reason, and it is not speed: it supports
-`tools: [{"type": "google_search"}]`, which would make the panel show genuinely
-CURRENT facts instead of a model's training-time memory. Groq cannot do that at
-all, and "current" is the entire point of showing an external source beside a
-2017 corpus.
+This section used to describe swapping the aside to `gemini-3.5-flash-lite` as
+"the one open piece of work". That was done on 21 Aug and **undone the same
+day**, on the owner's call, and the key is out of `.env`. The aside is Groq
+`openai/gpt-oss-20b` and there is no dormant Gemini path — `answering/gemini.py`,
+`scripts/12_probe_gemini.py` and the Gemini tests are deleted.
 
-Researched 21 Aug so nobody has to do it again:
+**Why it is worth knowing what happened, rather than just that it did not.** The
+key was valid and the account had no credit, and that combination presents as
+neither an auth failure nor a rate limit:
 
-- **Model:** `gemini-3.5-flash-lite` - "our fastest, most cost-effective 3.5
-  model for high-throughput execution". With
-  `generation_config: {"thinking_level": "minimal"}`, which the docs call the
-  lowest-latency setting. That matters here for the same reason it mattered on
-  Groq: these are reasoning models and the thinking is what ate the token cap.
-- **API:** the Interactions API, `POST https://generativelanguage.googleapis.com/v1beta/interactions`,
-  header `x-goog-api-key`, body `{"model": ..., "input": ...}`. Not the older
-  `generateContent` shape.
-- **Key:** `aistudio.google.com/apikey`. **AI Studio, never Vertex** - see
-  `DONT-FORGET.md` 8A for why that distinction costs money.
-- **Rate limits:** Google stopped publishing free-tier RPM/TPD in the docs; they
-  are shown per-account at `aistudio.google.com/rate-limit`. Read them before
-  assuming the panel can fire on every question.
+```
+GET  /v1beta/models        -> 200, 50 models, gemini-3.5-flash-lite present
+POST /v1beta/interactions  -> 429  "Your prepayment credits are depleted."
+```
 
-**Where it plugs in:** `GroqClient.aside()` in `answering/generative.py` is the
-only thing that would change, behind the existing `/v1/aside` endpoint. No
-frontend change, no markup change, and analytics is untouched because it never
-saw the aside in the first place. Keep the null-on-failure contract: a missing
-aside must stay a section that does not appear, never an error.
+Both API shapes, both languages, with and without `google_search`. `DONT-FORGET.md`
+8A records this as the third Gemini billing state; it is the one people
+misdiagnose, because a key that lists models authenticates fine.
+
+**What was lost, stated plainly:** live-web grounding. Groq answers from
+training-time memory — asked the price of bitcoin it replies "I'm not able to
+provide the current price of Bitcoin" — and it cannot ground on search at all.
+That is a known limit of the panel, not a task waiting to be picked up. Before
+proposing Gemini again, read `ISSUES.md` I35 and `DONT-FORGET.md` 14: three
+things have to be true first and none of them is about code.
+
+### What that day DID leave behind, and it is staying
+
+| change | why |
+|---|---|
+| **5 aside calls per client per minute** (`harness/ratelimit.py`) | Independent of Gemini. The aside spends the same 12,000-token Groq window as the real generative fallback (`ISSUES.md` I7), so one visitor clicking repeatedly takes Band B away from the next one — a failure `DONT-FORGET.md` 13 had already predicted in those words. |
+| **`ASIDE_MAX_TOKENS` 320 → 240** | The aside is the only thing between a curious visitor and that window. Re-measured on the query that produced I34's "Eric Adams is the" truncation plus four others, both scripts: all finish their sentences. |
+| **The panel footer names its model** | `renderAside()` had accepted that argument since Phase 8 and nothing passed it. The panel carries no citation and no grounding check, so an unattributed one would be the only unlabelled claim on the page. `core.js`'s `aside()` now returns `{text, model}`. |
+
+Three things about the rate limit that are easy to get wrong: a circuit breaker
+is **not** a rate limit and does not substitute for one; the counter is **per
+process**, so the four-worker deployed box really allows 5 × 4 = 20 per client
+per minute; and the client is the **rightmost** `X-Forwarded-For` hop, because
+Caddy appends the real peer and trusting the leftmost lets anyone mint a new
+identity per request with one header.
+
+Exceeding the limit is not an error. `/v1/aside` returns
+`{"text": null, "model": null}`, which the page renders as nothing at all — the
+same thing a dead upstream produces.
+
+`/health` reports the whole arrangement:
+
+```json
+"aside": {"model": "openai/gpt-oss-20b", "per_client_per_minute": 5}
+```
 
 ### Live on the site
 

@@ -245,7 +245,7 @@ Expected: P50 near 72.5 ms and `PASS: harness overhead is within 5 ms.`
 | Variable | BENCH | EMBED | LLM | Notes |
 |---|---|---|---|---|
 | `SARVAM_API_KEY` | Phase 4 | ❌ | ❌ | speech-to-text, runtime only |
-| `GROQ_API_KEY` | Phase 5 | ❌ | ❌ | LLM fallback, runtime only |
+| `GROQ_API_KEY` | Phase 5 | ❌ | ❌ | LLM fallback, runtime only. Also serves the `accurate`-mode aside, out of the same window — see below. |
 | `HF_TOKEN` | optional | optional | optional | **read scope**; only raises download rate limits |
 
 **EMBED and LLM need no keys at all.** Every script you run downloads public files. If you want an `HF_TOKEN` for faster downloads, make your own at huggingface.co → Settings → Access Tokens with **read** scope. Never a write token — it buys nothing and a leaked one can modify your own HF repos.
@@ -253,6 +253,10 @@ Expected: P50 near 72.5 ms and `PASS: harness overhead is within 5 ms.`
 Format matters: write `KEY=value`. **Not** `KEY= "value"` — a quote read as part of a secret produces a 401 that looks like a bad key rather than a bad file. This has already cost us time once.
 
 **Groq is not a build resource.** Its free tier is 12,000 tokens per window; the C4 proposition pass needs ~24 million output tokens. That is not slow, it is impossible ([`Devices.md`](Devices.md) §5). Groq tokens are reserved for the Phase 5 runtime fallback and the Band B benchmark. No offline job touches it.
+
+**One Groq key, two consumers.** `GROQ_API_KEY` serves both the grounded generative fallback (Band B) and the unverified aside on `/v1/aside`, out of the same 12,000-token window. That is why the aside is capped at **5 calls per client per minute** and **240 output tokens** — without it, one visitor clicking repeatedly in `accurate` mode exhausts the window and takes Band B away from everyone else, not just their own panel. [`ISSUES.md`](ISSUES.md) I35.
+
+**There is no `GEMINI_API_KEY`, and that is a decision rather than an omission.** A `gemini-3.5-flash-lite` aside with Google Search grounding was built on 21 Aug and removed the same day; [`Memory.md`](Memory.md) R5 carries the reasoning and the condition for reversing it. If it is ever revived, the key must come from **AI Studio** (`aistudio.google.com/apikey`, no billing account required) and **never** from Vertex AI — enabling `aiplatform.googleapis.com` bills the same trial credits that pay for the box the site runs on. [`DONT-FORGET.md`](DONT-FORGET.md) §8A has the comparison table, plus a third state that is easy to misdiagnose: a valid key whose prepay balance is empty lists models happily and 429s on every generation call.
 
 ---
 

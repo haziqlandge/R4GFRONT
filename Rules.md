@@ -102,7 +102,8 @@ The "hot path" is everything inside `rag_core` between receiving a transcript an
 |---|---|---|
 | Embedder | `intfloat/multilingual-e5-small` | `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` |
 | Reranker | **`cross-encoder/mmarco-mMiniLMv2-L12-H384-v1`** — changed in Phase 5, see below | `BAAI/bge-reranker-base` (slower, no int8 build published) |
-| LLM | Groq `llama-3.3-70b-versatile` | Groq `llama-3.1-8b-instant` if TTFT matters more than quality |
+| LLM, grounded fallback | ~~Groq `llama-3.3-70b-versatile`~~ **Groq `openai/gpt-oss-20b`** — both Llama entries 404, see below | `openai/gpt-oss-120b`, which needs its fullwidth citation brackets normalised |
+| LLM, unverified aside | **Groq `openai/gpt-oss-20b`**, 240 output tokens, no retrieval, 5 calls/client/minute | none. A Gemini primary was built and removed on 21 Aug — see below and `Memory.md` R5 |
 | Toxicity | ~~a small distilled ONNX classifier~~ **shipped as a pattern set, Phase 6** | keyword list plus the LLM path only |
 | STT | Sarvam `saaras:v3-realtime` | Sarvam `saaras:v3` legacy WS. **Not** ElevenLabs, we picked one. |
 
@@ -133,6 +134,38 @@ legitimate questions about weapons, medicine, crime and hacking must all pass,
 because a web corpus legitimately covers those subjects. Measured: unsafe intent
 caught 12 of 12, zero false positives on the control group.
 
+**LLM deviations, both forced rather than chosen.**
+
+*The grounded fallback.* `llama-3.3-70b-versatile` and `llama-3.1-8b-instant`
+both 404 with `model_not_found`: Groq retired the Llama chat lineup for this
+account between 14 and 19 August, which made the 14 Aug "verified available"
+note stale without anything failing loudly. `config.py` carries the three
+measured replacements and why `openai/gpt-oss-20b` won.
+
+*The unverified aside.* A second LLM row, added 21 Aug, and the reason it is a
+separate row rather than a second entry in the first one is the whole point: the
+two are not interchangeable and must never be merged. The grounded fallback
+composes an answer from retrieved passages inside Band B; the aside answers with
+no retrieval at all and is drawn beside our answer, labelled, as an external
+source (`ISSUES.md` I34). They share one Groq key and therefore one 12,000-token
+window, which is why the aside is the only path in this system behind a
+**per-client rate limit** (section 4).
+
+**A `gemini-3.5-flash-lite` primary was built for this row on 21 Aug and removed
+the same day** (`Memory.md` R5). The argument for it was a capability rather than
+a benchmark — `tools: [{"type": "google_search"}]` answers from the live web and
+Groq has no equivalent — and that argument still stands; what happened is that
+the key turned out to be a valid one on an account with no credit, and the owner
+called the feature. There is no dormant Gemini path.
+
+**The cost is accepted and stated rather than pending.** The aside cannot show
+current facts: asked the price of bitcoin, `openai/gpt-oss-20b` replies "I'm not
+able to provide the current price of Bitcoin." An external source beside a 2017
+corpus is worth more if it is current, and this one is not. The panel claims no
+more than it delivers — headed "external source · not from corpus", uncited,
+outside the grounding check, model named. R5 carries the reversal condition if
+anyone wants to argue it back.
+
 **HARD:** The brief says pick one STT provider. We picked Sarvam. Do not add ElevenLabs "as a fallback"; it reads as indecision and it doubles the integration surface.
 
 ---
@@ -141,12 +174,27 @@ caught 12 of 12, zero false positives on the control group.
 
 **HARD.**
 - No API key ever reaches the browser. Sarvam and Groq keys live only in `services/`.
+- **A credential goes in a header, never in a query string.** Some providers document both — Google's `?key=` form among them — and this rule has no exception for "the docs did it": a key in a URL reaches access logs, proxy logs and `Referer` headers. Relevant again the next time an SDK example is copied.
 - The browser talks to our STT gateway, never to Sarvam directly.
 - `.env` is gitignored. `.env.example` is committed with empty values and a comment per variable.
 - Before the repo goes public, run a secret scanner over the full git history, not just the working tree. A key in an old commit is still a leaked key.
 - The Firecrawl key that appeared in the onboarding doc during setup is a session key and should be treated as compromised. Rotate it and do not commit it.
 
 **HARD.** Rate limits are handled in code, not by hoping. Groq client wraps every call in the circuit breaker from `harness/policies.py`. A 429 opens the breaker and routes to extractive.
+
+**HARD, added 21 Aug.** A breaker is **not** a rate limit, and this project had
+one and assumed it was covered. A breaker reacts to an upstream that has already
+been pushed over; on a public site that means the first impatient visitor spends
+a shared free tier and the panel stops appearing for *everyone* — and because the
+aside and the Band B fallback draw on the same window, they take Band B with
+them. Any external call made on a visitor's behalf outside the answer path is
+therefore also behind a **per-client** cap: `harness/ratelimit.py`, five calls
+per sixty seconds per client, sliding window, bucketed by the **rightmost**
+`X-Forwarded-For` hop (Caddy appends the real peer; trusting the leftmost lets a
+client mint a new identity per request). The limiter runs in FRONT of the
+breaker, so a capped client never records a failure against it. Exceeding the cap
+is not an error: the caller gets the same "no panel" the page already renders for
+a dead upstream. `ISSUES.md` I35.
 
 ---
 

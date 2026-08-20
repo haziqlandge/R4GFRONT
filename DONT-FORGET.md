@@ -297,6 +297,20 @@ where it prints them.
   link a paid API key." **Get an AI Studio key. Do not enable
   `aiplatform.googleapis.com`** - that bills the same credits that pay for the
   `n2-standard-8`, and `Memory.md` A12 already re-priced that runway once.
+
+  **And there is a THIRD state, which is what the project's key turned out to be
+  in on 21 Aug.** A key can be neither free-tier nor billing-enabled but *prepay
+  with an empty balance*, which fails differently from both and reads like
+  neither: `GET /v1beta/models` returns **200** with all 50 models listed, and
+  every generation call returns **429 "Your prepayment credits are depleted."**
+  So the key authenticates, the model exists, and nothing generates. Do not debug
+  it as an auth problem and do not wait for a rate-limit window to reset - it
+  does not clear on its own. The fix is credit in **AI Studio**; adding it
+  through Vertex on the GCP project is the trap above, not the fix.
+
+  This is kept even though **there is no Gemini in this project any more**
+  (section 14) — it cost a diagnostic cycle once and the next person to try a
+  Google key will hit the same three-way fork.
 - **Sarvam has TWO speech-to-text sockets and only one of them emits partials.**
   `wss://api.sarvam.ai/speech-to-text/ws` is the legacy streaming endpoint and
   Sarvam's own comparison table gives its interim results as "None; only a final
@@ -637,16 +651,22 @@ were copied.
   right topic, wrong labelled position. I26's 62.1% is a statement about exact
   `is_selected` labels and must not be quoted as "62% of answers are useless".
   This is the most likely thing for a reader to get wrong about this project.
-- **The aside could be Gemini and probably should be.** Groq answers from
-  training-time memory; `gemini-3.5-flash-lite` with `google_search` grounding
-  would answer from the live web, which is what "external source" beside a 2017
-  corpus is actually for. `HANDOFF.md` 1B has the model, the endpoint shape and
-  the key source; 8A above has the billing trap. Blocked only on a key.
-- **The `accurate` mode aside calls Groq on every question.** It is outside
-  Band A and outside analytics by construction (`ISSUES.md` I34), but it draws
-  on the same 12,000-token window as the generative fallback (I7), so a judge
-  clicking repeatedly in accurate mode can exhaust it. The panel then simply
-  stops appearing, which is the intended degradation and not an error.
+- ~~**The aside could be Gemini and probably should be.**~~ **Built and removed
+  on 21 Aug.** Do not propose it again without reading section 14 below and
+  `ISSUES.md` I35 - the key turned out to be a valid one on an account with no
+  credit, and the removal was a decision, not a defect. The aside is Groq only.
+- ~~**The `accurate` mode aside calls Groq on every question**, and a judge
+  clicking repeatedly can exhaust the shared window for everyone.~~ **Capped
+  21 Aug**: five calls per client per minute, sliding window,
+  `harness/ratelimit.py`. `ISSUES.md` I35. The aside is still outside Band A and
+  outside analytics by construction (I34), and exceeding the cap still shows a
+  panel that does not appear rather than an error.
+- **The aside still cannot show current facts**, and that is now a permanent
+  property rather than a pending task. Groq answers from training-time memory:
+  asked the price of bitcoin it replies "I'm not able to provide the current
+  price of Bitcoin." Live-web grounding was the one thing Gemini would have
+  bought and it is not being bought. The panel is labelled and names its model,
+  which is all it claims.
 - **The realtime STT relay is built and switched OFF** (`LIVE_TRANSCRIPT` in
   `frontends/_shared/app.js`). Read that constant's comment before turning it on:
   under `language_code=auto` Sarvam streams romanised Hindi partials, and pinning
@@ -669,3 +689,98 @@ were copied.
 - Layer 3's schema-repair retry is not built.
 - The adversarial eval is 76 cases. The ambiguous and answerable groups are 12
   and 16, which is enough to decide a direction and not enough to price one.
+
+---
+
+## 14. Gemini was built for the aside and REMOVED. Two other things from that day stayed.
+
+**21 August 2026.** This section replaces one written a few hours earlier that
+said the opposite. Read the split carefully, because the surviving half is easy
+to credit to the removed half:
+
+| | state |
+|---|---|
+| `gemini-3.5-flash-lite` as the primary aside, google_search grounded | **built, then removed on the owner's instruction. The key is out of `.env`.** |
+| per-client rate limit, 5 aside calls per minute | **shipped and staying** |
+| `ASIDE_MAX_TOKENS` 320 -> 240 | **shipped and staying** |
+| the panel footer naming its model | **shipped and staying** |
+
+**There is no dormant Gemini path.** `answering/gemini.py`,
+`scripts/12_probe_gemini.py` and `tests/test_aside_gemini.py` are deleted;
+`GeminiClient`, `Runtime.gemini` and every `GEMINI_*` constant are gone. The aside
+is Groq `openai/gpt-oss-20b` and nothing else. If a document elsewhere in this
+repo says otherwise, that document is stale and this one is right.
+
+### What the key turned out to be doing, so nobody re-derives it
+
+It was valid and the account had no credit, which looks like neither an auth
+failure nor a rate limit:
+
+```
+GET  /v1beta/models        -> 200, 50 models, gemini-3.5-flash-lite present
+POST /v1beta/interactions  -> 429  "Your prepayment credits are depleted."
+```
+
+Both API shapes, both languages, with and without `google_search`. Section 8A
+above records this as the **third** Gemini billing state, and it is the one most
+likely to be misdiagnosed: a key that lists models authenticates, so "check the
+key" wastes the first cycle.
+
+### The one thing that was lost, stated plainly
+
+Search grounding. Groq answers from training-time memory - asked the price of
+bitcoin it replies "I'm not able to provide the current price of Bitcoin" - and
+Groq cannot ground on search at all. An external source beside a corpus that
+peaks in 2017 is worth more if it is current, and it is not current. **That is a
+known limit of what ships, not a bug to be fixed at the next opportunity.** The
+panel is headed "external source · not from corpus", carries no citation, sits
+outside the grounding check, and names its model. It claims nothing more.
+
+### Five per minute, per client - and 20 on the deployed box
+
+`harness/ratelimit.py`, sliding window. This is independent of Gemini and would
+have been needed without it: the aside spends the same 12,000-token Groq window
+as the real generative fallback (`ISSUES.md` I7), so one visitor clicking
+repeatedly takes Band B away from the next one, not just their own panel.
+
+Three things about it that are easy to get wrong:
+
+- **A circuit breaker is not a rate limit.** The breaker reacts to an upstream
+  already pushed over; the limiter declines to push it over. The limiter runs
+  FIRST, so a capped client never touches the network and therefore never records
+  a failure against a breaker protecting other visitors.
+- **Per process.** The deployed box runs four uvicorn workers, so the real
+  ceiling is **5 x 4 = 20** per client per minute. The number on `/health` is the
+  per-worker one.
+- **The client is the RIGHTMOST `X-Forwarded-For` hop**, not the leftmost. Caddy
+  appends the real peer, so the last entry is the one it wrote. Reading the
+  leftmost - which is the usual advice - lets anyone mint a fresh identity per
+  request with one header.
+
+Exceeding it is not an error. `{"text": null, "model": null}`, which the page
+renders as nothing at all: a throttled visitor sees exactly what a visitor with a
+dead upstream sees.
+
+### 320 became 240, and it is the reasoning-token trap for the fourth time
+
+`ISSUES.md` I34 records 160 truncating `gpt-oss-20b` mid-sentence - "Eric Adams
+is the" - because it spends the cap thinking before it writes. 240 was
+re-measured on that same query and four others, English and Hindi: all five
+finish their sentences. **If a Groq aside starts arriving truncated, this is the
+first number to look at**, and the trap has now been paid for four times in this
+repo (`qwen3.6-27b`, `11_llm_judge.py` at `max_tokens: 8`, the aside at 160, and
+this).
+
+### What must not be built on top of this
+
+`ISSUES.md` I33 rejected an external model as a **verifier** on measurement: a
+current model disagrees hardest with the answers most FAITHFUL to a 2017 corpus,
+so the flag ends up anti-correlated with correctness. **The aside labels; it does
+not adjudicate.** Worth noting in the direction this section just moved: live-web
+grounding would have made that failure *sharper*, not safer - so "Gemini would be
+more accurate" is not an argument for reviving it as a checker.
+
+Before anyone proposes Gemini for the aside again, three things have to be true
+and none of them is about code: a funded **AI Studio** project (never Vertex,
+section 8A), a second free tier somebody is willing to run out of, and a reason
+that survives the paragraph above.

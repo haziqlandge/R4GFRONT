@@ -44,6 +44,8 @@ Severity is about the submission, not about engineering neatness:
 | I25 | Stage timeouts do not fire for synchronous stages | **P0** | Phase 5 / Phase 6 |
 | I26 | The abstention floor detects off-topic input, NOT ungrounded answers | **P0** | Phase 6 |
 | I27 | The score-gap ambiguity check cannot ship: it refuses real questions first | **RESOLVED (measured, rejected)** | Phase 6 |
+| I34 | The unverified aside: showing the model beside the answer, never instead of it | **RESOLVED (shipped)** | Phase 8 |
+| I35 | Gemini built for the aside and removed; the per-client rate limit stayed | **RESOLVED (removed, 21 Aug)** | Phase 9 |
 
 ---
 
@@ -1722,15 +1724,156 @@ reasoning consumed the entire cap and `content` came back an empty string, and
 now the aside. `ASIDE_MAX_TOKENS = 320` with `reasoning_effort: "low"` leaves
 room for the thinking and two finished sentences.
 
+> **AMENDED 21 Aug: `ASIDE_MAX_TOKENS` is now 240, not 320**, tightened because
+> the aside is the only thing between a curious visitor and the same 12,000-token
+> window Band B draws on. Re-measured at 240 on the five questions most likely to
+> run long, including the "mayor of New York City" query that produced the
+> truncation above: all five finish their sentences, in both Devanagari and Latin
+> script. The trap is real and 240 is above it; 160 was not. See I35.
+
 **If a Groq answer looks truncated or empty, check the token cap against the
 reasoning budget before suspecting anything else.**
 
 ### Where it could go
 
-`gemini-3.5-flash-lite` - "our fastest, most cost-effective 3.5 model for
-high-throughput execution" - with `thinking_level: "minimal"` would be faster,
-and unlike Groq it supports `tools: [{"type": "google_search"}]`, which would
-make the aside show genuinely CURRENT facts rather than a model's training-time
-memory. It needs a Google **AI Studio** key, which is free tier and requires no
-billing account; Vertex AI on the GCP project would bill the trial credits that
-keep the site alive. The swap is behind `/v1/aside` and touches no frontend.
+~~`gemini-3.5-flash-lite` ... would be faster, and unlike Groq it supports
+`tools: [{"type": "google_search"}]`.~~ **Built and removed 21 Aug. See I35**,
+which records what the key turned out to be doing and what has to be true before
+anyone proposes it again.
+
+---
+
+## I35 - Gemini was built for the aside and removed the same day. The rate limit stayed.
+
+**Status: RESOLVED by removal, 21 Aug 2026.** Two separate things happened on one
+day and only one of them survived. Both are recorded because the surviving half
+is easy to misattribute to the removed half, and because the removed half is the
+kind of thing a later session will otherwise propose again from scratch.
+
+### What ships now
+
+`POST /v1/aside` has **one** upstream: Groq `openai/gpt-oss-20b`, capped at
+`ASIDE_MAX_TOKENS = 240`, answering from its own training-time memory with no
+retrieval, behind a **per-client rate limit of 5 calls per minute**. That is the
+whole endpoint. `/health` reports it:
+
+```json
+"aside": {"model": "openai/gpt-oss-20b", "per_client_per_minute": 5}
+```
+
+### What was built and removed
+
+`gemini-3.5-flash-lite` as the primary aside, with `tools: [{"type":
+"google_search"}]` so the panel would answer from the live web, falling back to
+Groq. Built against the Interactions API (`POST
+https://generativelanguage.googleapis.com/v1beta/interactions`, header
+`x-goog-api-key`), 300 output tokens, `thinking_level: "minimal"`.
+
+It was removed on the owner's instruction the same day, and the key was removed
+from `.env`. `services/rag_core/answering/gemini.py`, `scripts/12_probe_gemini.py`
+and `tests/test_aside_gemini.py` no longer exist; `GeminiClient`, `Runtime.gemini`
+and every `GEMINI_*` constant are gone. **There is no dormant Gemini path.**
+
+### What was measured before it was removed, so nobody re-derives it
+
+The key was valid and the account had no credit, which presents as neither an
+auth failure nor a rate limit:
+
+```
+GET  /v1beta/models              -> 200, 50 models, gemini-3.5-flash-lite present
+POST /v1beta/interactions        -> 429  "Your prepayment credits are depleted."
+POST models/...:generateContent  -> 429, same message
+```
+
+Both API shapes, both languages, with and without `google_search`. A key that
+lists models is a key that authenticates, so "check the key" is the wrong first
+move; this is a billing state and it does not clear on its own.
+
+**Before proposing Gemini for the aside again, three things have to be true and
+none of them is about code:** a funded AI Studio project (never Vertex - see
+`DONT-FORGET.md` 8A, which now also records this third billing state), a second
+free tier somebody is willing to run out of, and a reason that survives the
+constraint in the last section below.
+
+**The gap it was meant to close is real and is still open.** Asked for the price
+of bitcoin, `gpt-oss-20b` answers "I'm not able to provide the current price of
+Bitcoin." An external source beside a corpus that peaks in 2017 is worth more if
+it is current, and Groq cannot ground on search at all. That is a known limit of
+what ships, not a defect in it - the panel is labelled "external source · not
+from corpus" and names its model, which is all it ever claims.
+
+### THE PART THAT STAYED: a per-client rate limit
+
+Five calls per sixty seconds, per client, sliding window
+(`harness/ratelimit.py`). This is independent of Gemini and would have been
+needed without it.
+
+`DONT-FORGET.md` 13 had already recorded the failure it prevents, in those words:
+"a judge clicking repeatedly in accurate mode can exhaust it", after which the
+panel stops appearing for **everyone**. It is worse than one lost panel, because
+the aside spends the same 12,000-token window as the real generative fallback
+(I7) - so one impatient visitor can take Band B away from the next one.
+
+**The circuit breaker does not do this job.** It reacts to an upstream that has
+already been pushed over; the limiter declines to push it over. Both are wanted
+and the order matters: the limiter runs first, so a capped client never touches
+the network and therefore never records a failure against a breaker that is
+protecting other visitors.
+
+**Sliding, not a fixed bucket.** A fixed 60-second bucket admits 5 calls at 0:59
+and 5 more at 1:01 - double the intended rate, two seconds apart. Bounding that
+burst is the entire job. Pinned in `tests/test_ratelimit.py`.
+
+**"Per user" means the client IP, from the RIGHTMOST `X-Forwarded-For` hop.** The
+usual reading is "leftmost is the original client" and it is wrong here. Caddy
+APPENDS the real peer to whatever header arrives, so a client sending
+`X-Forwarded-For: 1.2.3.4` produces `1.2.3.4, <their real IP>`. Trusting the
+leftmost would let anyone mint a fresh identity per request by varying one
+header - the whole limiter defeated by a one-line curl. With exactly one trusted
+proxy in front, the rightmost entry is the one Caddy wrote.
+
+**Exceeding it is not an error.** The caller gets `{"text": null, "model": null}`,
+which the page renders as nothing at all - the same thing a dead upstream
+produces. A throttled visitor sees what a visitor with a broken upstream sees,
+and neither sees a failure.
+
+Two things this is honest about rather than fixing:
+
+- **The deployed box runs FOUR uvicorn workers**
+  (`deploy/etc/shruti-core.service`) and the counter is per process, so the real
+  site-wide ceiling is 5 x 4 = 20 per client per minute. The number on `/health`
+  is the per-worker one. A Redis for a courtesy limit on a panel that is
+  *allowed* to not appear would be more moving parts than the problem has.
+- **A second proxy in front of Caddy would break the identity**, bucketing every
+  visitor onto that proxy's IP. It would need a trusted-hop count. Not
+  pre-built. The failure costs a shared bucket, never a wrong answer.
+
+### THE OTHER PART THAT STAYED: `ASIDE_MAX_TOKENS` 320 -> 240
+
+Tightened because the aside is the only thing between a curious visitor and the
+window Band B also draws on. Re-measured rather than assumed: five questions most
+likely to run long, including the "who is the mayor of New York City" query that
+produced I34's `"Eric Adams is the"` truncation at 160, English and Hindi. All
+five finish their sentences at 240. **This is the fourth time this repo has paid
+for the reasoning-token trap** (`qwen3.6-27b` in `config.py`,
+`scripts/11_llm_judge.py` at `max_tokens: 8`, the aside at 160, and this
+re-check). If a Groq aside starts arriving truncated, this is the first number to
+look at.
+
+### And the frontend change that stayed
+
+`aside()` in `core.js` now returns `{text, model}` and the panel footer prints
+the model. `renderAside()` had accepted that argument since Phase 8 and nothing
+had ever passed it. It is not Gemini-specific and it outlives Gemini: this panel
+carries no citation and no grounding check, so an unattributed one would be the
+only unlabelled claim on a site whose pitch is that every figure names its
+source.
+
+### Where this must not go, unchanged
+
+I34's line holds: **the aside labels, it does not adjudicate.** I33 rejected an
+external model as a verifier on measurement - a current model disagrees hardest
+with the answers most FAITHFUL to a 2017 corpus, so the flag ends up
+anti-correlated with correctness. Note that live-web grounding would have made
+that failure *sharper*, not safer, which is worth remembering if Gemini is ever
+proposed again on the grounds that it would be "more accurate".

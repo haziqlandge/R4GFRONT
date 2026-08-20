@@ -216,6 +216,27 @@ Two honesty rules are enforced in code:
    extractive answer with a Groq round trip produces a number that describes
    neither.
 
+**The aside is not in either series.** `accurate` mode draws a second panel below
+the answer, headed "external source · not from corpus", holding the same question
+answered by a model with no retrieval behind it. It comes from `/v1/aside`, a
+separate endpoint requested only after our answer has painted, and `record()`
+never sees it. Folding an external model's round trip into percentiles that
+describe this pipeline would make them describe neither.
+
+Its footer names the model — `openai/gpt-oss-20b` — and that is load bearing
+rather than decorative: this is the one panel on the page with no citation and no
+grounding check behind it, so an unattributed one would be the only unlabelled
+claim on a site whose pitch is that every figure names its source. `aside()` in
+`core.js` returns `{ text, model }` for exactly that reason.
+
+Two things the page is quiet about and should not start claiming. The panel
+answers from training-time memory, so it is **not** a source of current facts — a
+search-grounded upstream was built and removed on 21 Aug (`Memory.md` R5). And it
+is rate limited to five calls per client per minute, because it spends the same
+Groq window as the generative fallback; a throttled visitor simply sees no panel,
+which is the same thing a dead upstream produces and needs no separate message.
+`ISSUES.md` I34 and I35.
+
 ---
 
 ## What is on the documentation page
