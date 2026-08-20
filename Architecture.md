@@ -403,12 +403,41 @@ This is the part that turns the harness from decoration into the mechanism that 
 
 Four layers. Requirement 6 asks the system to know when *not* to answer.
 
-### Layer 1: input guard (pre-retrieval, 3 to 8ms)
-- Language identification; reject if not in the supported set
-- Length bounds; reject empty or absurdly long transcripts
-- Toxicity and unsafe-intent classification, small local ONNX classifier, not a network call
-- Prompt-injection detection: pattern set plus a classifier, for "ignore previous instructions" style transcripts
-- PII detection with regex plus `presidio`-style rules; redact before logging, never before retrieval
+### Layer 1: input guard (pre-retrieval)
+
+**Built in Phase 6 and live.** `guardrails/input_guard.py`, first stage in
+`build_pipeline()`, and `required=True` because a guard that can be skipped for
+budget reasons is not a guard.
+
+Checks in this order, and the order is the design:
+
+1. **Empty.** The request schema's `min_length=1` accepts a single space, which
+   costs a full embedding to retrieve nothing.
+2. **512-character pre-filter.** A performance early-out, not the safety bound.
+   `ISSUES.md` I1 measured it at 0.00007 ms against 0.04228 ms to tokenize, so it
+   rejects gross input 600x cheaper and before any allocation.
+3. **Prompt-injection patterns**, compiled at import per `Rules.md` 2.1. Narrow
+   by construction: each requires a verb and its object, because "ignore" is an
+   ordinary English word.
+4. **Unsafe-intent patterns**, keyed on an act plus its object rather than on a
+   topic. A web corpus legitimately covers medicine, weapons and crime.
+5. **64-token bound**, the actual safety limit, using the embedder's own
+   tokenizer.
+
+**Deviation from the original spec, recorded.** Toxicity is a pattern set, not a
+"small local ONNX classifier". `Rules.md` 3.3 names a keyword list as the
+allowed fallback, and a classifier landing the day before a code freeze would
+ship without its false-positive rate measured. What makes the pattern set
+defensible is the control group in `tests/test_input_guard.py`: nine legitimate
+questions about weapons, medicine, crime and hacking must all pass.
+
+**PII redaction is not built.** It was specified for logging and this service
+does not log query text.
+
+**Measured.** Against the real tokenizer over the frozen benchmark: 499 of 500
+queries accepted, one rejected, and the rejection is exactly `query_id 156297` at
+2,390 tokens. The largest legitimate query is 25 tokens. A blocked request costs
+0.1 to 0.3 ms end to end.
 
 ### Layer 2: retrieval guard (post-rerank, < 1ms)
 - Confidence floor. ~~If `rerank_top1 < 0.35`, abstain.~~ **Superseded in Phase 5.**
@@ -418,19 +447,58 @@ Four layers. Requirement 6 asks the system to know when *not* to answer.
   answers. The floor is fitted by `scripts/06_calibrate_routing.py` against the dev
   partition and lives in `config.ROUTE_TAU_LOW`. `ISSUES.md` I3 records why this
   floor cannot be placed on the dense score at all.
-- Score-gap check. Likewise: 0.02 is a dense-cosine quantity and does not transfer
-  to a logit scale. Re-derive from the calibration output before relying on it.
-- Language mismatch. If the query language and the retrieved passage languages disagree entirely, flag it.
+- ~~Score-gap check.~~ **Built as a measurement in Phase 6 and REJECTED.** It
+  does not survive its own data: catching 5 of 9 ambiguous cases costs 4 of 14
+  real questions, because the distributions interleave rather than merely
+  overlapping. A genuine question, "what happens during a docket call in court",
+  has a gap of 0.07, smaller than the single word "mercury" at 0.08. A small gap
+  means several candidates scored alike, which happens when a query is ambiguous
+  and equally when the corpus holds several good passages on one subject. Full
+  numbers in `ISSUES.md` I27 and the reasoning in `guardrails/retrieval_guard.py`.
+- ~~Language mismatch.~~ **Rejected on the design.** Answering a Hindi question
+  from the English twin of a passage is this project's cross-lingual claim,
+  observed firing on live spoken input on 20 Aug. A guard here would refuse the
+  system's own headline capability.
+
+**So Layer 2 is the confidence floor and nothing else**, and the floor lives in
+`answering/router.py` because the same calibrated score also picks the answer
+path. Ambiguity is therefore an open weakness, reported per category in the
+adversarial eval rather than averaged into a headline.
 
 ### Layer 3: generation guard (LLM path only)
 - System prompt constrains the model to the provided context and forbids outside knowledge
 - Output is schema-parsed; a response with no citation index is rejected and retried once
 - Max tokens hard cap
 
-### Layer 4: output guard (post-generation, 5 to 15ms)
-- Groundedness score: token and n-gram overlap between answer and cited passage, plus a cheap NLI entailment check on the top claim
-- If groundedness falls below threshold, downgrade the response to the extractive answer or abstain
-- Citation validity: every cited index must exist in the retrieved set
+### Layer 4: output guard (post-answer)
+
+**Built in Phase 6 and live.** `guardrails/output_guard.py`, last stage in
+`build_pipeline()`. `ISSUES.md` I26 is why it is load-bearing: the retrieval
+floor is an out-of-domain detector and nothing else in the pipeline reads the
+answer text.
+
+- **Groundedness**: content-word recall averaged with adjacent-pair recall
+  against the cited passages. The pair half is what does the work, because
+  counting single words alone scores a perfect 1.0 on an answer assembled
+  entirely out of the passage's own vocabulary.
+- **Citation validity**: every `[n]` in the answer must index a passage that was
+  actually retrieved.
+- On failure the generative path **abstains** rather than downgrading to the
+  extractive answer. The router chose generation precisely because the top
+  passage was not clearly the answer, so falling back to quoting it would return
+  the thing already judged insufficient.
+
+**No NLI entailment check.** It was specified and is not built.
+
+**What this measure is, stated because it is easy to overclaim.** Measured on a
+worked example: a verbatim span scores 1.000, a FALSE sentence reassembled from
+the passage's own words scores 0.833, a TRUE paraphrase scores 0.639, an answer
+about something else scores 0.062. **The false reassembly outscores the true
+paraphrase.** Lexical overlap measures whether the wording is traceable to the
+source, which is not the same question as whether the answer is correct. The
+floor is 0.35 to catch the bottom of that list and nothing more, and
+`tests/test_output_guard.py` pins the inversion so the character of the measure
+cannot drift silently.
 
 Abstention is never silent. It returns a typed reason (`OFF_TOPIC`, `LOW_CONFIDENCE`, `UNSAFE_INPUT`, `UNGROUNDED_OUTPUT`, `AMBIGUOUS_RETRIEVAL`) which the UI renders. This is what makes requirement 6 visible in a demo video.
 

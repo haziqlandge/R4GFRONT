@@ -80,7 +80,7 @@ Total budget 200ms. Allocated with headroom, because P100 is what fails, not P50
 
 | Stage | Allocated | Expected | Hard timeout | On timeout |
 |---|---|---|---|---|
-| `input_guard` | 12 ms | 3 to 8 | 15 ms | Pass through, log |
+| `input_guard` | 12 ms | **0.1 to 0.3 measured** | 15 ms | Pass through, log |
 | `embed_query` | 20 ms | **2.81 measured** | 30 ms † | Fail request |
 | `dense_search` | 8 ms | **0.42 measured** | 20 ms † | Fall back to lexical only |
 | `lexical_search` | 10 ms | 1 to 5 | 12 ms | Fall back to dense only |
@@ -88,7 +88,7 @@ Total budget 200ms. Allocated with headroom, because P100 is what fails, not P50
 | `rerank` | 90 ms | **59 P50 / 102 P100** | 130 ms † | **Deadline-bounded, partial rerank** |
 | `route` | 2 ms | < 1 | 3 ms | Default to abstain |
 | `answer_extractive` | 5 ms | **0.03 measured** | 20 ms † | Return top passage whole |
-| `output_guard` | 25 ms | 5 to 15 | 30 ms | Downgrade to extractive |
+| `output_guard` | 25 ms | **< 1 measured** | 30 ms | Pass the answer through unchecked |
 | `serialize` | 8 ms | 1 to 3 | 10 ms | Fail request |
 | **Allocated total** | **183 ms** | | | |
 | **Reserve** | 17 ms | | | |
@@ -198,9 +198,32 @@ it runs (verified over 20 repeats).
 
 This makes the Layer 1 input guard a **latency** mechanism as well as a safety
 one. That is the same structural pattern as the reranker score serving both
-routing and abstention: one control, two requirements. The length bound in
-Phase 6 fixes it. The query stays in the frozen benchmark set — Rules.md 5
-forbids editing a benchmark to improve a number.
+routing and abstention: one control, two requirements. The query stays in the
+frozen benchmark set — Rules.md 5 forbids editing a benchmark to improve a
+number.
+
+**Built and closed in Phase 6, 20 Aug.** A 512-character pre-filter followed by a
+64-token bound, in `guardrails/input_guard.py`, running as the first stage.
+Verified against the real tokenizer over the frozen 250: **499 of 500 queries
+accepted, one rejected**, and the rejection is exactly `query_id 156297` at 2,390
+raw tokens against a largest-legitimate of 25. A rejected request costs 0.1 to
+0.3 ms rather than 118 ms.
+
+**Report it as two numbers, never as a bare P100.** `P100` means the maximum over
+all traffic, and reporting a filtered subset under that label is a category error
+whatever the intent:
+
+```
+P100, accepted inputs        as measured   (249/250)
+P100, all submitted         119.13 ms      (includes 1 rejected input)
+Rejected                     1 query       query_id 156297, 7,168 chars,
+                                           2,390 tokens, refused in ~0.2 ms
+```
+
+**A guard also makes refusing cheap, which was not the point but is worth
+publishing.** Over the 76-case adversarial set, median latency of a *refused*
+request fell from 75.96 ms to 45.01 ms once the guards were live, because a
+blocked input exits before the embedder rather than after the reranker.
 
 ### Band B: Core RAG + Groq generation
 

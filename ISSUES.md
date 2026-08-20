@@ -15,7 +15,7 @@ Severity is about the submission, not about engineering neatness:
 
 | # | Issue | Severity | Lands in |
 |---|---|---|---|
-| I1 | Hindi P100 spike, 119 ms from one pathological query | **RESOLVED (experiment)** | Phase 6 |
+| I1 | Hindi P100 spike, 119 ms from one pathological query | **RESOLVED (built, 20 Aug)** | Phase 6 |
 | I2 | Hit@1 is 0.362 en / 0.224 hi — the naive answer is usually wrong | **P1** | Phase 5 |
 | I3 | Dense cosine cannot separate gibberish from a correct answer | **P1** | Phase 6 |
 | I4 | Eight indexes cannot co-reside in RAM (A4 false) | **P1** | Phase 3 |
@@ -43,12 +43,25 @@ Severity is about the submission, not about engineering neatness:
 | I24 | int8 cross-encoder scores shift with batch composition | **RESOLVED** | Phase 5 |
 | I25 | Stage timeouts do not fire for synchronous stages | **P0** | Phase 5 / Phase 6 |
 | I26 | The abstention floor detects off-topic input, NOT ungrounded answers | **P0** | Phase 6 |
+| I27 | The score-gap ambiguity check cannot ship: it refuses real questions first | **RESOLVED (measured, rejected)** | Phase 6 |
 
 ---
 
 ## I1 — Hindi P100 spike: 119 ms from one query
 
-**Status: cause identified, fix validated by experiment, not yet implemented.**
+**Status: BUILT AND CLOSED, 20 Aug 2026.** `guardrails/input_guard.py`, first
+stage in the pipeline. Verified against the real tokenizer over the frozen 250:
+**499 of 500 queries accepted, one rejected**, and the rejection is exactly
+`query_id 156297`. A rejected request costs 0.1 to 0.3 ms instead of 118 ms.
+
+One correction to the numbers below, found when the real tokenizer was finally
+run against it: this entry records the query at **512 tokens**, which is the
+count *after* the embedder truncates to its window. The raw count is **2,390**.
+Everything the entry concludes is unaffected, but the raw figure is the one the
+guard sees and it is 4.7x larger than the number written here.
+
+The original investigation follows, unchanged, because the reasoning about why
+the bound is on tokens rather than characters is the part worth keeping.
 
 ### What was observed
 
@@ -1040,6 +1053,25 @@ measured on whenever the number is quoted.
    the 62.1% somewhat. It does not change the shape: the floor cannot tell the two
    cases apart, whatever the true rate is.
 
+### Update, 20 Aug: the output guard exists now, and it does NOT close this
+
+`guardrails/output_guard.py` is built and live, and it is the layer that reads
+the answer rather than the scores. It is a real improvement and it is **not** the
+fix for the 62.1%, so do not describe it as one.
+
+What it measures is lexical overlap between the answer and its cited passages.
+Measured on a worked example: a verbatim span 1.000, a FALSE sentence reassembled
+out of the passage's own words **0.833**, a TRUE paraphrase **0.639**, an answer
+about something else 0.062. **The false reassembly outscores the true
+paraphrase**, which is the same lesson as this issue in miniature: the measure
+answers "is this wording traceable to the source" and no cut on it answers "is
+this claim correct".
+
+So the floor is set at 0.35 to catch the bottom of that list, and the honest
+sentence is that the system now checks its answers against their sources for
+*provenance* rather than for *truth*. `tests/test_output_guard.py` pins the
+inversion so this cannot drift into an overclaim without a test going red.
+
 ---
 
 ## What is explicitly *not* an issue
@@ -1047,3 +1079,77 @@ measured on whenever the number is quoted.
 - **P50 of 3.31 ms.** Not too good to be true — the breakdown accounts for it (2.81 ms embed + 0.42 ms search + 0.03 ms answer), the warmup discard is honest, and the stub rig was independently validated to 0.05 ms of overhead in Phase 0.
 - **int8 quantization loss.** Verified against fp32 on real retrieval: Recall@10 identical at 1.000, Hit@1 0.945 vs 0.935.
 - **The chunker doing almost nothing.** C1 emits 1.28 chunks per passage because the corpus genuinely has short passages. That is decision D8 working as designed, not a bug.
+
+---
+
+## I27 — the score-gap ambiguity check does not survive measurement
+
+**Severity: RESOLVED by rejecting it.** Nothing is broken. `Architecture.md` 7
+Layer 2 specifies a score-gap check and it was built as a measurement first,
+which is the only reason this is a finding rather than a shipped defect.
+
+### The idea
+
+When the top two reranked candidates score alike, no single passage is clearly
+the answer, so refuse with `AMBIGUOUS_RETRIEVAL`. It is the obvious reading of
+"knows when not to answer" for a query like `mercury`, and the Phase 6
+adversarial eval showed exactly the gap it was meant to fill: the ambiguous
+category was caught at **25%**, against 100% for injection and 75% for
+off-topic.
+
+### The measurement
+
+Score gaps over `bench/adversarial.jsonl`, taken from the live service, over the
+cases that were answered rather than already refused:
+
+| gap cut | ambiguous caught | answerable lost |
+|---|---|---|
+| 0.10 | 2 of 9 | 1 of 14 |
+| 0.50 | 4 of 9 | 2 of 14 |
+| 0.75 | 5 of 9 | 4 of 14 |
+| 2.00 | 8 of 9 | 6 of 14 |
+
+There is no cut worth taking. Catching a bare majority of the ambiguous cases
+costs 29% of real questions; catching nearly all of them costs 43%.
+
+### Why, and it is not a threshold problem
+
+The distributions do not merely overlap, they interleave. The real question
+*"what happens during a docket call in court"* has a gap of **0.07**, which is
+smaller than the gap on the single word *"mercury"* at **0.08**. Any threshold
+that refuses mercury refuses the docket question first.
+
+A small gap means several candidates scored alike. That happens when a query is
+ambiguous, and equally when the corpus simply holds several good passages about
+one subject — which, on a 295,890-passage web corpus, is the normal case for a
+well-posed question. The gap cannot separate those two, so it is not a refusal
+signal.
+
+**Caveat, because the numbers are small.** Nine ambiguous and fourteen
+answerable cases. This is enough to decide not to ship, and not enough to put a
+precise price on it. The interleaving rather than the ratio is what makes the
+call.
+
+### The same shape as two earlier findings
+
+I3 killed a confidence floor on the dense score because gibberish sat 0.05 from
+a correct answer. I19 killed RRF fusion because it did not pay at the depth the
+reranker actually reads. This is the third: a component specified in the
+architecture, built, measured, and rejected on its own numbers rather than
+shipped because the design document named it.
+
+The reasoning lives in `services/rag_core/guardrails/retrieval_guard.py` so the
+absence reads as a decision rather than an omission.
+
+### What is left of Layer 2
+
+The confidence floor, which ships in `answering/router.py` because the same
+calibrated score also picks the answer path. The language-mismatch flag is
+rejected separately and on design rather than data: answering a Hindi question
+from the English twin of a passage is this project's cross-lingual claim,
+observed firing on live spoken input on 20 Aug, and a guard there would refuse
+the system's own headline capability.
+
+**Ambiguity is therefore an open weakness, stated rather than closed.** The
+adversarial eval reports it per category so the 25% is visible instead of being
+averaged away.

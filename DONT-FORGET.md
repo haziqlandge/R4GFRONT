@@ -158,9 +158,19 @@ answers is wrong under strict labelling.
 
 This is the single most over-claimable number in the project. The correct
 sentence is "it knows when the question is outside the corpus", never "it knows
-when it is wrong". Phase 6's output guard is what would close the gap, and it is
-**not built**. The site's guardrail section says all of this with the numbers
+when it is wrong". The site's guardrail section says all of this with the numbers
 attached — keep it that way.
+
+**Updated 20 Aug: the output guard now exists** (`guardrails/output_guard.py`,
+live in the pipeline) and it is the layer that reads the answer rather than the
+scores. **It does not close the 62.1%, and do not say that it does.** It scores
+lexical overlap against the cited passages, and measured on a worked example a
+FALSE sentence reassembled out of the passage's own words scores **0.833** while
+a TRUE paraphrase scores **0.639** — the false one is higher. It reliably catches
+an answer that is about something else (0.062) and it does not adjudicate claims.
+The floor is set at 0.35 for exactly that reason and
+`tests/test_output_guard.py` pins the inversion so the character of the measure
+cannot drift without a test going red.
 
 ---
 
@@ -210,9 +220,12 @@ where it prints them.
   hi 0.307. Our own `Rules.md` named the English-only model as the default.
 - **Stage timeouts do not fire for synchronous stages** (I25, P0). A timeout
   cannot interrupt synchronous ONNX work: a 50 ms limit ran 123.7 ms and still
-  reported success. The 118 ms pathological Hindi query (I1, a 7,168-character
-  machine-translation repetition loop) therefore has **no guard at all** until
-  the Phase 6 input guard exists.
+  reported success. This is still true and is why the input guard has to bound
+  the input rather than the stage. **Closed for I1 on 20 Aug:** the guard rejects
+  the 7,168-character query, and verified against the real tokenizer it accepts
+  **499 of 500** frozen benchmark queries and rejects exactly one, `query_id
+  156297`, at 2,390 raw tokens. Note that I1 records that query as 512 tokens,
+  which is the count *after* the embedder truncates; the raw count is 2,390.
 - **int8 cross-encoder scores shift with batch composition** (I24). Scores are
   not stable across differently-composed batches, which matters because a
   threshold is fitted on them.
@@ -304,10 +317,113 @@ rows come from which.
 
 ---
 
-## 11. Still open
+## 11. Phase 6 is PARTIAL, and what that means precisely (20 Aug)
 
-- **Phase 6 guardrails has not started** and is the top priority. It is the only
-  thing that addresses the 62.1%.
+Layers 1 and 4 are built, tested and live. Layer 2 was built as a measurement and
+**deliberately not shipped**. Do not "finish" it without reading I27 first.
+
+| layer | state |
+|---|---|
+| 1, input guard | **live.** empty check, 512-char pre-filter, 64-token bound, injection patterns, unsafe-intent patterns |
+| 2, retrieval guard | **the floor only**, in `answering/router.py`. The score-gap and language-mismatch checks are rejected, see I27 |
+| 3, generation guard | partial. The grounding system prompt and the abstention sentinel exist in `generative.py`; the schema-repair retry does not |
+| 4, output guard | **live.** groundedness plus citation-index validity |
+
+**Measured, 76 adversarial cases, same set before and after a restart:**
+
+| | recall | precision | F1 |
+|---|---|---|---|
+| before | 0.717 | 0.956 | 0.819 |
+| after | 0.750 | 0.957 | 0.841 |
+
+**Recall moved +0.033 and that is not the result.** Two other things did:
+
+- **Refusals are now for the right reason.** Before, all 45 refusals came back
+  `LOW_CONFIDENCE`, including every injection and unsafe case. Those were caught
+  by accident: a bomb-making question retrieves badly, so the Phase 5 floor
+  happened to fire. After: 24 `LOW_CONFIDENCE`, 23 `UNSAFE_INPUT`. Requirement 6
+  asks the system to show it knows when not to answer, and "the retrieval score
+  was low" is not knowing.
+- **Refusing got cheaper.** Median refused-request latency **75.96 ms to
+  45.01 ms**, because a blocked input exits in 0.1 to 0.3 ms rather than paying
+  for an embedding and a rerank.
+
+**Ambiguity is 25% and stays 25%.** The specified fix costs 4 real questions to
+catch 5 ambiguous ones (I27). It is reported per category rather than averaged
+into the headline, and it is the honest open weakness of requirement 6.
+
+**Two things about the guards that are easy to get wrong:**
+
+- **The I1 pathological query never reaches the input guard over HTTP.**
+  `AnswerRequest.query` carries `max_length=2000` from Phase 2 and that query is
+  7,168 characters, so pydantic returns a **422** first. It is bounded, but as a
+  transport error rather than a typed refusal. The guard covers 512 to 2,000
+  characters plus the token bound inside that range. See decision D-A below.
+- **There is no `guardrails/policies.yaml`** and that is deliberate, not missing.
+  `Phases.md` asks for one; the thresholds live in `config.py` with the
+  measurement that set each one written above it. Section 9 of this file records
+  what happened last time this project had two sources for one number. Recorded
+  as a Rules.md 9 deviation in the `Memory.md` Phase 6 entry.
+
+---
+
+## 12. Decisions waiting on a human
+
+Written down rather than taken, because each one is a judgement about the
+submission rather than about the code. A later session can act on any of them
+without re-deriving the context.
+
+### D-A. Should a query over 2,000 characters 422, or abstain?
+
+**State.** `AnswerRequest.query` has `max_length=2000`, frozen in Phase 2 so the
+contract would not move under the frontend. Anything longer gets a 422 before
+the pipeline runs. The input guard never sees it.
+
+**For leaving it.** Two bounds at different layers is ordinary defence in depth,
+and you do not want to accept an arbitrarily large request body. The contract
+was frozen for a reason and the frontend is written against it.
+
+**For changing it.** A judge who pastes something enormous sees an error rather
+than the abstention panel, which is the one screen requirement 6 is demonstrated
+on. Raising `max_length` and letting the guard return `UNSAFE_INPUT` turns an
+error into a demonstration.
+
+**Cost of changing it:** one field in `answering/schemas.py`, and the frontend
+already renders `UNSAFE_INPUT`, so probably nothing else.
+
+### D-B. Show `groundedness` in the interface, or spend the time on Phase 7?
+
+**State.** The field is populated and reaches the API. `Confidence.groundedness`
+has been in the contract since Phase 2 and the frontend does not render it. An
+extractive answer reports **1.0**, which is the extractive path's structural
+guarantee shown as a number instead of asserted.
+
+**For showing it.** It is the visible half of the phase that was just built, it
+costs one row in the answer side panel, and "1.00 grounded" beside a quoted
+answer is the strongest single frame in a demo video.
+
+**For Phase 7 instead.** Every published latency number still comes from an
+i5-12400F rather than the 2 vCPU `n2-standard-2` target, where they will be
+worse (`ISSUES.md` I8). That is a larger honesty gap than a missing readout, and
+deployment problems become deadline problems when they start late.
+
+### D-C. Is the ambiguity gap worth one more attempt?
+
+**State.** 25% caught, unchanged by Phase 6, and the specified fix is rejected
+on measurement (I27).
+
+**If someone wants to try:** the thing that might work is not a threshold on the
+scores but a check on the QUERY — single content word, no verb, no question
+word. That is a different signal from the score gap and it was not tested. It
+would also refuse a legitimate one-word lookup, so it needs the same control
+group treatment the unsafe patterns got.
+
+**The default is to leave it and report it**, which is what the site does now.
+
+---
+
+## 13. Still open
+
 - **Phase 7 deploy has not started.** Every published latency figure is from an
   i5-12400F, not from the `n2-standard-2` target, which is 2 vCPU = 1 physical
   core plus a hyperthread. Absolute numbers there will be **worse** (`ISSUES.md`
@@ -317,3 +433,6 @@ rows come from which.
 - The realtime STT socket (`/v1/stt/live`) is unwired, so partials and the
   `Latency.md` 5 speculative prefetch remain hypothetical and must not be
   claimed.
+- Layer 3's schema-repair retry is not built.
+- The adversarial eval is 76 cases. The ambiguous and answerable groups are 12
+  and 16, which is enough to decide a direction and not enough to price one.

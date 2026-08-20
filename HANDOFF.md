@@ -28,10 +28,11 @@ Read in this order, and do not skip the first one:
 **Phases 0-3 are complete.** Band A P50 **3.31 ms** against a 200 ms budget,
 en Recall@10 **0.878**, `mypy --strict` clean.
 
-**Phases 4, 5 and 8 are also complete**, on branch `p4-p5-voice-rerank`.
+**Phases 4, 5 and 8 are complete and Phase 6 is partial.**
 Band A P50 **59.99 ms** en / **73.77 ms** hi with the reranker in the path, Band B
-**653.6 ms**, 202 tests green, `mypy --strict` clean. Voice input, routing,
-abstention and the site all work end to end. See `Memory.md` Phase 4, 5 and 8
+**653.6 ms**, 221 tests green, `mypy --strict` clean. Voice input, routing,
+abstention, guardrails and the site all work end to end. Abstention recall
+**0.750** at precision **0.957** over 60 adversarial cases plus 16 controls. See `Memory.md` Phase 4, 5 and 8
 entries, and **read `ISSUES.md` I24, I25 and I26 before trusting any Phase 5
 number** - I26 in particular corrects a claim an earlier draft made about
 abstention.
@@ -43,12 +44,17 @@ from git history if anyone wants it back. Section 5A below is the current
 frontend handoff and the 20 Aug entry in `Memory.md` records why.
 
 **START HERE.** The order a council recommended on 19 Aug given a 21 Aug code
-freeze, with what has since been done marked. Items 2, 3 and 5 are done; **1, 4,
-6, 7 and 8 are not**, and item 4 has been promoted to the top:
+freeze, with what has since been done marked. Items 1 to 5 and 7 are done;
+**6 and 8 remain**, and item 6 is now the top priority. Read
+`DONT-FORGET.md` 12 first: it holds three decisions that are waiting on a human
+rather than on code.
 
-1. ~~Input guard~~ **STILL NOT BUILT, and now the only thing bounding `embed_query`** -
-   `ISSUES.md` I25 found that a stage timeout cannot interrupt synchronous ONNX
-   work, so the 118 ms pathological query has no other guard. Phase 6.
+1. ~~Input guard~~ **DONE, 20 Aug.** 512-character pre-filter then a 64-token
+   bound, plus injection and unsafe-intent patterns. Verified against the real
+   tokenizer: 499 of 500 frozen queries accepted, and the one rejection is
+   exactly `query_id 156297` at 2,390 tokens. This was the only thing bounding
+   `embed_query`, because `ISSUES.md` I25 means a stage timeout cannot interrupt
+   synchronous ONNX work.
 2. ~~Phase 5 reranker~~ **DONE.** The honest result: it closed most of the Hindi
    gap (+0.073, significant) and left English roughly where it was (+0.033, CI
    spans zero). **A6 is false**, D2's reversal condition fired, and the
@@ -57,15 +63,21 @@ freeze, with what has since been done marked. Items 2, 3 and 5 are done; **1, 4,
    result.** `tau_low = -1.103` catches 100% of off-topic and gibberish input, but
    **92.5% of wrong top-1 answers pass it** - it is an out-of-domain detector, not
    a grounding detector.
-4. **Phase 6 guardrails + adversarial set. NOW THE TOP PRIORITY.** I26 makes the
-   OUTPUT guard load-bearing rather than decorative: the retrieval-score floor
-   cannot catch the 62.1% of answers that are wrong, only checking groundedness
-   against the answer text can. Explicitly scored: "show your system knows when
-   NOT to answer."
+4. ~~Phase 6 guardrails + adversarial set~~ **PARTIAL, 20 Aug.** Layers 1 and 4
+   built and live, 76-case adversarial eval running, abstention recall 0.750 at
+   precision 0.957. Layer 2 was built as a measurement and **deliberately not
+   shipped** (`ISSUES.md` I27) - do not "finish" it without reading that first.
+   The honest gap is ambiguity at 25%, published per category. Note that the
+   output guard does **not** close I26's 62.1%: it catches answers about
+   something else, and a false reassembly of the passage's own words outscores a
+   true paraphrase.
 5. ~~Phase 4 voice~~ **DONE** (mic path untested against a real microphone - see
    `HANDOFF.md` 5A).
-6. **Phase 7 deploy** to the idle GCP Mumbai VM (`34.100.222.236`). Start early;
-   do not let day 3 be the first deploy.
+6. **Phase 7 deploy** to the idle GCP Mumbai VM (`34.100.222.236`). **NOW THE
+   TOP PRIORITY.** Every published latency figure is from an i5-12400F rather
+   than the 2 vCPU target and will be worse there (`ISSUES.md` I8), which is the
+   largest remaining honesty gap. Whatever origin it deploys to must be added to
+   the `stt_gateway` CORS allow list, and the microphone needs HTTPS.
 7. ~~**Phase 8 frontend**~~ **DONE.** Replaced on 20 Aug: `frontends/`, static,
    no build step. Demo page and a documentation page carrying every published
    number with its source file named. Section 5A.
@@ -122,7 +134,7 @@ A failed `--verify` means every number in `bench/results/` is invalid against yo
 ### 2.4 Verify the rig and the pipeline
 
 ```bash
-.venv/Scripts/python -m pytest                                    # 202 tests, all must pass
+.venv/Scripts/python -m pytest                                    # 221 tests, all must pass
 .venv/Scripts/python scripts/04_bench_latency.py --stub --breakdown
 .venv/Scripts/python scripts/05_eval_retrieval.py                 # correctness gate
 .venv/Scripts/python scripts/04_bench_latency.py --pipeline --lang en --breakdown

@@ -552,7 +552,149 @@ what Phase 3 concluded and should be stated that way rather than smoothed over.
 
 
 ### [Phase 6] Guardrails
-_pending_
+**Date:** 20 Aug 2026 | **Who:** BENCH | **Branch:** `front-v1`
+**Status: PARTIAL. Layers 1 and 4 built, tested and live. Layer 2 measured and
+deliberately not built. Before and after both measured against the live service.**
+
+**What happened**
+`guardrails/input_guard.py` and `guardrails/output_guard.py` written test-first,
+wired into `build_pipeline()` as the first and last stages, and
+`bench/adversarial.jsonl` built at 76 cases. 221 tests green, `mypy --strict`
+clean across 40 files. `scripts/06_eval_guardrails.py` reports per-category
+abstention precision and recall, which is the Phase 6 exit criterion.
+
+**Layer 1, the input guard.** Empty check, then a 512-character pre-filter, then
+a 64-token bound, then prompt-injection and unsafe-intent patterns. The ordering
+is the design: I1 measured the character check at 0.00007 ms against 0.04228 ms
+to tokenize, so the cheap one runs first, and the token bound is the actual
+safety limit because cost is linear in tokens and characters-per-token is
+script-dependent.
+
+Verified against the real tokenizer over the frozen benchmark: **499 of 500
+queries accepted, 1 rejected** — `query_id=156297` at 7,168 characters and
+**2,390 tokens**. The largest legitimate query is 25 tokens, so the bound clears
+real traffic by 2.5x. Worth noting that I1 records this query as 512 tokens,
+which is the count *after* the embedder truncates; the raw count is 2,390.
+
+This closes the oldest latency hole in the project. I25 established that a stage
+timeout cannot interrupt synchronous ONNX work, so until this existed that query
+had no bound on it at all.
+
+**Layer 4, the output guard.** Content-word recall averaged with adjacent-pair
+recall, against the cited passages, plus a citation-index validity check. I26 is
+why it exists: the abstention floor is an out-of-domain detector and lets 92.5%
+of wrong answers through, and nothing else in the pipeline reads the answer text.
+
+**The measured limit of that measure, recorded because it is easy to overclaim.**
+On one worked example: a verbatim span scores 1.000, a FALSE sentence reassembled
+out of the passage's own words scores 0.833, a TRUE paraphrase scores 0.639, and
+an unsupported answer scores 0.062. **The false reassembly outscores the true
+paraphrase.** Lexical overlap measures whether the wording is traceable to the
+source, which is not the same question as whether the answer is right. So the
+floor is set at 0.35 to catch the bottom of that list and nothing more, and
+`tests/test_output_guard.py` pins the inversion so nobody later describes this as
+a hallucination detector.
+
+**Layer 2 was built as a measurement and then rejected. See I27.**
+The score-gap ambiguity check is specified in `Architecture.md` 7 and does not
+survive its own data: catching 5 of 9 ambiguous cases costs 4 of 14 real
+questions. The distributions interleave rather than merely overlap — the real
+question "what happens during a docket call in court" has a gap of 0.07, smaller
+than the single word "mercury" at 0.08. The language-mismatch flag is rejected
+separately and on design: answering a Hindi question from the English twin is
+this project's cross-lingual claim, so a guard there would refuse the headline
+capability. Both reasons live in `retrieval_guard.py` so the absence reads as a
+decision.
+
+That makes three components now killed by their own measurement rather than
+shipped because a design document named them: I3 (dense-score floor), I19 (RRF
+fusion), and now I27.
+
+**Numbers — 76 cases, before and after, same set, same service, restarted between**
+
+| category | n | before | after |
+|---|---|---|---|
+| injection | 12 | 100% | 100% |
+| unsafe | 12 | 83% | **100%** |
+| off_topic | 12 | 75% | 75% |
+| unanswerable | 12 | 75% | 75% |
+| **ambiguous** | 12 | **25%** | **25%** |
+| answerable (control) | 16 | 12% false abstention | 12% |
+
+| | recall | precision | F1 |
+|---|---|---|---|
+| before | 0.717 | 0.956 | 0.819 |
+| after | **0.750** | 0.957 | **0.841** |
+
+**Read past the headline, because recall moved only +0.033 and that is not the
+result.** Two other things moved and they matter more.
+
+**Refusals are now for the right reason.** Before, all 45 refusals came back
+`LOW_CONFIDENCE` — including every injection and every unsafe case. Those were
+being caught *by accident*: a bomb-making question retrieves badly, so the
+Phase 5 retrieval floor happened to fire. That is luck wearing a guardrail's
+uniform. After: 24 `LOW_CONFIDENCE` and 23 `UNSAFE_INPUT`, named and
+deterministic. Requirement 6 asks the system to show it knows when *not* to
+answer, and "the retrieval score was low" is not knowing.
+
+**Refusing got much cheaper.** Median latency of a refused request fell from
+**75.96 ms to 45.01 ms**, because a guard-blocked input exits in 0.1 to 0.3 ms
+instead of paying for an embedding and a rerank first. Measured live: over-long
+0.3 ms, injection 0.1 ms, unsafe 0.1 ms, against 83.8 ms for gibberish that
+still goes the full distance to the retrieval floor.
+
+`groundedness` is populated and reaches the API: a normal question answered in
+49.1 ms reports 1.0, which is the extractive path's structural guarantee shown as
+a number rather than asserted.
+
+**One thing the live run exposed: the I1 query never reaches this guard over
+HTTP.** `AnswerRequest.query` carries `max_length=2000` from Phase 2, and the
+pathological query is 7,168 characters, so pydantic rejects it with a **422**
+before the pipeline starts. It is bounded, which is what matters for I1, but it
+is bounded as a transport error rather than as a typed refusal — so a judge who
+pastes something enormous sees an error, not the abstention panel. The guard
+covers everything between 512 and 2000 characters plus the token bound inside
+that range, which is where an adversarial dense-script input would actually sit.
+Deliberately not changed: the request contract was frozen in Phase 2 precisely so
+it would not move under the frontend, and two bounds at different layers is a
+reasonable design. Worth a decision before submission rather than a silent one.
+
+**Deviation, recorded per Rules.md 9: no `guardrails/policies.yaml`.**
+`Phases.md` asks for one. The thresholds already live in `config.py` with the
+measurement that set each one written above it, and `DONT-FORGET.md` 9 records
+what happened the last time this project had two sources for one number: a
+figure was cited to a file that did not contain it, which is indistinguishable
+from fabrication to anyone who checks. A YAML duplicating `config.py` would
+recreate that failure by construction. One source, with its calibration beside
+it, is the better version of what the rule was asking for.
+
+**Surprises**
+- The adversarial eval immediately found the weakest category, and it was not
+  one of the two the phase was designed around. Ambiguity at 25% is a real
+  weakness that the guards built here do not address, and I27 explains why the
+  specified fix would cost more than it buys. It is reported per category rather
+  than averaged away.
+- Adding the output guard broke one existing test, correctly. A routing test's
+  fake model returned the placeholder "composed answer", which is grounded in
+  nothing, so the new guard refused it. The fix was to make the fake realistic
+  rather than to weaken the assertion.
+- `Rules.md` 3.3 allows a keyword list as the fallback for the ONNX toxicity
+  classifier, and that is what shipped. The control group is what makes it
+  defensible: nine legitimate questions about weapons, medicine, crime and
+  hacking must all pass, because a corpus of web passages legitimately covers
+  those subjects and a filter keying on topic rather than intent would refuse
+  them.
+
+**Open threads**
+- Decide whether a query over 2,000 characters should 422 or abstain. It is
+  bounded either way; the question is whether the demo shows an error or the
+  refusal panel.
+- Layer 3, the generation guard, is partly present already: the system prompt
+  constrains the model to the passages and the abstention sentinel is handled in
+  `generative.py`. The schema-repair retry named in `Phases.md` is not built.
+- The interface does not yet show `groundedness`. The field is populated in the
+  response and `Confidence.groundedness` has been in the contract since Phase 2.
+- Ambiguity remains an open weakness, stated rather than closed.
 
 ### [Phase 7] Deploy and harden
 _pending_
@@ -810,10 +952,9 @@ still unmeasured and the page says so where it prints these.
   that forces a 429 to demo the circuit breaker, and the citation matched-span
   highlight.
 
-**Where to continue.** Phase 6 guardrails is the top priority and has not
-started — `ISSUES.md` I26 makes the output guard load-bearing rather than
-decorative. Then Phase 7 deploy to the GCP Mumbai box, then Phase 9. The
-frontend needs nothing further to be submittable.
+**Where to continue.** *(Superseded by the Phase 6 entry below, 20 Aug: layers 1
+and 4 are built and the eval runs. Phase 7 deploy is now the top priority, then
+Phase 9.)* The frontend needs nothing further to be submittable.
 
 ### [Phase 9] Videos, posting, submission
 _pending_
@@ -1154,6 +1295,8 @@ Track these explicitly. An unverified assumption that turns out false late is th
 | A8 | Sarvam free credits cover the full build plus demo recording | Phase 4 | ◐ key verified live 14 Aug; remaining credit balance not yet checked |
 | A10 | Groq free-tier limits allow a Band B benchmark of useful size | Phase 5 | ✗ **FALSE as stated** — 12,000 tokens/window caps it. Band B must be a ~50-query sample, stated in the methodology. |
 | A9 | The 200ms budget's 25ms reserve is enough to absorb tail jitter | Phase 5 | ◐ early evidence: a do-nothing stub already shows a 2.7ms P99→P100 gap from scheduler jitter alone |
+| A17 | Lexical overlap between an answer and its cited passages detects ungrounded answers | Phase 6 | ✗ **FALSE as hoped.** It detects answers about a different subject (0.062) and does not detect false claims: a reassembly of the passage's own words scores 0.833 against a true paraphrase's 0.639. Useful for provenance, not for truth. |
+| A18 | A score-gap check can catch ambiguous queries | Phase 6 | ✗ **FALSE.** Catching 5 of 9 ambiguous costs 4 of 14 answerable; the distributions interleave. Rejected, `ISSUES.md` I27. |
 
 ---
 

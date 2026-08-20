@@ -248,6 +248,21 @@ corporate." that is a true first sentence and a useless headline.
 
 ---
 
+## Not shown yet: groundedness
+
+Phase 6 added an output guard, and `Confidence.groundedness` is now populated on
+every response. An extractive answer reports **1.0**, which is the extractive
+path's structural guarantee expressed as a number rather than asserted in prose.
+
+**The interface does not render it.** The field is in the API and in
+`_shared/data.js`'s vocabulary but no panel shows it. It would be one row in the
+answer side panel, next to confidence and margin.
+
+Whether to build that or spend the remaining time on deployment is written up as
+decision **D-B** in `DONT-FORGET.md` 12, along with the argument for each.
+
+---
+
 ## Verified
 
 Against both live services on 20 August 2026, served from this directory root:

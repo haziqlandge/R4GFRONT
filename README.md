@@ -9,7 +9,7 @@ Voice → STT → input guard → embed → hybrid retrieve → fuse → rerank
      → confidence route → [extractive | LLM | abstain] → output guard → response
 ```
 
-**Status: Phases 0-5 and 8 complete.** Band A P50 **59.99 ms** English / **73.77 ms** Hindi against a 200 ms budget, en Recall@10 **0.878**, 202 tests green, `mypy --strict` clean. Voice input, reranking, routing, abstention and the site all work end to end. **Phase 6 guardrails is the top priority**, then Phase 7 deploy and Phase 9 videos. See [`HANDOFF.md`](HANDOFF.md) to pick up, and read [`ISSUES.md`](ISSUES.md) I24-I26 before quoting any Phase 5 number.
+**Status: Phases 0-5 and 8 complete, Phase 6 partial.** Band A P50 **59.99 ms** English / **73.77 ms** Hindi against a 200 ms budget, en Recall@10 **0.878**, 221 tests green, `mypy --strict` clean. Voice input, reranking, routing, abstention, guardrails and the site all work end to end. Guardrail layers 1 and 4 are live and measured over 60 adversarial cases plus 16 controls; layer 2 was measured and deliberately not shipped ([`ISSUES.md`](ISSUES.md) I27). **Phase 7 deploy is now the top priority**, then Phase 9 videos. See [`HANDOFF.md`](HANDOFF.md) to pick up, [`DONT-FORGET.md`](DONT-FORGET.md) 12 for the decisions waiting on a human, and read [`ISSUES.md`](ISSUES.md) I24-I27 before quoting any Phase 5 or 6 number.
 
 ---
 
@@ -28,6 +28,37 @@ The brief asks for sub-200ms. We publish three bands and state the boundary for 
 A pipeline containing a hosted LLM call cannot reliably finish in 200 ms — time-to-first-token alone consumes the budget before retrieval starts. So the fast path contains no LLM call: when reranker confidence is high the answer is a verbatim span from a cited passage, which is both faster and structurally incapable of hallucinating. Full reasoning in [`Latency.md`](Latency.md).
 
 The measurement methodology (30-run warmup discard, `perf_counter_ns`, `numpy.percentile` with `method="nearest"`, P100 as the true maximum, dated immutable results) was fixed in Phase 0, **before** there was any pipeline to tune.
+
+---
+
+## Knowing when not to answer
+
+Requirement 6, measured rather than asserted. `bench/adversarial.jsonl` holds 60
+adversarial cases across five categories plus 16 answerable controls sampled from
+the dev split, and `scripts/06_eval_guardrails.py` reports precision and recall
+per category.
+
+| category | n | refused |
+|---|---|---|
+| prompt injection | 12 | 100% |
+| unsafe | 12 | 100% |
+| off topic | 12 | 75% |
+| unanswerable from corpus | 12 | 75% |
+| **ambiguous** | 12 | **25%** |
+| answerable (control) | 16 | 12% refused in error |
+
+Overall abstention recall **0.750**, precision **0.957**.
+
+The control group is the point. An abstention eval with only adversarial cases is
+won by refusing everything, so the 16 answerable questions are the false-refusal
+denominator and they are reported alongside.
+
+**Ambiguity at 25% is a real weakness and it is published rather than averaged
+away.** The obvious fix, refusing when the top two candidates score alike, was
+built as a measurement and rejected: catching 5 of 9 ambiguous cases costs 4 of
+14 real questions, because the distributions interleave. A genuine question
+("what happens during a docket call in court") has a smaller score gap than the
+single word "mercury". Full reasoning in [`ISSUES.md`](ISSUES.md) I27.
 
 ---
 

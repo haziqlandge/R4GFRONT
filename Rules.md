@@ -103,7 +103,7 @@ The "hot path" is everything inside `rag_core` between receiving a transcript an
 | Embedder | `intfloat/multilingual-e5-small` | `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` |
 | Reranker | **`cross-encoder/mmarco-mMiniLMv2-L12-H384-v1`** — changed in Phase 5, see below | `BAAI/bge-reranker-base` (slower, no int8 build published) |
 | LLM | Groq `llama-3.3-70b-versatile` | Groq `llama-3.1-8b-instant` if TTFT matters more than quality |
-| Toxicity | a small distilled ONNX classifier | keyword list plus the LLM path only |
+| Toxicity | ~~a small distilled ONNX classifier~~ **shipped as a pattern set, Phase 6** | keyword list plus the LLM path only |
 | STT | Sarvam `saaras:v3-realtime` | Sarvam `saaras:v3` legacy WS. **Not** ElevenLabs, we picked one. |
 
 **Reranker deviation, taken under this rule's own "benchmark before deviating"
@@ -121,6 +121,17 @@ The English-only model wins English and takes Hindi *below the no-rerank baselin
 The replacement is the only arm that significantly improves both languages. Cost of
 the change: 113 MB int8 instead of 22 MB, and English gives up ~0.03 Hit@1.
 Recorded in `Memory.md`, 19 Aug.
+
+**Toxicity deviation, taken under this rule's own fallback clause.** The row
+above allows "keyword list plus the LLM path only" as the alternate, and that is
+what shipped in Phase 6: intent patterns in `guardrails/input_guard.py`, not a
+classifier. A classifier is another model to load, warm and budget for on a
+2 vCPU box, and it would have landed the day before a code freeze without its
+false-positive rate measured. What makes the pattern set defensible rather than
+merely cheaper is the control group in `tests/test_input_guard.py`: nine
+legitimate questions about weapons, medicine, crime and hacking must all pass,
+because a web corpus legitimately covers those subjects. Measured: unsafe intent
+caught 12 of 12, zero false positives on the control group.
 
 **HARD:** The brief says pick one STT provider. We picked Sarvam. Do not add ElevenLabs "as a fallback"; it reads as indecision and it doubles the integration surface.
 
