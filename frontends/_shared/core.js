@@ -125,21 +125,29 @@ export function openLiveTranscript({ onPartial, onFinal, onError } = {}) {
  * The model's own answer, with no corpus behind it. Accurate mode only.
  *
  * Requested AFTER ours has painted, never before, so nothing here is inside the
- * 200 ms band. Resolves to null on any failure - a missing aside is a panel
- * that does not appear, and must never be the reason an answer looks broken.
+ * 200 ms band. Resolves to `{ text: null, model: null }` on any failure - a
+ * missing aside is a panel that does not appear, and must never be the reason
+ * an answer looks broken.
+ *
+ * RETURNS THE MODEL, NOT JUST THE TEXT. The panel is the one thing on the page
+ * with no citation behind it, so the least it can do is name who said it - and
+ * `renderAside()` has accepted that argument since Phase 8 with nothing passing
+ * it. `model` is null whenever `text` is, which is what a dead upstream and an
+ * exceeded rate limit both look like from here.
  */
 export async function aside(query) {
+  const none = { text: null, model: null };
   try {
     const res = await fetch(`${RAG_CORE}/v1/aside`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ query }),
     });
-    if (!res.ok) return null;
+    if (!res.ok) return none;
     const body = await res.json();
-    return body?.text || null;
+    return { text: body?.text || null, model: body?.model || null };
   } catch {
-    return null;
+    return none;
   }
 }
 

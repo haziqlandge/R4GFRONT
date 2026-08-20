@@ -239,11 +239,15 @@ export function boot() {
       // costs nothing against the 200 ms band - the fast path still makes zero
       // network calls, and this one is not on it.
       if (mode === "accurate") {
-        aside(query).then((text) => {
+        aside(query).then(({ text, model }) => {
           // The mode can change, or another question can be asked, while this is
           // in flight. Only paint if the answer it belongs to is still showing.
+          //
+          // `model` names who actually answered and the footer prints it. This
+          // panel carries no citation and no grounding check, so an
+          // unattributed one would be the only unlabelled claim on the page.
           if (mode === "accurate" && el.transcript?.textContent === query) {
-            renderAside(el.aside, text);
+            renderAside(el.aside, text, model);
           }
         });
       }
