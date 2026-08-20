@@ -26,7 +26,8 @@ import { fmt, esc } from "./core.js";
  * reordered or altered, so the extractive answer is still the passage verbatim
  * in every sense that matters. Two rules:
  *
- *   1. after . ! ? , ; : when a letter or digit follows immediately
+ *   1. after . ! ? , ; : when a letter or digit follows immediately,
+ *      EXCEPT when the punctuation sits between two digits
  *   2. between a run of at least three lowercase letters and a capital
  *
  * Rule 2 is what fixes "owns itsA CORPORATION" and "a corporationNobody owns".
@@ -34,10 +35,28 @@ import { fmt, esc } from "./core.js";
  * McDonald alone, since none of them has three lowercase before the capital.
  * It will split a genuine compound like JavaScript, which is a cosmetic cost we
  * accept: this corpus is prose with lost sentence breaks, not identifiers.
+ *
+ * THE EXCEPTION IN RULE 1 IS NOT COSMETIC. Without it, "an estimated mass of
+ * 5.9736 x 10 24 kg" became "5. 9736", "1,541,130" became "1, 541, 130" and
+ * "108.321" became "108. 321" - and the damage did not stop at the spacing.
+ * splitAnswer() below breaks the lead sentence at ". " followed by whitespace,
+ * so a decimal point that had just been handed a space became a sentence
+ * boundary: the headline read "...an estimated mass of 5." and the rest of the
+ * number was demoted to small print underneath.
+ *
+ * A digit on BOTH sides is the test, rather than simply refusing to space after
+ * a digit. "in the year 2008.The population" is a real lost sentence break and
+ * still gets its space, because "T" is not a digit. Decimals, thousands
+ * separators and clock times are left exactly as the passage had them, which is
+ * what "the answer is the passage verbatim" is supposed to mean.
  */
 export function respace(text) {
   return String(text ?? "")
-    .replace(/([.!?,;:])([A-Za-z0-9ऀ-ॿ])/g, "$1 $2")
+    .replace(/([.!?,;:])([A-Za-z0-9ऀ-ॿ])/g, (match, punct, next, offset, whole) => {
+      const prev = whole[offset - 1] || "";
+      if (/[0-9]/.test(prev) && /[0-9]/.test(next)) return match;
+      return `${punct} ${next}`;
+    })
     .replace(/([a-z]{3})([A-Z])/g, "$1 $2")
     .replace(/\s{2,}/g, " ")
     .trim();

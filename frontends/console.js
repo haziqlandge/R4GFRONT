@@ -90,8 +90,9 @@ const COMMANDS = {
       r.inBudget ? "ok" : "warn"
     )),
     line(""),
-    line(`  ${BANDS.method.queries} queries, ${BANDS.method.warmup} warmup runs thrown away, percentiles by nearest rank.`, "dim"),
-    line("  band B is the model path. it is over budget on purpose and we publish it anyway.", "dim"),
+    line(`  ${BANDS.method.queries} queries x ${BANDS.method.passes} passes per language, ${BANDS.method.warmup} warmup runs thrown away, percentiles by nearest rank.`, "dim"),
+    line(`  measured through the deployed service. ${BANDS.method.note}`, "dim"),
+    line("  band B is the model path, 643.8 ms p50. it is over budget on purpose and we publish it anyway.", "dim"),
   ],
 
   corpus: () => [

@@ -23,7 +23,7 @@
  *   data-mode="fast"     any button that switches answer mode
  */
 
-import { Recorder, Analytics, ask, transcribe, health, fmt, esc, SAMPLE_QUERIES } from "./core.js";
+import { Recorder, Analytics, ask, transcribe, openLiveTranscript, health, fmt, esc, SAMPLE_QUERIES } from "./core.js";
 import { renderAnswer, renderWaterfall, renderAnalytics, renderHealth } from "./ui.js";
 import { BANDS, ROUTING, PROJECT } from "./data.js";
 
@@ -41,6 +41,76 @@ export function boot() {
   let sttMs = null;
   let raf = 0;
 
+  /* ---------------------------------------------------------------- *
+   * Live transcription state.
+   *
+   * `live` is the open socket to the gateway's /v1/stt/live relay, or null when
+   * there is none - and null is a supported state, not a failure. Voice input is
+   * requirement 1 and it works through /v1/stt/file; this is an upgrade layered
+   * on top, so every path below falls back to uploading the recording rather
+   * than reporting an error the visitor cannot act on.
+   * ---------------------------------------------------------------- */
+  let live = null;
+  let liveFinals = [];       // completed utterances, in the order they were said
+  let livePartial = "";      // the utterance currently being spoken
+  let liveSpeaking = false;  // a partial has arrived since the last final
+  let settleFinal = null;    // resolver for "a final arrived after I pressed stop"
+  let speechEndedAt = 0;
+
+  // What is on screen at any moment: everything already finalised, plus the
+  // words currently arriving. Sarvam's VAD closes an utterance when someone
+  // pauses, so a question said in two breaths is two finals and has to be
+  // joined rather than the second one replacing the first.
+  const liveSoFar = () => [...liveFinals, livePartial].join(" ").replace(/\s+/g, " ").trim();
+
+  // Sarvam's final arrived 385 ms after the audio stopped when this was measured
+  // (scripts/08_probe_realtime_stt.py). Four seconds is not a tuned value, it is
+  // "long enough that a slow network is not mistaken for a broken socket".
+  const LIVE_FINAL_TIMEOUT_MS = 4000;
+
+  /* ---------------------------------------------------------------- *
+   * LIVE TRANSCRIPT IS OFF, AND THE REASON IS MEASURED, NOT SUSPECTED.
+   *
+   * The relay works. scripts/08_probe_realtime_stt.py got 19 partials over 5.8 s
+   * of speech and 08b_probe_live_relay.py got 7 of them back through our own
+   * gateway and Caddy. Tried with a real microphone, English was excellent.
+   *
+   * HINDI WAS NOT. With language_code=auto - which is what makes this system
+   * bilingual without asking anyone to declare a language - Sarvam's realtime
+   * model streams partials in ROMANISED Hindi and only converts to Devanagari on
+   * the final. Speaking Hindi, you watch "Qatar ki rajdhani kya hai" type itself
+   * out and then snap to "कतर की राजधानी क्या है" when you stop.
+   *
+   * Everything was tried before giving up (scripts/08c_probe_hindi_partials.py):
+   *
+   *   language_code   mode                     partials         final
+   *   auto            transcribe/codemix       romanised        correct
+   *   auto            verbatim                 romanised        CORRUPT for en
+   *   auto            translit                 romanised        romanised
+   *   hi-IN           transcribe               DEVANAGARI       correct for hi
+   *   hi-IN           transcribe, ENGLISH in   devanagari       'व्हाट इज द कैपिटल'
+   *   en-IN           transcribe               latin            correct for en
+   *
+   * stream_type fast and balanced behave identically on this axis.
+   *
+   * So the only thing that fixes Hindi partials is pinning the language, and a
+   * pinned socket does not merely mis-render the other language - it corrupts
+   * the FINAL, which is the string sent to rag_core. "व्हाट इज द कैपिटल ऑफ कतार"
+   * retrieves nothing. Trading a correct answer for a prettier caption is the
+   * wrong way round, and asking a visitor to declare their language before
+   * speaking gives up the auto-detection this project advertises.
+   *
+   * So the transcript appears whole, when you stop, as it always did. Turn this
+   * to true to watch it stream; everything behind it is built, wired and tested.
+   * ---------------------------------------------------------------- */
+  const LIVE_TRANSCRIPT = false;
+
+  // Drives the blinking caret and suppresses the "Your question appears here."
+  // placeholder, which must not sit underneath a transcript that is being typed.
+  const setLive = (on) => {
+    if (el.transcript) el.transcript.dataset.live = on ? "true" : "false";
+  };
+
   const setError = (msg) => {
     if (!el.error) return;
     el.error.textContent = msg || "";
@@ -48,6 +118,9 @@ export function boot() {
   };
 
   const recorder = new Recorder({
+    // Every PCM frame goes two places: the buffer that /v1/stt/file would upload,
+    // and the live socket, when one is open.
+    onChunk: (chunk) => live?.send(chunk),
     onState: (s) => {
       el.orb && (el.orb.dataset.state = s);
       el.mic && (el.mic.dataset.state = s);
@@ -109,7 +182,43 @@ export function boot() {
   el.mic?.addEventListener("click", async () => {
     if (recorder.state === "listening") {
       const pcm = await recorder.stop();
+      // The clock the boundary line on screen describes: "you time from when you
+      // stop speaking". It starts here, not when the request is sent.
+      speechEndedAt = performance.now();
       sttMs = null;
+
+      // Tell Sarvam the utterance is over, but do NOT close the socket - the
+      // final transcript is still owed and closing here would race it.
+      live?.end();
+
+      let finalText = null;
+      if (live) {
+        if (!liveSpeaking && liveFinals.length) {
+          // Everything said has already been finalised - the speaker paused and
+          // VAD closed the utterance before the button was pressed. Waiting for
+          // another final would stall for the whole timeout and produce nothing.
+          finalText = liveSoFar();
+        } else {
+          finalText = await Promise.race([
+            new Promise((resolve) => { settleFinal = resolve; }),
+            new Promise((r) => setTimeout(() => r(liveSoFar() || null), LIVE_FINAL_TIMEOUT_MS)),
+          ]);
+          settleFinal = null;
+        }
+      }
+      setLive(false);
+      live?.close();
+      live = null;
+
+      if (finalText) {
+        sttMs = Math.round(performance.now() - speechEndedAt);
+        if (el.transcript) el.transcript.textContent = finalText;
+        await submit(finalText);
+        return;
+      }
+
+      // Fallback: the live socket gave us nothing usable. Upload the recording,
+      // which is the path requirement 1 has always been scored on.
       if (!pcm.length) {
         setError("No audio was captured. Check which microphone is selected.");
         recorder.reset();
@@ -131,10 +240,38 @@ export function boot() {
       }
       return;
     }
+
     paint(null);
     sttMs = null;
     if (el.transcript) el.transcript.textContent = "";
     setError("");
+
+    // Open the live socket BEFORE the microphone, so the first frames the
+    // worklet produces have somewhere to go.
+    liveFinals = [];
+    livePartial = "";
+    liveSpeaking = false;
+    settleFinal = null;
+    live = LIVE_TRANSCRIPT ? openLiveTranscript({
+      onPartial: (text) => {
+        livePartial = text;
+        liveSpeaking = Boolean(text.trim());
+        if (el.transcript) el.transcript.textContent = liveSoFar();
+      },
+      onFinal: (text) => {
+        if (text) liveFinals.push(text);
+        livePartial = "";
+        liveSpeaking = false;
+        if (el.transcript) el.transcript.textContent = liveSoFar();
+        // Only unblocks the mic button if it is already waiting. A final that
+        // arrives mid-recording just becomes part of the running transcript.
+        settleFinal?.(liveSoFar() || null);
+      },
+      // Resolving with null rather than rejecting: a dead socket must send this
+      // back to the upload path, not surface a websocket error to a visitor.
+      onError: () => settleFinal?.(null),
+    }) : null;
+    setLive(Boolean(live));
     await recorder.start();
   });
 
@@ -144,6 +281,10 @@ export function boot() {
     if (!q) return;
     sttMs = null;
     if (el.transcript) el.transcript.textContent = q;
+    // Emptied as soon as it is sent. The question is echoed into the transcript
+    // line above, so nothing is lost, and the next question can be typed without
+    // clearing the previous one by hand.
+    if (el.input) el.input.value = "";
     submit(q);
   });
 
@@ -157,9 +298,15 @@ export function boot() {
     btn.dataset.on = String(btn.dataset.mode === mode);
   });
 
-  // Sample questions include two the corpus cannot answer. That is deliberate:
-  // the refusal is a scored requirement and a judge should be able to trigger it
-  // in one click rather than having to invent a hard question on the spot.
+  // Four sample questions, two per language, every one of them checked against
+  // the real pipeline before it went on the page (see SAMPLE_QUERIES in core.js
+  // for what was rejected and why).
+  //
+  // These used to include two questions the corpus CANNOT answer, so that a
+  // judge could trigger the refusal - a scored requirement - in one click.
+  // Those were removed on request in favour of four that answer well. The
+  // refusal path is still one typed question away: any gibberish triggers it,
+  // and the guardrails section of the documentation page shows it measured.
   if (el.samples) {
     el.samples.innerHTML = SAMPLE_QUERIES.map((s) => `
       <button type="button" class="sh-sample" data-kind="${s.kind}" data-q="${esc(s.q)}">
@@ -168,8 +315,8 @@ export function boot() {
     el.samples.querySelectorAll(".sh-sample").forEach((b) => {
       b.addEventListener("click", () => {
         const q = b.dataset.q;
-        if (el.input) el.input.value = q;
         if (el.transcript) el.transcript.textContent = q;
+        if (el.input) el.input.value = "";
         sttMs = null;
         submit(q);
       });
@@ -200,7 +347,11 @@ export function boot() {
     off() { return chat.set(false); },
     toggle() { return chat.set(!chat.visible); },
   };
-  document.body.dataset.chat = "on";
+  // OFF by default: this is a voice demo and the microphone should be the first
+  // thing a visitor reaches for. The box is still in the DOM and still wired -
+  // Ctrl + . , shruti.chat.on() or "on chat" in the page console bring it back
+  // in one action, which is what a judge with no microphone needs.
+  document.body.dataset.chat = "off";
 
   const typing = (t) =>
     t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable);

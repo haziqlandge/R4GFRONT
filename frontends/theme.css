@@ -120,7 +120,8 @@ a.brand:hover small { color: var(--fg-3); }
 
 /* A blinking caret on the idle transcript, which is the one place a terminal
    convention communicates state rather than decorating. */
-.sh-transcript:empty::after {
+.sh-transcript:empty::after,
+.sh-transcript[data-live="true"]::after {
   content: "_";
   color: var(--accent);
   animation: blink 1.05s steps(2, start) infinite;

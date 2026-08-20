@@ -214,6 +214,10 @@ svg { display: block; }
   content: "Your question appears here.";
   color: var(--fg-3);
 }
+/* While the live transcript is streaming, the placeholder has to go even though
+   the element is briefly still empty - otherwise "Your question appears here."
+   sits under the first word as it arrives. */
+.sh-transcript[data-live="true"]:empty::before { content: none; }
 
 .sh-error {
   font-family: var(--font-mono);

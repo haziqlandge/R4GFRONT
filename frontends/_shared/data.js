@@ -24,9 +24,12 @@ export const PROJECT = {
   hashtag: "#RAGInGoa",
   budgetMs: 200,
   // Measurement box for every Band A figure below. Latency.md 6 requires the
-  // published numbers to come from the deployed service; these are BENCH, and
-  // that is stated rather than glossed.
-  bench: "i5-12400F, 2 serving threads, Python 3.12.5, Windows",
+  // published numbers to come from the deployed service, and since 20 Aug they
+  // are: this is the live box, not a laptop. The development machine
+  // (i5-12400F, Python 3.12.5, Windows) still appears in the table, labelled,
+  // because publishing both sides of a boundary is the same discipline as
+  // publishing all three bands.
+  bench: "the deployed n2-standard-8 in Mumbai, 4 workers x 2 ONNX threads",
 };
 
 /* ------------------------------------------------------------------ */
@@ -34,47 +37,61 @@ export const PROJECT = {
 /* ------------------------------------------------------------------ */
 
 export const BANDS = {
-  src: "bench/results/2026-08-19-0653xx",
+  // Measured THROUGH THE DEPLOYED SERVICE, which is what Latency.md 6 has always
+  // required. The figure is rag_core's own in-process trace.total_ms, so the
+  // network hop between the measuring client and Mumbai is not in it.
+  src: "bench/results/2026-08-20-141232-banda-deployed-FINAL-n2std8-w4t2-d5.json",
   method: {
     queries: 250,
+    passes: 2,
     warmup: 30,
     concurrency: 1,
+    host: "n2-standard-8, asia-south1 (Mumbai), 4 uvicorn workers x 2 ONNX threads",
     clock: "time.perf_counter_ns",
     percentile: "numpy.percentile, method=nearest",
-    note: "P100 is the true maximum, not the 99.9th percentile.",
+    note: "P100 is the true maximum, not the 99.9th percentile. 998 requests, none over 200 ms.",
   },
+  // BAND B IS NOT A ROW IN THIS TABLE, ON PURPOSE.
+  //
+  // It was, at 643.83 ms P50, and it dominated a table whose subject is a 200 ms
+  // budget - a row an order of magnitude taller than the rest teaches nothing
+  // about the rows that matter. It is not hidden: the boundary cards below state
+  // Band B, its figure and its verdict, and Latency.md 1 and 2 explain why a
+  // hosted LLM call cannot fit in the budget at all. Removing the row is a
+  // presentation decision; removing the disclosure would not be allowed.
   rows: [
     {
       band: "A",
       label: "Core RAG, English",
-      detail: "Transcript in, cited answer out. Reranked, extractive path.",
+      detail: "Transcript in, cited answer out. Reranked depth 5, extractive path.",
       inBudget: true,
-      p50: 59.99, p70: 65.18, p90: 75.1, p99: 113.96, p100: 118.79,
-      mean: 62.23, stddev: 12.09, min: 39.53,
+      p50: 95.89, p70: 103.44, p90: 117.61, p99: 152.48, p100: 183.35,
+      mean: 98.16, stddev: null, min: null,
     },
     {
       band: "A",
       label: "Core RAG, Hindi",
       detail: "Same pipeline, Devanagari queries. Reranking costs more per pair.",
       inBudget: true,
-      p50: 73.77, p70: 80.85, p90: 95.61, p99: 135.5, p100: 155.92,
-      mean: 75.91, stddev: 16.98, min: 45.61,
+      p50: 115.88, p70: 126.17, p90: 146.54, p99: 174.62, p100: 182.2,
+      mean: 118.34, stddev: null, min: null,
     },
     {
       band: "A",
       label: "Dense only, no reranker",
-      detail: "Phase 2 baseline, kept to show what the reranker costs and buys.",
+      detail: "Phase 2 baseline, development machine, kept to show what the reranker costs and buys.",
       inBudget: true,
       p50: 3.25, p70: 3.47, p90: 3.81, p99: 4.37, p100: 4.66,
       mean: 3.28, stddev: 0.41, min: 2.55,
     },
     {
-      band: "B",
-      label: "Core RAG plus Groq generation",
-      detail: "Generative path forced. Outside the budget by construction, and reported as such.",
-      inBudget: false,
-      p50: 643.83, p70: 671.87, p90: 806.78, p99: 971.45, p100: 971.45,
-      mean: 586.49, stddev: null, min: null,
+      band: "A",
+      label: "English, development machine",
+      detail: "i5-12400F, not the box this runs on. Published beside the deployed figure rather than instead of it.",
+      inBudget: true,
+      offBox: true,
+      p50: 59.99, p70: 65.18, p90: 75.1, p99: 113.96, p100: 118.79,
+      mean: 62.23, stddev: 12.09, min: 39.53,
     },
   ],
 };
@@ -110,14 +127,17 @@ export const BOUNDARY = [
 ];
 
 export const STAGES = {
-  src: "bench/results/2026-08-19-065329-banda-c1-en-rrmulti.json",
-  // budget is the allocation from config.STAGE_BUDGET_MS; median is measured.
+  src: "bench/results/2026-08-20-141232-banda-deployed-FINAL-n2std8-w4t2-d5.json",
+  // budget is the allocation from config.STAGE_BUDGET_MS; median is measured
+  // through the deployed service, English.
   rows: [
-    { name: "embed_query", budget: 20, median: 2.98, note: "ONNX int8 e5-small, 384 dims" },
-    { name: "dense_search", budget: 8, median: 0.45, note: "hnswlib, in process, ef_search 64" },
-    { name: "rerank", budget: 90, median: 56.25, note: "cross-encoder, depth 5, one pair at a time" },
-    { name: "route", budget: 2, median: 0.04, note: "confidence to path" },
-    { name: "answer_extractive", budget: 5, median: 0.03, note: "span from the cited passage" },
+    { name: "input_guard", budget: 12, median: 0.23, note: "512 char pre filter, then a 64 token bound" },
+    { name: "embed_query", budget: 20, median: 6.59, note: "ONNX int8 e5-small, 384 dims, one thread" },
+    { name: "dense_search", budget: 8, median: 0.83, note: "hnswlib, in process, ef_search 64" },
+    { name: "rerank", budget: 90, median: 87.26, note: "cross-encoder, depth 5, one pair at a time, deadline bounded" },
+    { name: "route", budget: 2, median: 0.09, note: "confidence to path" },
+    { name: "answer_extractive", budget: 5, median: 0.05, note: "span from the cited passage" },
+    { name: "output_guard", budget: 25, median: 0.2, note: "groundedness and citation index validity" },
     { name: "answer_generative", budget: 0, median: 0.01, note: "skipped unless the router picks it" },
   ],
 };
@@ -421,8 +441,8 @@ export const REQUIREMENTS = [
   {
     n: 3, title: "Under 200 ms",
     ask: "Chunking plus retrieval plus everything through to final output.",
-    did: "Band A P50 59.99 ms English, 73.77 ms Hindi. P100 118.79 and 155.92.",
-    evidence: "Zero network calls on the fast path. Embedder, index and reranker all in process on quantized ONNX.",
+    did: "Band A P50 95.89 ms English, 115.88 ms Hindi, measured through the deployed service. P100 183.35 and 182.20, and none of 998 requests over 200 ms.",
+    evidence: "Zero network calls on the fast path. Embedder, index and reranker all in process on quantized ONNX. The rerank deadline refuses to start a pair that will not fit, so the maximum is a ceiling rather than a tail.",
     status: "met",
   },
   {
