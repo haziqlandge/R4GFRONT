@@ -140,15 +140,21 @@ function latencySection() {
 }
 
 function chunkingSection() {
+  // A killed strategy gets ONE cell across the five numeric columns saying so,
+  // rather than five dashes. Dashes read as "missing data" - something that
+  // should be there and is not - and this is the opposite: a decision, taken on
+  // arithmetic, with the arithmetic published below. It also makes it
+  // structurally impossible for a number to appear in C4's row later.
   const rows = CHUNKING.measured.map((c) => `
-    <tr data-verdict="${c.verdict === "default" ? "win" : "loss"}" data-derived="${!!c.derived}">
+    <tr data-verdict="${c.killed ? "killed" : c.verdict === "default" ? "win" : "loss"}" data-derived="${!!c.derived}">
       <td><strong>${esc(c.id)}</strong> ${esc(c.name)}${c.derived
         ? ' <span class="doc-pill doc-pill-note">reuses C1</span>' : ""}</td>
+      ${c.killed ? `<td class="doc-killed" colspan="5">${esc(c.verdict)}</td>` : `
       <td class="sh-num">${fmt(c.en, 3)}</td>
       <td class="sh-num">${fmt(c.hi, 3)}</td>
       <td class="sh-num">${fmt(c.hit1, 3)}</td>
       <td class="sh-num">${c.chunks.toLocaleString()}</td>
-      <td class="sh-num">${c.mb}</td>
+      <td class="sh-num">${c.mb}</td>`}
     </tr>`).join("");
 
   const derived = CHUNKING.derived.map((c) => `

@@ -31,7 +31,7 @@ const COMMANDS = {
     line("  session     percentiles for the queries you have run"),
     line("  budget      the published latency, all three bands"),
     line("  corpus      what is indexed"),
-    line("  chunking    the six strategies we measured"),
+    line("  chunking    the seven strategies we measured, and the one we did not"),
     line("  rerank      why we changed reranker"),
     line("  guard       when it refuses, and when it should not be trusted"),
     line("  stack       what each layer is, and why"),
@@ -108,9 +108,14 @@ const COMMANDS = {
 
   chunking: () => [
     line("measured on 500 held out questions, one code path for every strategy", "hd"),
+    // C4 keeps its place in the C1..C8 sequence and carries its verdict where
+    // its scores would be. A list that jumps C3 -> C5 makes a reader wonder
+    // what was hidden; this says it outright.
     ...CHUNKING.measured.map((c) => line(
-      `  ${c.id.padEnd(4)} ${c.name.padEnd(34)} en ${fmt(c.en, 3)}  hi ${fmt(c.hi, 3)}${c.derived ? "   reuses c1" : ""}`,
-      c.verdict === "default" ? "ok" : c.derived ? "dim" : ""
+      c.killed
+        ? `  ${c.id.padEnd(4)} ${c.name.padEnd(34)} ${c.verdict}`
+        : `  ${c.id.padEnd(4)} ${c.name.padEnd(34)} en ${fmt(c.en, 3)}  hi ${fmt(c.hi, 3)}${c.derived ? "   reuses c1" : ""}`,
+      c.killed ? "bad" : c.verdict === "default" ? "ok" : c.derived ? "dim" : ""
     )),
     line(""),
     line(`  ${CHUNKING.headline}`, "dim"),

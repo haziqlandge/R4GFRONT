@@ -213,25 +213,41 @@ export const CHUNKING = {
   src: "bench/results/2026-08-20-190027-comparison-j15.json",
   method: "500 dev queries, one process, one query list, one embedder, scored on distinct passages. Paired bootstrap against C1, 4000 resamples.",
   // Honesty note that has to travel with this table. SEVEN strategies were
-  // built, indexed and run through the J15 comparison, and all seven rows below
-  // come out of ONE file - the comparison was re-run from scratch when C3 was
-  // added rather than appending C3's numbers to the older six. ISSUES.md I21 is
-  // about exactly that: a table assembled from separate runs compares the runs,
-  // not the strategies. Every pre-existing row reproduced to three decimals.
+  // built, indexed and run through the J15 comparison, and all seven MEASURED
+  // rows below come out of ONE file - the comparison was re-run from scratch
+  // when C3 was added rather than appending C3's numbers to the older six.
+  // ISSUES.md I21 is about exactly that: a table assembled from separate runs
+  // compares the runs, not the strategies. Every pre-existing row reproduced to
+  // three decimals.
+  //
+  // The eighth row, C4, carries NO numbers and must never acquire any. It is in
+  // the table so the sequence is complete, not because it was run.
   //
   // C5 and C6 reuse C1's byte-identical index BY CONSTRUCTION - they change the
   // payload and the parent lookup, never the vectors - so their equal scores are
   // a property of the design rather than two more confirmations of it. Both
   // facts have to be on screen: dropping the rows hides work that was done, and
   // showing them unmarked pads C1's column with its own reflection.
+  // ORDERED C1 TO C8 BY ID, not by score. This table used to be ranked, which
+  // reads as a leaderboard and invites the eye to stop at row one - and the
+  // interesting rows here are the losers. Strategy order is also the order the
+  // documentation, the registry and `Phase3-Parallel.md`'s job sheet all use, so
+  // a reader cross-checking C7 against I20 does not have to hunt for it.
+  //
+  // C4 IS IN THE TABLE with "killed due to constraints" where its numbers would
+  // be. It was designed and costed like the rest and never built, so a table
+  // that silently skips from C3 to C5 makes a reader wonder what happened to it
+  // - or worse, not notice. `killed: true` is what the renderers key off; the
+  // arithmetic behind the decision is in `notBuilt` below.
   measured: [
     { id: "C1", name: "Fixed size, 96 tokens, 24 overlap", en: 0.878, hi: 0.714, hit1: 0.356, chunks: 379240, mb: 1080, verdict: "default" },
-    { id: "C8", name: "Late chunking", en: 0.886, hi: 0.692, hit1: 0.366, chunks: 379240, mb: 1080, verdict: "tied on English, worse on Hindi" },
+    { id: "C2", name: "Sentence window", en: 0.354, hi: 0.416, hit1: 0.124, chunks: 927069, mb: 2029, verdict: "significantly worse" },
+    { id: "C3", name: "Semantic breakpoint", en: 0.848, hi: 0.660, hit1: 0.362, chunks: 346383, mb: 1022, verdict: "significantly worse on recall" },
+    { id: "C4", name: "Proposition decomposition", en: null, hi: null, hit1: null, chunks: null, mb: null, verdict: "killed due to constraints", killed: true },
     { id: "C5", name: "Metadata aware", en: 0.878, hi: 0.714, hit1: 0.356, chunks: 379240, mb: 1080, verdict: "same index as C1", derived: true },
     { id: "C6", name: "Hierarchical parent child", en: 0.878, hi: 0.714, hit1: 0.356, chunks: 379240, mb: 1080, verdict: "same index as C1", derived: true },
     { id: "C7", name: "Doc2query, query aligned", en: 0.864, hi: 0.674, hit1: 0.352, chunks: 403240, mb: 1122, verdict: "significantly worse" },
-    { id: "C3", name: "Semantic breakpoint", en: 0.848, hi: 0.660, hit1: 0.362, chunks: 346383, mb: 1022, verdict: "significantly worse on recall" },
-    { id: "C2", name: "Sentence window", en: 0.354, hi: 0.416, hit1: 0.124, chunks: 927069, mb: 2029, verdict: "significantly worse" },
+    { id: "C8", name: "Late chunking", en: 0.886, hi: 0.692, hit1: 0.366, chunks: 379240, mb: 1080, verdict: "tied on English, worse on Hindi" },
   ],
   derived: [
     { id: "C5", name: "Metadata aware", note: "Built, indexed and run. It reuses C1's vectors and adds a language, script, query_type and position filter, so it buys conditional retrieval rather than recall. The exact zero delta is the evidence that it did what it claims." },
@@ -455,10 +471,10 @@ export const TIMELINE = [
     numbers: ["P50 3.31 ms", "en Recall@10 0.870"],
   },
   {
-    phase: "3", title: "Tried eight ways to cut the corpus", date: "18 to 19 Aug",
-    body: "Six strategies built and measured, one reasoned about and skipped, one cancelled on cost. The plain fixed size chunker won, and two of the six share its index by construction.",
+    phase: "3", title: "Tried eight ways to cut the corpus", date: "18 to 20 Aug",
+    body: "Seven strategies built and measured, one cancelled on cost. The plain fixed size chunker won, and two of the seven share its index by construction. C3 was the last one built, and it is the reason we can say why the winner wins: it cuts on meaning instead of on a window, does not overlap, and loses recall in both languages.",
     why: "Two of our early results turned out to be mistakes in how we measured, not real differences. We rebuilt the comparison so every strategy runs through one code path.",
-    numbers: ["4 measured", "1 skipped", "1 cancelled"],
+    numbers: ["7 measured", "1 cancelled"],
   },
   {
     phase: "4", title: "Added voice", date: "19 Aug",

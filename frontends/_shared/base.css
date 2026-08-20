@@ -595,6 +595,21 @@ body[data-chat="off"] .sh-form { display: none; }
    It must never read as a result. */
 .sh-table tr[data-leak="true"] td { color: var(--halt); }
 
+/* A strategy that was designed and costed but never built. It keeps its row so
+   the C1..C8 sequence has no silent gap, and gets one cell where its numbers
+   would be - drawn in the refusal colour so it cannot be skimmed as a result. */
+.sh-table tr[data-verdict="killed"] td { color: var(--fg-3); }
+.sh-table td.doc-killed {
+  color: var(--halt);
+  font-family: var(--font-mono);
+  /* Right aligned, like every other value in the five columns it spans, so it
+     lands on the same margin as the MB column above and below it. Left aligned
+     it started at the en R@10 column and ended nowhere, which read as a stray
+     caption rather than as this row's entry. */
+  text-align: right;
+  white-space: nowrap;
+}
+
 /* A number column is read down its digits, so its header belongs over the last
    digit rather than the first. A left aligned header sitting on top of right
    aligned numbers is the misalignment that becomes obvious the moment a column
