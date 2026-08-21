@@ -1,0 +1,25 @@
+# Line endings.
+#
+# core.autocrlf is true on the Windows development box, so everything checks out
+# CRLF here. That is fine for the .bat files and harmless for source - and FATAL
+# for anything the Linux box executes, because a shebang read as `bash\r` fails
+# with the memorable and unhelpful:
+#
+#     /usr/bin/env: 'bash\r': No such file or directory
+#
+# That cost a deploy on 21 Aug. Shell scripts are pinned to LF so they survive
+# the trip to the box regardless of anyone's local git config.
+*.sh    text eol=lf
+
+# Batch files are only ever run by cmd.exe, which wants CRLF.
+*.bat    text eol=crlf
+
+# The web root is rsynced to a Linux box and served as-is. Keeping these LF means
+# the bytes on disk here and the bytes Caddy serves are identical, which is what
+# lets deploy/verify-live.ps1 compare them by hash.
+*.js     text eol=lf
+*.css    text eol=lf
+*.html   text eol=lf
+*.py     text eol=lf
+*.md     text eol=lf
+*.json   text eol=lf

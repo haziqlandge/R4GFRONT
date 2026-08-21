@@ -40,9 +40,17 @@ esac
 # frontends directory into a directory that happens to share a name.
 [[ -d "$REPO/frontends" ]] || { echo "no $REPO/frontends - is this the box?" >&2; exit 1; }
 
+# Tolerated, not required. ~/app on the box is NOT a git checkout - the tree got
+# there by scp during Phase 7 and never by clone - so `set -e` plus a bare
+# rev-parse aborted this script before it did any work. The deploy does not need
+# git; this block is provenance when it happens to be available.
 echo "== repo"
-git -C "$REPO" rev-parse --abbrev-ref HEAD | sed 's/^/   branch /'
-git -C "$REPO" log --oneline -1 | sed 's/^/   head   /'
+if git -C "$REPO" rev-parse --git-dir >/dev/null 2>&1; then
+  echo "   branch $(git -C "$REPO" rev-parse --abbrev-ref HEAD)"
+  echo "   head   $(git -C "$REPO" log --oneline -1)"
+else
+  echo "   not a git checkout - deploying the tree as it stands on disk"
+fi
 
 if (( DO_SITE )); then
   echo "== site -> $WEBROOT"
