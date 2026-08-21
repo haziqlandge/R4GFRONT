@@ -115,17 +115,31 @@ rediscovering anything.
 
 **The frontend deploy has a trap and it is silent.** Editing
 `~/app/frontends/...` changes nothing, because Caddy serves `/var/www/shruti` —
-a home directory is 0750 and the `caddy` user cannot traverse it. The Caddyfile
-says "deploy.sh syncs it" and **there is no `deploy.sh`**. Sync by hand:
+a home directory is 0750 and the `caddy` user cannot traverse it.
+
+**Use `deploy/deploy.sh`, on the box.** It syncs the web root, restarts the
+services, waits for `/health` to come back green, and then verifies by fetching
+the deployed assets over HTTPS — which is the only check that means anything,
+since the whole failure mode is that the copy landed somewhere Caddy is not
+reading.
+
+```
+ssh -i ~/.ssh/google_compute_engine haziqlandge@34.100.222.236
+cd ~/app && git pull && ./deploy/deploy.sh
+```
+
+`--site` skips the restart when only `frontends/` changed; `--services` skips the
+sync when only `services/` did. By hand it is:
 
 ```
 sudo rsync -a --delete /home/haziqlandge/app/frontends/ /var/www/shruti/
 sudo chown -R caddy:caddy /var/www/shruti
+sudo systemctl restart shruti-core        # only if services/ changed
 ```
 
-Then verify by fetching the asset over HTTPS and grepping the response, not by
-looking at the file you copied. Backend files are simpler: `scp` into
-`~/app/services/...` and `sudo systemctl restart shruti-core`.
+**If the probe says the new bytes are live and the page still looks old, it is
+the browser cache**, not the deploy. Caddy sends no `cache-control` on these
+files. Ctrl-F5.
 
 ### Getting a shell
 

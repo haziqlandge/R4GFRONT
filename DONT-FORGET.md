@@ -582,12 +582,28 @@ the box**; the sync has been done by hand.
 The failure is silent and convincing: `scp` succeeds, `grep` on
 `~/app/frontends/_shared/data.js` finds the new value, and the site keeps serving
 the old one. Verify by fetching the asset over HTTPS and grepping the response,
-not by looking at the file you copied. The sync is:
+not by looking at the file you copied.
+
+**There IS a `deploy.sh` now** (added 21 Aug, `deploy/deploy.sh`) and it does all
+of this, including the HTTPS verification. On the box:
+
+```
+cd ~/app && git pull && ./deploy/deploy.sh
+```
+
+The sync it performs, if you would rather do it by hand:
 
 ```
 sudo rsync -a --delete /home/haziqlandge/app/frontends/ /var/www/shruti/
 sudo chown -R caddy:caddy /var/www/shruti
 ```
+
+**And there is a SECOND silent failure downstream of this one: the browser
+cache.** Caddy sends no `cache-control` on these static files, so Chrome reuses a
+heuristically cached copy and shows the old page even after a correct sync. This
+cost a cycle on 21 Aug. If the HTTPS probe says the new bytes are being served
+and the page still looks old, it is the cache — Ctrl-F5, or DevTools with
+"Disable cache" ticked. Do not re-sync; nothing is wrong with the sync.
 
 Backend files are different: `services/` is run from `~/app` directly by the
 systemd units, so `scp` plus `sudo systemctl restart shruti-core` is the whole
