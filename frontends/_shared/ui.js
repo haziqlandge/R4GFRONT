@@ -532,7 +532,12 @@ export function renderAside(el, text, model, rateLimited = false, pending = fals
   body.innerHTML = `
     <div class="sh-aside" data-state="${pending ? "pending" : "idle"}">
       ${head}
-      <p class="sh-aside-text sh-aside-placeholder">${pending
+      <!-- sh-idle, NOT sh-aside-text. This is the same kind of thing the OUTPUT
+           panel says while it waits, so it gets the same class and therefore the
+           same size, weight and colour by construction rather than by two rules
+           that happen to agree. sh-aside-text is set for an ANSWER - 18px at
+           full foreground - which made a placeholder read like a claim. -->
+      <p class="sh-idle">${pending
         ? "asking an external source…"
         : "The same question, answered by a model with no corpus behind it, appears here."}</p>
     </div>`;

@@ -278,9 +278,6 @@ svg { display: block; }
    own contents. */
 .sh-aside[data-state="limited"] .sh-aside-text { color: var(--halt); }
 
-/* Idle and waiting. Dimmed to provenance weight: the frame is holding its place
-   in the layout, not making a claim. */
-.sh-aside-placeholder { color: var(--fg-3); }
 
 .sh-aside-head {
   display: flex; align-items: baseline; gap: 7px;
