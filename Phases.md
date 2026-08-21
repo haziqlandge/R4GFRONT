@@ -265,6 +265,28 @@ Everything in this phase exists to make requirements 2, 3, 4 and 6 *visible* in 
 
 **Exit criterion:** a full dry run of Video 2's script, performed live, with no errors and nothing needing explanation that the UI does not already show.
 
+> **Reopened twice on 21 August, both times against this exit criterion**, which
+> is what it is for — "nothing needing explanation that the UI does not already
+> show" is the line the panel kept failing.
+>
+> **The aside** got a per-client rate limit and a 240-token cap, and its panel
+> now names the model that answered (`ISSUES.md` I34, I35).
+>
+> **The timing and analytics panels each split into two views**, `model` and
+> `external`, over the same requests. Before that, a question routed to the
+> hosted model drew a 551 ms bar inside a panel captioned "pipeline is the 200 ms
+> claim" and pinned the session P100 above 500 ms — a number a judge would have
+> had to be talked out of, which is exactly what this criterion forbids.
+> `ISSUES.md` **I36** has the cause, which is worth reading past this project:
+> `AnswerResponse.path` reports what the user received and cannot tell you
+> whether the request left the process.
+>
+> Also corrected on the documentation page: the closing "honest paragraph" was
+> still quoting the development machine's 59.99 / 73.77 ms as the product's
+> latency, against `DONT-FORGET.md` 6 and 12A. It reads from `BANDS` now rather
+> than being retyped. The chunking table runs C1 to C8 with C4 in place, marked
+> `killed due to constraints`.
+
 **HARD: code freeze at 11:59 PM on 21 August.**
 
 ---

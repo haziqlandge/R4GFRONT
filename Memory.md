@@ -1320,7 +1320,84 @@ Detail: `ISSUES.md` **I35**. What a later session will get wrong about it:
 
 ---
 
+### [Phase 8, reopened] 21 Aug 2026 — the panel was reporting somebody else's latency as ours
+
+The session panel on the demo page was adding an external round trip to the core
+pipeline's percentiles. The published 250-query figures were never touched — those
+come from the Python harness — but the distribution a judge watches build up on
+screen was wrong, and P100 is where it showed, because P100 is the session
+maximum and never comes back down.
+
+**The finding is about a status field, and it generalises.**
+`AnswerResponse.path` reports what the user RECEIVED. It does not report whether
+the request left the process, and the browser was using it for the second job.
+Three outcomes spend a Groq round trip and then report a path that is not
+`GENERATIVE`: the model reporting insufficient context (`NONE`, abstained), the
+call failing and extractive being served (`EXTRACTIVE`), and the output guard
+rejecting the answer (`NONE`). Each one filed ~600 ms as core-pipeline latency.
+
+The specific repro: `दुनिया में कितनी भैंसें हैं?` in accurate mode, 633 ms, after
+which "Band A P100" sat above 500 ms for the rest of the session no matter how
+many fast queries followed. **A field that describes an outcome cannot be used to
+infer a cost**, and the two look interchangeable right up until a failure path
+fires.
+
+**The fix reads a stage duration instead**, which every version of the trace
+already carries: `external = total_ms`, `model = total_ms − answer_generative.ms`.
+Subtracted from the total rather than summed from the remaining stages, because
+`total_ms` is measured around the whole run and includes the overhead between
+them; summing would under-report us, which is the wrong direction for a number
+this project publishes. `rag_core` also stamps `called the model` onto that span
+now, but that is diagnostics — the arithmetic works without it, which is what let
+the deployed site be corrected by syncing static files alone.
+
+**What came out of it is a design rather than a patch.** Both the timing and the
+analytics panel now carry a switch in the title, `model` or `external`, over
+**the same requests**:
+
+- MODEL is our pipeline, all eight stages, with `answer_generative` pinned to
+  `0.00` rather than removed — a missing row looks like an oversight, a zero row
+  is the claim.
+- EXTERNAL is the same run with that stage's real cost left in.
+
+Same `n` both ways, so the difference between the panels is exactly the external
+call. An intermediate version filtered requests INTO one view or the other, and
+that produced its own complaint: the external percentiles then described only the
+handful of questions that happened to route, so a full rotation of the sample
+prompts added nothing and they looked frozen. They were not stuck; they had
+nothing new to describe.
+
+**Two "stuck" reports that turned out to be correct behaviour**, recorded because
+they will be raised again: P100 only ever rises, and nearest-rank percentiles tie
+at small `n` — at n=3, P50 and P70 share slot 1 while P90 and P100 share slot 2,
+so four cells show two values. They separate at n=5 and are all distinct by n=7,
+measured across eight queries.
+
+**Three rules the panel now holds to**, each of which looks like a preference and
+is not: `external` is disabled in fast mode, because fast calls nothing out and a
+switch leading to an empty panel is worse than one visibly off; changing mode
+clears the session and returns both panels to MODEL in both directions, because
+fast and accurate do not produce comparable samples; and both views are graded on
+the same 200 ms rule. That last one reverses a decision made earlier the same day
+— external was drawn neutral and ungraded on the reasoning that a number never
+inside a budget should not be judged against one, which is backwards for a
+project that says "Band B is over budget and we publish it anyway" in words
+everywhere else. Drawing the rule is what shows which percentiles cross it.
+
+**And a wording rule.** The interface says **external source**, never "AI". The
+first external draft also had three captions — the readout note, the waterfall
+caption, the analytics caption — all saying the same sentence in slightly
+different words. Each now answers a different question: what the headline counts,
+which bars are ours, what the gap between the views means. Three captions saying
+one thing is worse than two saying nothing.
+
+Detail: `ISSUES.md` **I36**. What a later session will get wrong:
+`DONT-FORGET.md` **15**.
+
+---
+
 ## Mid-phase log
+
 
 
 ### 14 Aug 2026 — API keys verified, and Groq's round trip confirms the dual-path thesis
@@ -1822,6 +1899,15 @@ Paste this when starting a fresh session on this project:
 > FAITHFUL to it). Also: Hit@1 measures exact `is_selected` labels, and 75% of
 > its "misses" retrieve the right passage group — never quote 62.1% as "62% of
 > answers are useless".
+>
+> **The demo page shows every timing twice**, switched from the panel titles:
+> `model` is our pipeline, `external` is the same run with the hosted model's
+> stage left in. They cover the SAME requests with the same `n`. Do not use
+> `AnswerResponse.path` to decide which is which — it reports what the user
+> received, not whether the request left the process, and three outcomes call the
+> model while reporting a path that is not `GENERATIVE`. Read the
+> `answer_generative` span's duration. `ISSUES.md` I36, `DONT-FORGET.md` 15. The
+> interface says "external source", never "AI".
 >
 > The `accurate`-mode aside is **Groq only**. A `gemini-3.5-flash-lite` primary
 > with Google Search grounding was built on 21 Aug and **removed the same day**

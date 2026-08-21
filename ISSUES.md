@@ -46,6 +46,7 @@ Severity is about the submission, not about engineering neatness:
 | I27 | The score-gap ambiguity check cannot ship: it refuses real questions first | **RESOLVED (measured, rejected)** | Phase 6 |
 | I34 | The unverified aside: showing the model beside the answer, never instead of it | **RESOLVED (shipped)** | Phase 8 |
 | I35 | Gemini built for the aside and removed; the per-client rate limit stayed | **RESOLVED (removed, 21 Aug)** | Phase 9 |
+| I36 | The session panel counted an external round trip as ours; `path` cannot tell you it did | **RESOLVED (fixed, 21 Aug)** | Phase 8 |
 
 ---
 
@@ -1877,3 +1878,141 @@ with the answers most FAITHFUL to a 2017 corpus, so the flag ends up
 anti-correlated with correctness. Note that live-web grounding would have made
 that failure *sharper*, not safer, which is worth remembering if Gemini is ever
 proposed again on the grounds that it would be "more accurate".
+
+---
+
+## I36 - the session panel counted an external round trip as ours, and `path` cannot tell you it did
+
+**Status: RESOLVED 21 Aug 2026.** A live measurement defect on the demo page, not
+in the pipeline. The published 250-query figures were never affected - those come
+from the Python harness - but the panel a judge watches build up was wrong, and
+wrong in the direction that flatters nothing and confuses everything.
+
+### The symptom
+
+Ask `दुनिया में कितनी भैंसें हैं?` in `accurate` mode. Band A's P100 goes above
+500 ms and **stays there for the rest of the session**, no matter how many fast
+queries follow. Reproduced against the live service:
+
+```
+fast     -> ANSWERED  EXTRACTIVE   92 ms
+accurate -> ABSTAINED NONE        633 ms
+```
+
+### The cause, which is the transferable part
+
+The browser decided which band a sample belonged to with
+`res.path === "GENERATIVE" ? "B" : "A"`. **`path` does not answer the question
+the split is asking.** It reports what the user received, not whether the request
+left the process, and THREE outcomes spend a Groq round trip and then report a
+path that is not `GENERATIVE`:
+
+| what happened | reported path | where it landed |
+|---|---|---|
+| model reports `INSUFFICIENT_CONTEXT` | `NONE` (abstained) | Band A |
+| the call fails, extractive is served | `EXTRACTIVE` | Band A |
+| the output guard rejects the answer | `NONE` (abstained) | Band A |
+
+All three put a ~600 ms network sample into the core pipeline's percentiles.
+**P100 is where it showed because P100 is the session maximum and never comes
+back down.** The generalisable lesson: a status field that describes an OUTCOME
+cannot be used to infer a COST, and the two look interchangeable right up until
+one of the failure paths fires.
+
+### The fix, in two parts
+
+**1. `rag_core` says it outright.** `harness/stages.py` stamps the exact string
+`called the model` onto the `answer_generative` span before the call is
+attempted - before, not after, and not conditional on success, because the
+question is "did this leave the process" and a call that times out or is refused
+by an open breaker still has. It is in the TRACE rather than in `AnswerResponse`
+so the Phase 2 contract does not move, and it is visible in the waterfall, which
+is honest: 600 ms in a stage should be legible. `LLM_CALLED` in `stages.py` and
+`core.js` are one contract; do not reword either alone.
+
+**2. The panel stopped needing to guess.** Both views now read the
+`answer_generative` span's `ms` directly:
+
+    external  = trace.total_ms
+    model     = trace.total_ms - answer_generative.ms
+
+Subtracted from the total rather than summed from the remaining stages, because
+`total_ms` is measured around the whole run and includes the overhead between
+stages; summing would under-report us, which is the wrong direction for a number
+this project publishes.
+
+**A consequence worth recording: the frontend fix is self-sufficient.** Because
+the split reads a stage duration that every version of the trace already carries,
+the browser computes it correctly against a core that has never heard of the
+note. Verified against a synthetic pre-fix response: `model 100 ms / external
+700 ms` from a trace with `detail: null` throughout. The stamp is better
+diagnostics, not a dependency - which is what let the site be corrected by
+syncing static files alone.
+
+### The design that came out of it
+
+Two views over **the same requests**, switched from the panel titles
+(`timing · model` / `timing · external`, and the same on analytics):
+
+- **MODEL** - our pipeline. All eight stages, with `answer_generative` pinned to
+  `0.00` rather than removed. A row that is missing looks like a row somebody
+  forgot; a row sitting at zero is the claim itself.
+- **EXTERNAL** - the same run with that stage's real cost left in.
+
+**Same `n` both ways.** An intermediate version filtered requests INTO one view
+or the other, which meant the external percentiles only ever described the
+handful of questions that happened to route - so a full rotation of the sample
+prompts, all high confidence, added nothing and they sat unchanged. That is what
+"the values look stuck" was. They were not stuck; they had nothing new to
+describe.
+
+### "Stuck" percentiles that are NOT a bug, and will be reported again
+
+Two of them, both correct, both worth knowing before someone re-opens this:
+
+- **Nearest-rank percentiles tie at small n.** The index is
+  `round(p/100 x (n-1))`, so `n=3` maps P50 and P70 to slot 1 and P90 and P100 to
+  slot 2 - four cells showing two values. They separate at `n=5` and are all
+  distinct by `n=7`. Measured across eight queries, every column moves.
+- **P100 only ever rises.** It is the session maximum. One routed query sets it
+  and nothing lowers it, which is the definition rather than a stall.
+
+### Rules the panel now holds to
+
+- **`external` is unavailable in `fast`**, and the switch is dimmed rather than
+  hidden - a control that disappears reads as a bug, one that is visibly off
+  reads as a rule. Fast calls nothing out: the router gates the generative path
+  on mode and the aside is requested only in accurate.
+- **Changing mode clears the session and returns both panels to MODEL, in both
+  directions.** Fast and accurate do not produce comparable samples, so carrying
+  one into the other builds a distribution out of two different systems.
+- **Both views are graded on the same 200 ms rule**, same green/red, same dashed
+  budget line on the sparkline. An earlier pass drew external neutral and
+  ungraded, reasoning that a number never inside a budget should not be judged
+  against one. That is backwards here: "Band B is over budget and we publish it
+  anyway" is a claim this site makes in words everywhere else, and drawing the
+  rule is what lets a reader see WHICH percentiles the external call pushes
+  across it. Measured, one routed query in nine: external reads P50/P70/P90 green
+  and P100 786.3 red, model reads all four green.
+
+### Wording, which took three passes and is worth not re-deriving
+
+The interface says **external source**, never "AI". The panel is one series, not
+two - an earlier version showed the generative path and the aside side by side,
+which asked a reader to hold two unfamiliar ideas to understand one panel. The
+aside is still measured and still in the JSON export; it is not a third number on
+screen.
+
+**Each caption has ONE job and must not restate its neighbours.** The first
+external draft had three of them - the readout note, the waterfall caption and
+the analytics caption - all saying "the same question with the external call
+counted" in slightly different words, which reads as padding and teaches nothing.
+They are now split by what they are attached to:
+
+| caption | answers |
+|---|---|
+| under the readout | what the headline number counts, and why the budget excludes it |
+| under the bars | which bars are ours, and which one is not |
+| under the percentiles | what the gap between the two views actually tells you |
+
+Three captions saying the same sentence is worse than two saying nothing.

@@ -8,6 +8,8 @@ Last updated: 21 August 2026. **It is deployed, the 200 ms claim holds on the de
 
 > **Newest change, 21 Aug (second pass):** the unverified aside gained a **per-client rate limit of 5 calls/minute** and a tighter 240-token cap. A Gemini primary with live-web grounding was built the same day and **removed** — the aside is Groq only, and there is no dormant Gemini path. See 1B, `ISSUES.md` I35 and `DONT-FORGET.md` 14 before proposing it again.
 
+> **Newest change, 21 Aug (third pass):** the demo page's timing and analytics panels each show **two views of the same requests** — `model` (our pipeline) and `external` (the same run with the hosted model's stage counted) — switched from the panel titles. This fixed a live defect where an external round trip was recorded as core-pipeline latency and pinned P100 above 500 ms for a whole session. **`AnswerResponse.path` cannot tell you whether a request left the process**; read the `answer_generative` span's duration. `ISSUES.md` **I36**, `DONT-FORGET.md` **15**. The correction is frontend-only — an `rsync` to `/var/www/shruti` is enough.
+
 > **On a brand-new machine, read [`PREREQUISITES.md`](PREREQUISITES.md) first.** It takes a bare box to a verified one. This file assumes that is done.
 
 ---

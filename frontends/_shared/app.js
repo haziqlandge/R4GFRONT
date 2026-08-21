@@ -229,10 +229,13 @@ export function boot() {
     // waterfall that includes the model's 551 ms, or the reverse, is how the two
     // got conflated in the first place.
     const external = timingView === "external";
-    if (el.totalK) el.totalK.textContent = external ? "with ai" : "pipeline";
+    if (el.totalK) el.totalK.textContent = external ? "with source" : "pipeline";
     if (el.boundary) {
+      // Explains the HEADLINE NUMBER, and nothing else - the waterfall caption
+      // below covers the bars and the analytics panel covers the distribution.
+      // Three captions saying the same sentence is worse than two saying nothing.
       el.boundary.textContent = external
-        ? "the same question, timed with the ai's call left in. everything above the pipeline figure is that one call, and it is outside the 200 ms claim by design."
+        ? "this number includes one hop out to a hosted model and back. that hop is somebody else's queue, which is why the 200 ms claim is measured without it rather than stretched around it."
         : "pipeline is the 200 ms claim. speech is a network call to sarvam and is timed on its own line, because you time from when you stop speaking.";
     }
     if (el.total) {
@@ -252,7 +255,7 @@ export function boot() {
    * Put both panels back to MODEL and forget the session.
    *
    * Called on every mode change, in BOTH directions. The two modes do not
-   * produce comparable samples - fast never calls the AI and accurate may - so
+   * produce comparable samples - fast never calls out and accurate may - so
    * carrying a fast session's percentiles into accurate, or the reverse, builds
    * a distribution out of two different systems. Clearing is the honest reset,
    * and starting from MODEL means a reader always begins at our own numbers.
@@ -273,10 +276,10 @@ export function boot() {
   /**
    * EXTERNAL is unavailable in fast mode, and the switch says so.
    *
-   * Fast makes no AI call at all - not the generative path, which the router
-   * gates on mode, and not the aside, which is requested only in accurate. So
-   * there is nothing for an external view to show, and a switch that leads to an
-   * empty panel is worse than one that is visibly off.
+   * Fast makes no outbound call at all - not the generative path, which the
+   * router gates on mode, and not the aside, which is requested only in
+   * accurate. So there is nothing for an external view to show, and a switch
+   * that leads to an empty panel is worse than one that is visibly off.
    */
   function syncViewSwitches() {
     const on = mode === "accurate";
@@ -285,7 +288,7 @@ export function boot() {
       b.disabled = !on;
       b.title = on
         ? `showing ${b.textContent}, click for the other`
-        : "fast mode makes no AI call, so there is nothing external to show";
+        : "fast mode calls no external source, so there is nothing here to show";
     }
   }
 
@@ -485,8 +488,8 @@ export function boot() {
       // Leaving accurate takes the aside with it: it belongs to that mode, and
       // a stale panel under a fast answer would claim a comparison nobody ran.
       if (mode !== "accurate") renderAside(el.aside, null);
-      // And the session goes with it, in BOTH directions. Fast never calls the
-      // AI and accurate may, so samples from one do not belong in the other's
+      // And the session goes with it, in BOTH directions. Fast never calls out
+      // and accurate may, so samples from one do not belong in the other's
       // distribution - carrying them across would build percentiles out of two
       // different systems. Both panels return to MODEL as well.
       resetViews();

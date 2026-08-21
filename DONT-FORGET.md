@@ -784,3 +784,89 @@ Before anyone proposes Gemini for the aside again, three things have to be true
 and none of them is about code: a funded **AI Studio** project (never Vertex,
 section 8A), a second free tier somebody is willing to run out of, and a reason
 that survives the paragraph above.
+
+---
+
+## 15. The demo page has TWO views of every number, and `path` cannot tell them apart
+
+**21 August 2026.** The timing panel and the analytics panel each carry a switch
+in their title — `timing · model` / `timing · external`, and the same on
+analytics. It is not decoration and it is not a toggle somebody added for fun; it
+exists because the two numbers were being added together and reported as ours.
+
+### The fact that is most expensive to rediscover
+
+**`AnswerResponse.path` tells you what the user received. It does not tell you
+whether the request left the process.** Three outcomes call Groq and then report
+a path that is *not* `GENERATIVE`:
+
+| what happened | reported path |
+|---|---|
+| the model reports `INSUFFICIENT_CONTEXT` | `NONE`, abstained |
+| the call fails and extractive is served | `EXTRACTIVE` |
+| the output guard rejects the answer | `NONE`, abstained |
+
+Anything keyed on `path` to mean "was this cheap" is wrong on all three, and the
+error is ~600 ms. This is the defect I36 records: the browser used
+`path === "GENERATIVE" ? "B" : "A"`, so `दुनिया में कितनी भैंसें हैं?` in accurate
+mode pinned "Band A P100" above 500 ms for the rest of the session.
+
+**Read the `answer_generative` span's duration instead.** Every version of the
+trace carries it. `rag_core` also stamps `called the model` onto that span
+(`LLM_CALLED`, one contract shared by `harness/stages.py` and
+`_shared/core.js` — do not reword either alone), but that is diagnostics: the
+split is arithmetic on a stage duration and works without it.
+
+### Three "stuck percentile" reports that are NOT bugs
+
+This will be reported again. All three are correct behaviour:
+
+- **P100 only ever rises.** It is the session maximum. One routed query sets it
+  and nothing brings it down.
+- **Nearest-rank percentiles tie at small n.** The index is
+  `round(p/100 x (n-1))`, so at n=3 P50 and P70 both land on slot 1 and P90 and
+  P100 both land on slot 2 — four cells showing two values. They separate at n=5
+  and are all distinct by n=7. Measured.
+- **The old external series genuinely did freeze**, and that one *was* a bug: it
+  contained only requests that actually routed, so a rotation of the sample
+  prompts added nothing to it. Fixed by giving both views the same requests. If
+  you see it again, check `n` — if the two views disagree on `n`, the filter is
+  back.
+
+### Rules the panel holds to, which look like preferences and are not
+
+- **`external` is disabled in fast mode**, dimmed rather than hidden. Fast calls
+  nothing out — the router gates the generative path on `mode`, and the aside is
+  requested only in accurate. A control that disappears reads as a bug; one that
+  is visibly off reads as a rule.
+- **Changing mode clears the session and resets both panels to MODEL, in both
+  directions.** Fast and accurate do not produce comparable samples, so carrying
+  one into the other builds a distribution out of two different systems.
+- **`answer_generative` is listed in the MODEL view at `0.00`, not removed.** A
+  missing row looks like an oversight; a zero row is the claim.
+- **Both views are graded on the same 200 ms rule.** An earlier pass drew
+  external neutral and ungraded — that is backwards for this project, because
+  "Band B is over budget and we publish it anyway" is said in words everywhere
+  else and the rule is what shows *which* percentiles cross it.
+
+### Two wording rules for the interface
+
+- **Never write "AI" on the page.** It is an **external source**. The word is
+  used consistently across the aside panel, the switches and every caption.
+- **Each caption has one job and must not restate its neighbours.** The first
+  draft had the readout note, the waterfall caption and the analytics caption all
+  saying "the same question with the external call counted" in slightly different
+  words. They now answer three different questions: what the headline counts,
+  which bars are ours, and what the gap between the views means.
+
+### Deploying this
+
+**Frontend-only is sufficient for the correction.** The split reads a stage
+duration every trace already carries, verified against a synthetic pre-fix
+response (`detail: null` throughout) giving `model 100 ms / external 700 ms`. So
+`rsync` to `/var/www/shruti` fixes the panel on the deployed box on its own.
+
+The `rag_core` half — the `LLM_CALLED` stamp, the per-client aside rate limit and
+the 240-token cap — needs `scp` plus `sudo systemctl restart shruti-core`, and is
+worth doing, but the page is correct either way. Section 12A has both procedures
+and the trap that makes the frontend one silent.

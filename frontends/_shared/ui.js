@@ -276,13 +276,17 @@ export function renderWaterfall(el, trace, budgetMs = 200, view = "model") {
         <span class="sh-num sh-wf-big">${fmt(total, 1)}</span>
         <span class="sh-wf-unit">ms</span>
         <span class="sh-wf-verdict">${external
-          ? "with the AI's time included"
+          ? "with the external source counted"
           : over ? `over the ${budget} ms budget` : `of a ${budget} ms budget`}</span>
       </div>
       <div class="sh-wf-rows">${bars}</div>
+      <!-- Each caption on this page has ONE job and must not restate its
+           neighbours. This one is about the BARS: which of them is ours. The
+           readout above it explains the headline number, and the analytics panel
+           explains the distribution. -->
       <p class="sh-fineprint">${external
-        ? "Same question, same stages, with the time the AI took added back in. That one call is the whole difference between these two views."
-        : "Our own pipeline. answer_generative is 0.00 because no AI was called. Speech to text is a network call and is timed separately."}</p>
+        ? "Seven of these bars are ours. answer_generative is a hosted model composing an answer from the passages the rows above it retrieved, and its length is that provider's queue rather than anything this pipeline controls."
+        : "Timed stage by stage inside the process, on a monotonic clock, from the query arriving to the response being serialized. Reranking is where the budget goes: a cross encoder scoring the top passages is most of every run, and everything else together is single digit milliseconds."}</p>
     </div>`;
 }
 
@@ -311,7 +315,7 @@ function sparkline(values, view = "model", w = 240, h = 34, budget = 200) {
   return `
     <svg class="sh-spark" data-view="${view === "external" ? "external" : "model"}"
          viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" role="img"
-         aria-label="${view === "external" ? "Total time with the AI included" : "Our pipeline"} across ${values.length} queries this session">
+         aria-label="${view === "external" ? "Total time with the external source counted" : "Our pipeline"} across ${values.length} queries this session">
       <line class="sh-spark-budget" x1="0" y1="${budgetY}" x2="${w}" y2="${budgetY}"></line>
       <polyline class="sh-spark-line" points="${pts}"></polyline>
     </svg>`;
@@ -320,11 +324,11 @@ function sparkline(values, view = "model", w = 240, h = 34, budget = 200) {
 /**
  * Session percentiles, in one of two views over THE SAME REQUESTS.
  *
- *   "model"     what our pipeline cost, with the AI's stage removed
- *   "external"  what the same questions cost with the AI left in
+ *   "model"     what our pipeline cost, with the external source's stage removed
+ *   "external"  what the same questions cost with that call left in
  *
- * Same n both ways, so the difference between the panels is exactly the AI and
- * nothing else. An earlier version filtered requests INTO one view or the other,
+ * Same n both ways, so the difference between the panels is exactly the external
+ * call and nothing else. An earlier version filtered requests INTO one view or the other,
  * which meant the external percentiles only ever described the handful of
  * questions that happened to route - so they sat unchanged through a whole
  * rotation of the sample prompts and looked stuck. They were not stuck; they had
@@ -373,7 +377,7 @@ export function renderAnalytics(el, analytics, published, view = "model") {
       ${a ? `
       <div class="sh-an-band" data-band="${external ? "B" : "A"}">
         <p class="sh-an-band-label">${external
-          ? `With the AI included, n=${a.n}`
+          ? `With the external source, n=${a.n}`
           : `Our pipeline, n=${a.n}`}</p>
         <div class="sh-an-grid">
           ${["p50", "p70", "p90", "p100"].map((k) => `
@@ -384,8 +388,8 @@ export function renderAnalytics(el, analytics, published, view = "model") {
         </div>
         ${sparkline(analytics.series(view), view)}
         <p class="sh-fineprint">${external
-          ? "The same questions, timed with the AI's call left in. Everything above the 200 ms figures is that call."
-          : "The 200 ms claim. No AI is called on this path."}</p>
+          ? "Percentiles over the same questions the other view measures. Where the two part company is a map of how often retrieval was not confident enough to answer on its own."
+          : "Your own runs, building up as you ask. The figures below were measured on the deployed box over 250 frozen queries; these come from this browser, so they will not line up exactly."}</p>
       </div>` : ""}
 
       <div class="sh-an-block">
