@@ -46,6 +46,7 @@ from .config import (
     TOKENIZER_FILE,
     load_env,
 )
+from .guardrails.profanity import contains_profanity
 from .harness.errors import InvalidQuery, RagCoreError
 from .harness.pipeline import Context, Pipeline
 from .harness.ratelimit import RateLimiter
@@ -336,6 +337,16 @@ async def aside(req: AnswerRequest, request: Request) -> dict[str, object]:
         "text": None, "model": None, "upstream_ms": 0.0, "usage": {},
         "rate_limited": False,
     }
+
+    # THE GUARD DOES NOT REACH THIS ENDPOINT. /v1/aside is its own route and runs
+    # no pipeline, so the Layer 1 input guard that refuses a profane question on
+    # /v1/answer never sees this one. Without this check the answer panel would
+    # refuse and the external panel would go on to send the same words to a
+    # hosted model - the visible refusal and the actual behaviour disagreeing.
+    # Silent, like every other reason there is no panel: the answer above has
+    # already told them why.
+    if contains_profanity(req.query):
+        return none
 
     # No key is not the visitor's problem and stays silent: the panel does not
     # appear and nothing is said about it.

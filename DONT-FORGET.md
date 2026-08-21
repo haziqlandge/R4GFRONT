@@ -911,3 +911,35 @@ The `rag_core` half — the `LLM_CALLED` stamp, the per-client aside rate limit 
 the 240-token cap — needs `scp` plus `sudo systemctl restart shruti-core`, and is
 worth doing, but the page is correct either way. Section 12A has both procedures
 and the trap that makes the frontend one silent.
+
+
+---
+
+## 16. Profanity is refused by a WORD LIST, and the control group is the point
+
+**21 August 2026.** `guardrails/profanity.py`, English + Hindi (Devanagari AND
+romanised), wired into Layer 1 and into `/v1/aside` separately.
+
+**The two checks are different on purpose and must not be merged.**
+`UNSAFE_PATTERNS` keys on an act plus its object because the topics are
+legitimate; this keys on the word because the word is the violation. Folding one
+into the other loses the reason each is shaped the way it is.
+
+**Before you add a word to the list, run `tests/test_profanity.py`.** It holds a
+control group of legitimate questions - prostate, breast cancer, statutory rape,
+rapeseed oil, `साला` for brother-in-law, "pass an assessment" - and it exists to
+fail the moment somebody adds `ass`, `cock`, `prick`, `rape` or `sex` to catch
+one more variant. A refusal a visitor did not deserve costs more here than a slur
+that reached a retrieval system which would have found nothing for it.
+
+**`/v1/aside` needs its own check and always will.** It is a separate route with
+no pipeline, so nothing in Layer 1 reaches it. If a guard is ever added or
+changed, it has to be added in both places or the answer panel will refuse while
+the external panel sends the same words to a hosted model.
+
+**Romanised Hindi is not optional.** Sarvam returns Devanagari for SPOKEN Hindi;
+the text box is typed, and typed Hindi is romanised. A Devanagari-only list
+misses the most likely route in.
+
+**Devanagari patterns anchor the START of a word only** - Hindi inflects with
+attached suffixes, so a trailing anchor catches चूतिया and misses चूतियों.

@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from typing import Callable, Final, Pattern
 
 from ..answering.schemas import AbstainReason
+from .profanity import contains_profanity
 
 # Prompt-injection patterns. Rules.md 2.1: compiled at import, never at request
 # time.
@@ -169,6 +170,22 @@ class InputGuard:
                     reason="UNSAFE_INPUT",
                     detail="the question asks for help causing harm",
                 )
+
+        # Vulgarity and slurs, English and Hindi. A separate check from the one
+        # above and not a widening of it: those patterns key on an act plus its
+        # object because the topics are legitimate, and this one keys on the word
+        # because the word is the violation. guardrails/profanity.py holds the
+        # list, the normalisation that survives f*ck and f u c k, and the
+        # explicit account of what is left OFF the list and why.
+        #
+        # The detail never names the word that matched. Echoing it back would
+        # reprint the thing being refused, on screen and into the logs.
+        if contains_profanity(query):
+            return InputVerdict(
+                ok=False,
+                reason="UNSAFE_INPUT",
+                detail="the question contains language this system will not answer",
+            )
 
         n = self.count_tokens(query)
         if n > self.max_tokens:

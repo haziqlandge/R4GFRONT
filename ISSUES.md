@@ -48,6 +48,7 @@ Severity is about the submission, not about engineering neatness:
 | I35 | Gemini built for the aside and removed; the per-client rate limit stayed | **RESOLVED (removed, 21 Aug)** | Phase 9 |
 | I36 | The session panel counted an external round trip as ours; `path` cannot tell you it did | **RESOLVED (fixed, 21 Aug)** | Phase 8 |
 | I37 | MODEL and EXTERNAL printed the same number on 13 of 15 accurate questions | **RESOLVED (fixed, 21 Aug)** | Phase 8 |
+| I38 | Profanity was answered, not refused, and /v1/aside ran no guard at all | **RESOLVED (shipped, 21 Aug)** | Phase 6 |
 
 ---
 
@@ -2115,3 +2116,75 @@ before the largest external row was `answer_generative` at 0.01 ms.
 The interface never says "aside". That word is internal - the endpoint is still
 `/v1/aside` - and it means nothing to a reader. On screen it is **external
 source**, matching the panel it belongs to.
+
+
+---
+
+## I38 - profanity was answered rather than refused, and /v1/aside ran no guard at all
+
+**Status: SHIPPED 21 Aug 2026.** Layer 1 gains a profanity check for English and
+Hindi, and the aside endpoint gains a guard it never had.
+
+### What was wrong
+
+Typing `hot sexy bitch` produced an ABSTENTION - but on `LOW_CONFIDENCE`, because
+retrieval simply scored badly, not because anything refused it. That is the
+failure I26 warns about in a different form: the system looked like it had
+judgement when what it actually had was a bad retrieval score. Change the
+wording so it retrieves something and it would have answered.
+
+**And `/v1/aside` ran no guard whatsoever.** It is its own route with no pipeline,
+so the Layer 1 guard never saw it. The answer panel could refuse a question while
+the external panel sent the same words to a hosted model - the visible refusal
+and the actual behaviour disagreeing, which is worse than either alone.
+
+### The design, and why it is a word list this time
+
+`UNSAFE_PATTERNS` keys on an ACT plus its OBJECT - "make a bomb", "poison
+someone" - because the topics are ordinary things a web corpus covers. That is
+right for harm and wrong here: `bitch` is not a subject anyone needs answered,
+there is no act/object pair to look for, and the word IS the violation. So
+`guardrails/profanity.py` is a word list, and being a word list it carries the
+protections a word list needs.
+
+**WHAT IS DELIBERATELY OFF THE LIST**, because every one is a false positive
+waiting to happen and all have real passages behind them:
+
+- clinical anatomy - penis, vagina, breast, anus
+- legal and social topics - rape, incest, abortion, pornography as a subject
+- words rude in only one sense - ass (donkey), cock (rooster), prick (an allergy
+  prick test), fag (a cigarette), screw, balls, crap
+- `साला`, an insult that also simply means brother-in-law
+
+`tests/test_profanity.py::test_legitimate_questions_are_not_refused` is the
+control group and fails loudly the moment somebody adds one of those to catch one
+more variant.
+
+### Three normalised forms, and the one the tests found
+
+A raw list is defeated by `f*ck`, `f u c k`, `fuuuuuck` and `phuck`, so matching
+runs over three forms: leet folded, spaced-letters rejoined, and every repeat
+collapsed. **The third exists because the first two missed `fuuuuuck`** - the
+run collapser cut 3+ down to two, giving `fuuck`, which matched nothing. That
+was found by the test, not by reading the code, which is the argument for having
+written the test first.
+
+Romanised Hindi is not optional either. Sarvam returns Devanagari for SPOKEN
+Hindi, but the text box is typed, and Hindi typed on an English keyboard is
+romanised - a Devanagari-only list would miss the most likely delivery route.
+Devanagari patterns anchor the start of a word only, because Hindi inflects with
+attached suffixes and a trailing anchor catches चूतिया and misses चूतियों.
+
+### Measured
+
+Refusals fire in **0.10 to 0.17 ms**, before the embedder, because the guard is
+the first stage. Verified on the deployed service across English, romanised
+Hindi, Devanagari and a spaced-letter evasion - all `ABSTAINED / UNSAFE_INPUT`
+with no external panel - while the control group answers normally.
+
+### The limit, stated
+
+This is a floor, not a solution. Somebody determined will get a variant through.
+What it does is make the common cases refuse CLEANLY rather than being answered,
+or abstaining on a retrieval score and looking like the system merely did not
+know.
