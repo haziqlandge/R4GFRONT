@@ -402,11 +402,35 @@ a.brand:hover small { color: var(--fg-3); }
   font-style: normal;
   font-size: 17px;
   letter-spacing: 0.30em;
-  text-indent: 0.30em;   /* the tracking adds a trailing gap; this re-centres it */
+  /* Half the tracking, not all of it.
+     letter-spacing puts a 0.30em gap after the LAST glyph too, so the box is
+     wider than the visible mark. The full 0.30em over-corrected: measured
+     against the bar centre it sat +2.55px, and this sits +1.27px, because on an
+     absolutely positioned shrink-to-fit box the indent also widens the box and
+     translateX(-50%) gives half of it straight back. Sub-pixel-and-a-bit at
+     17px, and left here rather than chased further. */
+  text-indent: 0.15em;
   line-height: 1;
   color: var(--fg-2);
   white-space: nowrap;
   user-select: none;
+
+  /* CENTRED ON THE BAR, NOT ON THE GAP.
+     It used to be a flex item between two `flex: 1` spacers, which centres it in
+     the space LEFT OVER - and "shruti" on the left is narrower than the mode
+     toggle plus two buttons on the right, so the mark sat visibly left of true
+     centre. Taking it out of flow and pinning it to 50% makes it independent of
+     what is on either side, which is what a centred mark has to be.
+
+     Only ever applies above 900px; below that the mark is display:none (see the
+     media query underneath), so this never has to survive the wrapped bar.
+
+     pointer-events: none because it is decoration - out of flow it overlaps the
+     row, and it must never intercept a click meant for a control. */
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: none;
 }
 .brandmark-star {
   color: var(--accent);

@@ -80,6 +80,11 @@ svg { display: block; }
   min-height: 64px;
   max-height: 76px;
   padding: 12px 0;
+  /* Anchors the centred team mark. See .brandmark in theme.css: sitting between
+     two flex spacers centred it in the GAP between the brand and the mode
+     toggle, and those two are different widths, so it landed left of the bar's
+     real centre. */
+  position: relative;
 }
 
 .topbar-spacer { flex: 1; }
