@@ -272,15 +272,15 @@ svg { display: block; }
 
 .sh-aside { display: grid; gap: 10px; }
 
-/* The throttled state. Drawn in the refusal colour and centred, because it is
-   a status rather than an answer - a reader must not skim it as something the
-   external source said. */
-.sh-aside[data-state="limited"] .sh-aside-text {
-  color: var(--halt);
-  text-align: center;
-  line-height: 1.7;
-}
-.sh-aside[data-state="limited"] .sh-aside-foot { text-align: center; }
+/* The throttled state. Refusal colour so it cannot be skimmed as something the
+   external source said, but left aligned on one line like every other line in
+   this panel - centring it made it read as a modal rather than as the panel's
+   own contents. */
+.sh-aside[data-state="limited"] .sh-aside-text { color: var(--halt); }
+
+/* Idle and waiting. Dimmed to provenance weight: the frame is holding its place
+   in the layout, not making a claim. */
+.sh-aside-placeholder { color: var(--fg-3); }
 
 .sh-aside-head {
   display: flex; align-items: baseline; gap: 7px;

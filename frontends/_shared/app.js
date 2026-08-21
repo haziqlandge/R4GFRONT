@@ -23,7 +23,7 @@
  */
 
 import { Recorder, Analytics, ask, aside, transcribe, openLiveTranscript, health, fmt, esc, modelMs, externalRows, SAMPLE_QUERIES } from "./core.js";
-import { renderAnswer, renderAside, renderWaterfall, renderAnalytics, renderHealth } from "./ui.js";
+import { renderAnswer, renderAside, setAsideVisible, renderWaterfall, renderAnalytics, renderHealth } from "./ui.js";
 import { BANDS, ROUTING, PROJECT } from "./data.js";
 
 export function boot() {
@@ -308,7 +308,9 @@ export function boot() {
     if (!query?.trim()) return;
     setError("");
     document.body.dataset.busy = "true";
-    renderAside(el.aside, null);   // clear the previous external answer first
+    // Clear the previous answer, keep the frame. Hiding it here is what made the
+    // whole column jump on every prompt.
+    renderAside(el.aside, null, null, false, mode === "accurate");
     try {
       const res = await ask(query, mode);
 
@@ -492,9 +494,11 @@ export function boot() {
       document.querySelectorAll("[data-mode]").forEach((b) => {
         b.dataset.on = String(b.dataset.mode === mode);
       });
-      // Leaving accurate takes the aside with it: it belongs to that mode, and
-      // a stale panel under a fast answer would claim a comparison nobody ran.
-      if (mode !== "accurate") renderAside(el.aside, null);
+      // The frame belongs to accurate mode: shown for the whole session there,
+      // gone entirely in fast, where nothing would ever fill it. A stale panel
+      // under a fast answer would also claim a comparison nobody ran.
+      setAsideVisible(el.aside, mode === "accurate");
+      if (mode === "accurate") renderAside(el.aside, null);
       // And the session goes with it, in BOTH directions. Fast never calls out
       // and accurate may, so samples from one do not belong in the other's
       // distribution - carrying them across would build percentiles out of two
@@ -504,6 +508,10 @@ export function boot() {
     btn.dataset.on = String(btn.dataset.mode === mode);
   });
   syncViewSwitches();
+  // Boot state. The markup ships the frame hidden and the initial mode is fast,
+  // so this agrees with it - but stating it here means the two cannot drift if
+  // either default is ever changed.
+  setAsideVisible(el.aside, mode === "accurate");
 
   // Four sample questions, two per language, every one of them checked against
   // the real pipeline before it went on the page (see SAMPLE_QUERIES in core.js
