@@ -26,11 +26,16 @@ from rag_core.config import (  # noqa: E402
 )
 
 
-def test_aside_cap_is_the_measured_240() -> None:
+def test_aside_cap_is_the_measured_200() -> None:
     """ISSUES.md I34: 160 truncated gpt-oss-20b mid-sentence ("Eric Adams is
-    the") because it is a reasoning model that spends the cap thinking. 240 was
-    re-measured on that same query and four others, in both scripts."""
-    assert ASIDE_MAX_TOKENS == 240
+    the") because it is a reasoning model that spends the cap thinking.
+
+    200 was re-measured on that same query plus seven others - the longest
+    answers observed, in both scripts - and none truncated. Pinned because the
+    known failure is only 40 tokens below it: this is the number to check first
+    if an external answer starts arriving cut off, and it must not be lowered
+    without repeating that measurement."""
+    assert ASIDE_MAX_TOKENS == 200
 
 
 def test_the_aside_gets_more_room_than_the_grounded_path() -> None:

@@ -220,10 +220,13 @@ export function boot() {
   let timingView = "model";
   let analyticsView = "model";
   let lastRes = null;    // so a view switch can repaint without re-asking
+  let lastSample = null; // the analytics row for lastRes, amended when the
+                         // external source returns
+  let srcMs = null;      // this question's external-source round trip, ms
 
   function paintTiming() {
     if (el.waterfall) {
-      renderWaterfall(el.waterfall, lastRes?.trace ?? null, PROJECT.budgetMs, timingView);
+      renderWaterfall(el.waterfall, lastRes?.trace ?? null, PROJECT.budgetMs, timingView, srcMs);
     }
     // The big readout follows the switch too. Showing our 74 ms beside a
     // waterfall that includes the model's 551 ms, or the reverse, is how the two
@@ -240,7 +243,8 @@ export function boot() {
     }
     if (el.total) {
       const ms = !lastRes?.trace ? null
-        : external ? lastRes.trace.total_ms : modelMs(lastRes.trace);
+        : external ? lastRes.trace.total_ms + (srcMs ?? 0)
+        : modelMs(lastRes.trace);
       el.total.textContent = ms === null ? "-" : fmt(ms, 1);
       // Never flag the external view as over budget: it was never in one.
       el.total.dataset.over = String(!external && ms !== null && ms > PROJECT.budgetMs);
@@ -263,6 +267,8 @@ export function boot() {
   function resetViews() {
     analytics.clear();
     lastRes = null;
+    lastSample = null;
+    srcMs = null;
     timingView = "model";
     analyticsView = "model";
     if (el.timingView) el.timingView.textContent = "model";
@@ -304,7 +310,8 @@ export function boot() {
     if (!query?.trim()) return;
     setError("");
     document.body.dataset.busy = "true";
-    renderAside(el.aside, null);   // clear the previous question's aside first
+    renderAside(el.aside, null);   // clear the previous external answer first
+    srcMs = null;                  // and its timing, before the new one arrives
     try {
       const res = await ask(query, mode);
 
@@ -313,7 +320,7 @@ export function boot() {
       // (Analytics.usedNetwork), not by reading `path` - three outcomes call the
       // model and then report a path that is not GENERATIVE. The aside below is
       // a separate request on a separate endpoint and is timed separately again.
-      analytics.record(res, sttMs);
+      lastSample = analytics.record(res, sttMs);
       paint(res);
 
       // Accurate only, and deliberately AFTER paint(). Our answer is already on
@@ -321,15 +328,16 @@ export function boot() {
       // costs nothing against the 200 ms band - the fast path still makes zero
       // network calls, and this one is not on it.
       if (mode === "accurate") {
-        const asideStarted = performance.now();
+        const startedAt = performance.now();
+        const sample = lastSample;          // pinned: another question may land first
         aside(query).then(({ text, model }) => {
           // Wall clock from request to resolve, which is the honest figure for
           // "what did this panel cost" - it is a browser-to-service round trip
           // and there is no server trace to read it off. Recorded even when the
           // call came back empty: a rate-limited or failed call still spent its
           // time, and hiding those would flatter the external percentiles.
-          const ms = performance.now() - asideStarted;
-          analytics.recordAside(ms);
+          const ms = performance.now() - startedAt;
+          analytics.attachExternalSource(sample, ms);
 
           // The mode can change, or another question can be asked, while this is
           // in flight. Only paint if the answer it belongs to is still showing.
@@ -338,8 +346,11 @@ export function boot() {
           // panel carries no citation and no grounding check, so an
           // unattributed one would be the only unlabelled claim on the page.
           if (mode === "accurate" && el.transcript?.textContent === query) {
+            srcMs = ms;
             renderAside(el.aside, text, model);
+            paintTiming();   // the external view has its last row now
           }
+          paintAnalytics();  // and a completed sample either way
         });
       }
     } catch (err) {

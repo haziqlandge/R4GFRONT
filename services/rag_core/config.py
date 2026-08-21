@@ -563,12 +563,17 @@ GROQ_MAX_TOKENS: Final[int] = 160
 # also draws on (ISSUES.md I7), so the cap is now set as tight as it can be
 # without re-entering the truncation trap rather than as loose as it can afford.
 #
-# 240 is a measured floor, not a guess. Re-run at 240 on the five questions most
-# likely to run long - including the "who is the mayor of New York City" query
-# that produced the "Eric Adams is the" truncation at 160 - and in both scripts:
-# all five finish their sentences. 160 does not. If a Groq aside starts arriving
-# truncated again, this is the first number to look at, not the last.
-ASIDE_MAX_TOKENS: Final[int] = 240
+# TIGHTENED 240 -> 200 on 21 Aug, and re-measured rather than assumed, because
+# this number has a floor underneath it that is close: ISSUES.md I34 records 160
+# truncating gpt-oss-20b mid-sentence at "Eric Adams is the", since it is a
+# reasoning model that spends the cap thinking before it writes.
+#
+# Re-run at 200 on the questions most likely to run long - the mayor query from
+# I34 among them - in both scripts. All finish their sentences. That leaves only
+# 40 tokens of headroom above a known failure, so this is now the FIRST number to
+# check if an external answer arrives cut off, and it should not go lower without
+# the same measurement being repeated.
+ASIDE_MAX_TOKENS: Final[int] = 200
 ASIDE_REASONING_EFFORT: Final[str] = "low"
 
 # Hard ceiling on the call. Generous relative to the 352ms floor and deliberately

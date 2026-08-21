@@ -47,6 +47,7 @@ Severity is about the submission, not about engineering neatness:
 | I34 | The unverified aside: showing the model beside the answer, never instead of it | **RESOLVED (shipped)** | Phase 8 |
 | I35 | Gemini built for the aside and removed; the per-client rate limit stayed | **RESOLVED (removed, 21 Aug)** | Phase 9 |
 | I36 | The session panel counted an external round trip as ours; `path` cannot tell you it did | **RESOLVED (fixed, 21 Aug)** | Phase 8 |
+| I37 | MODEL and EXTERNAL printed the same number on 13 of 15 accurate questions | **RESOLVED (fixed, 21 Aug)** | Phase 8 |
 
 ---
 
@@ -1731,6 +1732,13 @@ room for the thinking and two finished sentences.
 > run long, including the "mayor of New York City" query that produced the
 > truncation above: all five finish their sentences, in both Devanagari and Latin
 > script. The trap is real and 240 is above it; 160 was not. See I35.
+>
+> **TIGHTENED AGAIN to 200 later the same day**, and re-measured rather than
+> assumed: the mayor query plus seven others including the longest answers
+> observed, English and Hindi - **0 of 8 truncated**. That leaves 40 tokens of
+> headroom above a known failure, so 200 is the first number to check if an
+> external answer arrives cut off, and it must not go lower without repeating
+> the measurement. Pinned in `tests/test_aside.py`.
 
 **If a Groq answer looks truncated or empty, check the token cap against the
 reasoning budget before suspecting anything else.**
@@ -2016,3 +2024,94 @@ They are now split by what they are attached to:
 | under the percentiles | what the gap between the two views actually tells you |
 
 Three captions saying the same sentence is worse than two saying nothing.
+
+
+---
+
+## I37 - MODEL and EXTERNAL printed the same number on 13 of 15 accurate questions
+
+**Status: RESOLVED 21 Aug 2026.** A defect introduced by I36's own fix, found by
+the owner looking at the two panels side by side and noticing they agreed when
+they had no business agreeing.
+
+### The symptom
+
+In `accurate` mode, `timing - model` and `timing - external` showed the SAME
+figure - and so did both analytics views - on almost every question. The two
+views only diverged on the rare question the router sent to the generative path.
+Meanwhile an external answer was sitting on screen, in its own framed panel,
+directly above two timings that claimed nothing external had happened.
+
+### The measurement
+
+15 accurate questions, mixed English and Hindi, premade prompts and custom ones,
+against the running service:
+
+| | fired on | cost |
+|---|---|---|
+| `answer_generative` | **2 of 15** | 572 ms, 1033 ms |
+| the external-source call | **15 of 15** | 259 to 583 ms |
+
+**MODEL == EXTERNAL on 13 of 15.**
+
+### The cause
+
+I36 defined the external view as `total_ms` and the model view as
+`total_ms - answer_generative.ms`. That is a correct description of the
+GENERATIVE path and it is not what the page does in accurate mode.
+
+`answer_generative` only runs for a mid-confidence question - between
+`tau_low -1.103` and `tau_high 1.877` - which is a small minority. The call that
+runs on EVERY accurate question is the external source, and it is a separate
+request to a separate endpoint made after our answer has painted, so it appears
+in no trace at all. Counting only the stage meant the external view was measuring
+the one external call that usually does not happen and ignoring the one that
+always does.
+
+**The narrower lesson, and the reason this is worth an entry rather than a
+one-line fix:** an earlier pass had removed the external source from these panels
+deliberately, as part of reducing "two things in external" to one. That was the
+right instinct and the wrong choice of which one to keep. The one to keep is the
+one the panel above it is displaying.
+
+### The fix
+
+The external-source round trip is timed in the browser - it has no server trace -
+and attached to the analytics sample it belongs to, late, because it resolves
+after the sample already exists. Then:
+
+    model     = total_ms - answer_generative.ms
+    external  = total_ms + external_source.ms
+
+It also gets a row of its own in the external waterfall, named
+`external_source`, appended after `output_guard` because that is when it happens.
+The row is absent rather than zero when the call was never made or was refused: a
+row reading 0.00 would say "free" where the truth is "never happened".
+
+Measured after the fix, same questions:
+
+| question | model | external |
+|---|---|---|
+| Who is the Prime Minister of India? | 72.7 | 574.1 |
+| what is the boiling point of water | 56.7 | 245.4 |
+| who invented the telephone | 68.5 | 689.5 |
+| capital of france | 55.3 | 339.3 |
+| who is the chancellor of germany *(routed)* | 77.1 | 1041.7 |
+| who wrote hamlet | 74.2 | 657.6 |
+| what causes rain | 76.6 | 1215.9 |
+| who is elon musk | 63.0 | 512.9 |
+| भारत की जनसंख्या कितनी है | 71.1 | 602.5 |
+
+Session analytics over 7 accurate questions, the two views:
+
+    model     n=7   P50  68.1   P70  70.8   P90  87.0   P100    93.0   all green
+    external  n=7   P50 511.8   P70 563.7   P90 624.7   P100  1103.7   all red
+
+and `external_source 444.80 ms` now heads the external stage medians, where
+before the largest external row was `answer_generative` at 0.01 ms.
+
+### Naming
+
+The interface never says "aside". That word is internal - the endpoint is still
+`/v1/aside` - and it means nothing to a reader. On screen it is **external
+source**, matching the panel it belongs to.

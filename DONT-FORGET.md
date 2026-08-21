@@ -833,6 +833,29 @@ trace carries it. `rag_core` also stamps `called the model` onto that span
 `_shared/core.js` — do not reword either alone), but that is diagnostics: the
 split is arithmetic on a stage duration and works without it.
 
+### The external view must count the EXTERNAL SOURCE, not just the stage (I37)
+
+The first fix for the above defined `external = total_ms` and `model = total_ms -
+answer_generative.ms`. That is a correct description of the generative path and
+the wrong description of what accurate mode does, because those are two different
+calls with two different frequencies:
+
+| | fires on | cost |
+|---|---|---|
+| `answer_generative` | a mid-confidence question only - **2 of 15** measured | 572, 1033 ms |
+| the external source | **every** accurate question, 15 of 15 | 259 to 583 ms |
+
+So MODEL and EXTERNAL printed the SAME number on **13 of 15** questions, with an
+external answer visible on screen above them. The external source is a separate
+request to a separate endpoint made after our answer paints, so it appears in no
+trace and has to be timed in the BROWSER and attached to the sample afterwards.
+
+    model     = total_ms - answer_generative.ms
+    external  = total_ms + external_source.ms
+
+If these two views ever agree in accurate mode again, this is the first thing to
+check. They should agree only in fast mode, where external is disabled anyway.
+
 ### Three "stuck percentile" reports that are NOT bugs
 
 This will be reported again. All three are correct behaviour:
@@ -867,7 +890,9 @@ This will be reported again. All three are correct behaviour:
 
 ### Two wording rules for the interface
 
-- **Never write "AI" on the page.** It is an **external source**. The word is
+- **Never write "AI" on the page, and never "aside" either.** "aside" is
+  internal - the endpoint is still `/v1/aside` - and means nothing to a reader.
+  On screen it is an **external source**. The word is
   used consistently across the aside panel, the switches and every caption.
 - **Each caption has one job and must not restate its neighbours.** The first
   draft had the readout note, the waterfall caption and the analytics caption all

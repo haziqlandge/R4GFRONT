@@ -314,6 +314,14 @@ const LLM_CALLED = "called the model";
 /** The one pipeline stage that is not ours. */
 export const LLM_STAGE = "answer_generative";
 
+/**
+ * The external-source round trip, shown as a row beside the pipeline stages in
+ * the external view. NOT a real stage - it is a separate request on a separate
+ * endpoint, made after our answer has painted - which is why it is named here
+ * rather than coming off the trace.
+ */
+export const EXTERNAL_SOURCE_STAGE = "external_source";
+
 /** ms this request spent inside the hosted model. 0 when it never called it. */
 export function externalMs(trace) {
   const s = (trace?.stages || []).find((x) => x.name === LLM_STAGE);
@@ -335,22 +343,32 @@ export function modelMs(trace) {
 
 export class Analytics {
   constructor() {
-    this.samples = [];  // { ms, modelMs, extMs, path, status, stages, ... }
-    this.asides = [];   // ms, browser-measured; exported, not charted
+    this.samples = [];  // { ms, modelMs, extMs, srcMs, path, status, stages, ... }
   }
 
-  /** One /v1/aside round trip, for the JSON export only.
+  /**
+   * Attach the external-source round trip to the sample it belongs to.
    *
-   *  It is deliberately NOT in either percentile series. The aside is its own
-   *  request on its own endpoint and would be a third number in a panel that is
-   *  already asking a reader to hold two - and the two that matter are "what did
-   *  our pipeline cost" and "what did the same question cost with the model in
-   *  it". Recorded even when it came back empty: a rate-limited call still spent
-   *  its time, and dropping those would flatter the figure.
+   * THIS IS THE CALL THAT MAKES THE TWO VIEWS DIFFER AT ALL, and leaving it out
+   * was the defect. `answer_generative` only runs for a mid-confidence query -
+   * measured over 15 accurate questions it fired on 2 - while the external
+   * source is asked on EVERY accurate question and costs 259 to 583 ms. So with
+   * only the generative stage counted, MODEL and EXTERNAL printed the same
+   * number on 13 of 15 questions, while an external answer the panel did not
+   * count sat on screen directly above them.
+   *
+   * It arrives late by construction: the browser asks for it only after our
+   * answer has painted, so the sample already exists and is amended in place.
+   * Recorded even when it returned nothing - a refused or rate-limited call
+   * still spent its time, and dropping those would flatter the figure.
    */
-  recordAside(ms) {
-    if (typeof ms === "number" && isFinite(ms) && ms >= 0) this.asides.push(ms);
+  attachExternalSource(sample, ms) {
+    if (!sample || typeof ms !== "number" || !isFinite(ms) || ms < 0) return;
+    sample.srcMs = ms;
   }
+
+  /** What a request cost once everything that left the process is counted. */
+  static externalTotal(s) { return s.ms + (s.srcMs ?? 0); }
 
   /**
    * Did this request leave the process?
@@ -390,9 +408,10 @@ export class Analytics {
    * queries had happened to route - "P100 stuck" was that, not a maths bug.
    */
   record(res, sttMs) {
-    if (!res?.trace) return;
-    this.samples.push({
+    if (!res?.trace) return null;
+    const sample = {
       ms: res.trace.total_ms,
+      srcMs: null,        // filled in by attachExternalSource when it returns
       modelMs: modelMs(res.trace),
       extMs: externalMs(res.trace),
       usedNetwork: Analytics.usedNetwork(res),
@@ -403,10 +422,12 @@ export class Analytics {
       sttMs: sttMs ?? null,
       stages: res.trace.stages || [],
       at: Date.now(),
-    });
+    };
+    this.samples.push(sample);
+    return sample;   // so the caller can attach the external source later
   }
 
-  clear() { this.samples = []; this.asides = []; }
+  clear() { this.samples = []; }
 
   get count() { return this.samples.length; }
 
@@ -435,8 +456,9 @@ export class Analytics {
    */
   stats(view = "model") {
     if (!this.samples.length) return null;
-    const key = view === "external" ? "ms" : "modelMs";
-    const sorted = this.samples.map((s) => s[key]).sort((a, b) => a - b);
+    const sorted = this.samples
+      .map((s) => (view === "external" ? Analytics.externalTotal(s) : s.modelMs))
+      .sort((a, b) => a - b);
     return {
       n: sorted.length,
       p50: Analytics.pct(sorted, 50),
@@ -476,6 +498,12 @@ export class Analytics {
         const ms = (view === "model" && st.name === LLM_STAGE) ? 0 : st.ms;
         (acc[st.name] ||= []).push(ms);
       }
+      // The external source is not a pipeline stage - it is a separate request
+      // on a separate endpoint - so it only exists in the external view, and
+      // only for questions that actually made the call.
+      if (view === "external" && s.srcMs != null) {
+        (acc[EXTERNAL_SOURCE_STAGE] ||= []).push(s.srcMs);
+      }
     }
     return Object.entries(acc).map(([name, arr]) => {
       arr.sort((a, b) => a - b);
@@ -485,8 +513,8 @@ export class Analytics {
 
   /** Every sample in order, for the sparkline, in the requested view. */
   series(view = "model") {
-    const key = view === "external" ? "ms" : "modelMs";
-    return this.samples.map((s) => s[key]);
+    return this.samples.map((s) =>
+      view === "external" ? Analytics.externalTotal(s) : s.modelMs);
   }
 
   /** Download the session as JSON, so a run can be kept as evidence. */
@@ -498,7 +526,6 @@ export class Analytics {
       external: this.stats("external"),
       paths: this.paths(),
       samples: this.samples,
-      asideMs: this.asides,
     }, null, 2)], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);

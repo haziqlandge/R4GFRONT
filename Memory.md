@@ -1391,7 +1391,24 @@ different words. Each now answers a different question: what the headline counts
 which bars are ours, what the gap between the views means. Three captions saying
 one thing is worse than two saying nothing.
 
-Detail: `ISSUES.md` **I36**. What a later session will get wrong:
+**And the fix had its own defect, found the same evening by looking at the two
+panels together.** It defined external as `total_ms` and model as `total_ms`
+minus the generative stage - a correct description of the generative path, and
+the wrong description of what accurate mode actually does. `answer_generative`
+runs only for a mid-confidence question (2 of 15 measured); the call that runs on
+EVERY accurate question is the external source, which lives on its own endpoint,
+is made after our answer paints, and therefore appears in no trace at all. So the
+two views printed the same number on **13 of 15** questions while an external
+answer sat on screen above them.
+
+The lesson is narrow and worth keeping: an earlier pass had removed the external
+source from these panels deliberately, reducing "two things in external" to one.
+Right instinct, wrong choice of which to keep - **the one to keep is the one the
+panel above it is displaying.** It is timed in the browser now and attached to
+its sample late, and external reads `total_ms + external_source`. `ISSUES.md`
+**I37**.
+
+Detail: `ISSUES.md` **I36** and **I37**. What a later session will get wrong:
 `DONT-FORGET.md` **15**.
 
 ---

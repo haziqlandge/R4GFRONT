@@ -8,7 +8,7 @@
  * a rewrite.
  */
 
-import { fmt, esc, LLM_STAGE, modelMs } from "./core.js";
+import { fmt, esc, LLM_STAGE, EXTERNAL_SOURCE_STAGE, modelMs } from "./core.js";
 import { SCOPE, VINTAGE } from "./data.js";
 
 /* ------------------------------------------------------------------ */
@@ -246,29 +246,46 @@ export function renderAnswer(el, res, floor = -1.103) {
  * "pipeline is the 200 ms claim", dwarfing every real stage and printing a
  * headline that was mostly Groq's queue.
  */
-export function renderWaterfall(el, trace, budgetMs = 200, view = "model") {
+export function renderWaterfall(el, trace, budgetMs = 200, view = "model", srcMs = null) {
   if (!trace) {
     el.innerHTML = `<p class="sh-idle">No run yet.</p>`;
     return;
   }
   const external = view === "external";
   const budget = trace.budget_ms || budgetMs;
-  const total = external ? trace.total_ms : modelMs(trace);
+
+  // THE EXTERNAL TOTAL HAS TO INCLUDE THE EXTERNAL SOURCE, and leaving it out
+  // was the defect this view exists to prevent. answer_generative only runs for
+  // a mid-confidence question - 2 of 15 measured - while the external source is
+  // asked on EVERY accurate question and costs 259 to 583 ms. Counting only the
+  // stage made both views print the same number on 13 of 15 questions, with an
+  // uncounted external answer sitting on screen right above them.
+  const extra = external && srcMs != null ? srcMs : 0;
+  const total = (external ? trace.total_ms : modelMs(trace)) + extra;
   const over = total > budget;
   const scale = Math.max(budget, total);
 
-  const bars = trace.stages.map((s) => {
-    const ms = (!external && s.name === LLM_STAGE) ? 0 : s.ms;
-    const pct = Math.max(0.4, (ms / scale) * 100);
-    return `
-      <div class="sh-wf-row" data-status="${esc(s.status)}" data-llm="${s.name === LLM_STAGE}">
-        <span class="sh-wf-name">${esc(s.name)}</span>
+  const row = (name, ms, attrs = "") => `
+      <div class="sh-wf-row" ${attrs}>
+        <span class="sh-wf-name">${esc(name)}</span>
         <span class="sh-wf-track">
-          <span class="sh-wf-bar" style="width:${pct}%"></span>
+          <span class="sh-wf-bar" style="width:${Math.max(0.4, (ms / scale) * 100)}%"></span>
         </span>
         <span class="sh-num sh-wf-ms">${fmt(ms, 2)}</span>
       </div>`;
+
+  let bars = trace.stages.map((s) => {
+    const ms = (!external && s.name === LLM_STAGE) ? 0 : s.ms;
+    return row(s.name, ms, `data-status="${esc(s.status)}" data-llm="${s.name === LLM_STAGE}"`);
   }).join("");
+
+  // Appended last because that is when it happens: the browser asks for it only
+  // after our answer has painted. Absent until it returns, and absent for good
+  // if the call was refused - a row claiming 0.00 would read as "free" when what
+  // actually happened is "never made".
+  if (external && srcMs != null) {
+    bars += row(EXTERNAL_SOURCE_STAGE, srcMs, `data-status="external" data-llm="true"`);
+  }
 
   el.innerHTML = `
     <div class="sh-wf" data-over="${over}" data-view="${external ? "external" : "model"}">
