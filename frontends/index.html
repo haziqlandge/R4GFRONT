@@ -71,16 +71,22 @@
 
     <div class="cols">
       <div class="col">
+        <!-- The title carries a two-state switch. MODEL is this project's
+             pipeline; EXTERNAL is the hosted model's round trips. They were
+             one number until 21 Aug, which meant a query routed to the model
+             printed 630 ms under a heading that reads as the 200 ms claim. -->
         <section class="win">
-          <h2 class="win-title">timing</h2>
+          <h2 class="win-title">timing ·
+            <button class="win-view" type="button" data-sh="timing-view">model</button>
+          </h2>
           <div class="win-body">
             <div class="readout">
-              <span class="readout-k">pipeline</span>
+              <span class="readout-k" data-sh="total-k">pipeline</span>
               <span class="sh-num readout-v" data-sh="total">-</span>
               <span class="readout-k">speech</span>
               <span class="sh-num readout-v readout-v-dim" data-sh="stt">-</span>
             </div>
-            <p class="boundary">
+            <p class="boundary" data-sh="boundary">
               pipeline is the 200 ms claim. speech is a network call to sarvam and is
               timed on its own line, because you time from when you stop speaking.
             </p>
@@ -95,7 +101,9 @@
       </div>
 
       <section class="win">
-        <h2 class="win-title">analytics</h2>
+        <h2 class="win-title">analytics ·
+          <button class="win-view" type="button" data-sh="analytics-view">model</button>
+        </h2>
         <div class="win-body" data-sh="analytics"></div>
       </section>
     </div>

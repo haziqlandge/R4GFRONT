@@ -314,6 +314,31 @@ const LLM_CALLED = "called the model";
 export class Analytics {
   constructor() {
     this.samples = [];  // { ms, band, path, status, lang, sttMs, stages, query }
+    // Aside round trips, measured in the BROWSER because they are their own
+    // request on their own endpoint and never appear in a /v1/answer trace.
+    // Wall clock from fetch to resolve, so it includes the network both ways -
+    // which is the honest figure for "what did the panel cost".
+    this.asides = [];   // ms
+  }
+
+  /** One /v1/aside round trip. Recorded even when it returned no panel: a call
+   *  that came back empty still cost the time it cost. */
+  recordAside(ms) {
+    if (typeof ms === "number" && isFinite(ms) && ms >= 0) this.asides.push(ms);
+  }
+
+  asideStats() {
+    if (!this.asides.length) return null;
+    const sorted = [...this.asides].sort((x, y) => x - y);
+    return {
+      n: sorted.length,
+      p50: Analytics.pct(sorted, 50),
+      p70: Analytics.pct(sorted, 70),
+      p90: Analytics.pct(sorted, 90),
+      p100: sorted[sorted.length - 1],
+      mean: sorted.reduce((x, y) => x + y, 0) / sorted.length,
+      min: sorted[0],
+    };
   }
 
   /**
@@ -357,7 +382,7 @@ export class Analytics {
     });
   }
 
-  clear() { this.samples = []; }
+  clear() { this.samples = []; this.asides = []; }
 
   get count() { return this.samples.length; }
 
@@ -440,8 +465,10 @@ export class Analytics {
       note: "Live session samples from the Shruti browser client. Not a substitute for the offline 250 query benchmark in bench/results.",
       bandA: this.band("A"),
       bandB: this.band("B"),
+      aside: this.asideStats(),
       paths: this.paths(),
       samples: this.samples,
+      asideMs: this.asides,
     }, null, 2)], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);

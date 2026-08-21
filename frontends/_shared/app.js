@@ -23,7 +23,7 @@
  */
 
 import { Recorder, Analytics, ask, aside, transcribe, openLiveTranscript, health, fmt, esc, SAMPLE_QUERIES } from "./core.js";
-import { renderAnswer, renderAside, renderWaterfall, renderAnalytics, renderHealth } from "./ui.js";
+import { renderAnswer, renderAside, renderWaterfall, renderAnalytics, renderHealth, modelMs, externalMs } from "./ui.js";
 import { BANDS, ROUTING, PROJECT } from "./data.js";
 
 export function boot() {
@@ -33,6 +33,8 @@ export function boot() {
     answer: $("answer"), waterfall: $("waterfall"), analytics: $("analytics"),
     health: $("health"), total: $("total"), stt: $("stt"), error: $("error"),
     form: $("form"), input: $("input"), samples: $("samples"), aside: $("aside"),
+    timingView: $("timing-view"), analyticsView: $("analytics-view"),
+    totalK: $("total-k"), boundary: $("boundary"),
   };
 
   const analytics = new Analytics();
@@ -207,14 +209,52 @@ export function boot() {
     el.orb?.style.setProperty("--amp", "0");
   }
 
-  function paint(res) {
-    el.answer && renderAnswer(el.answer, res, ROUTING.tauLow);
-    el.waterfall && renderWaterfall(el.waterfall, res?.trace ?? null, PROJECT.budgetMs);
-    el.analytics && renderAnalytics(el.analytics, analytics, BANDS);
-    if (el.total) {
-      el.total.textContent = res?.trace ? fmt(res.trace.total_ms, 1) : "-";
-      el.total.dataset.over = String(!!res?.trace && res.trace.total_ms > PROJECT.budgetMs);
+  /* ---------------------------------------------------------------- *
+   * MODEL / EXTERNAL, the two views the timing and analytics panels
+   * each switch between.
+   *
+   * They are independent on purpose. A reader comparing "what did our
+   * pipeline cost" against "what did the model cost" wants one of each on
+   * screen, not both panels moving together.
+   * ---------------------------------------------------------------- */
+  let timingView = "model";
+  let analyticsView = "model";
+  let lastRes = null;    // so a view switch can repaint without re-asking
+  let asideMs = null;    // this question's aside round trip, browser-measured
+
+  function paintTiming() {
+    if (el.waterfall) {
+      renderWaterfall(el.waterfall, lastRes?.trace ?? null, PROJECT.budgetMs, timingView, asideMs);
     }
+    // The big readout follows the switch too. Showing our 78 ms beside a
+    // waterfall of the model's 551 ms, or the reverse, is how the two got
+    // conflated in the first place.
+    const external = timingView === "external";
+    if (el.totalK) el.totalK.textContent = external ? "external" : "pipeline";
+    if (el.boundary) {
+      el.boundary.textContent = external
+        ? "these are round trips to a hosted model, outside the 200 ms claim by construction. the aside is timed in the browser because it is its own request."
+        : "pipeline is the 200 ms claim. speech is a network call to sarvam and is timed on its own line, because you time from when you stop speaking.";
+    }
+    if (el.total) {
+      const ms = !lastRes?.trace ? null
+        : external ? externalMs(lastRes.trace) + (asideMs ?? 0)
+        : modelMs(lastRes.trace);
+      el.total.textContent = ms === null ? "-" : fmt(ms, 1);
+      // Never flag the external view as over budget: it was never in one.
+      el.total.dataset.over = String(!external && ms !== null && ms > PROJECT.budgetMs);
+    }
+  }
+
+  function paintAnalytics() {
+    el.analytics && renderAnalytics(el.analytics, analytics, BANDS, analyticsView);
+  }
+
+  function paint(res) {
+    lastRes = res ?? null;
+    el.answer && renderAnswer(el.answer, res, ROUTING.tauLow);
+    paintTiming();
+    paintAnalytics();
     if (el.stt) el.stt.textContent = sttMs === null ? "-" : fmt(sttMs, 0);
   }
 
@@ -223,14 +263,15 @@ export function boot() {
     setError("");
     document.body.dataset.busy = "true";
     renderAside(el.aside, null);   // clear the previous question's aside first
+    asideMs = null;                // and its timing, before the new one arrives
     try {
       const res = await ask(query, mode);
 
-      // ANALYTICS SEES OUR RETRIEVAL AND NOTHING ELSE. `res` is the /v1/answer
-      // trace; the aside below is a separate request on a separate endpoint and
-      // is never recorded. The percentiles on this page describe this system's
-      // pipeline, and folding an external model's round trip into them would
-      // make them describe neither.
+      // OUR PERCENTILES AND THE MODEL'S NEVER MIX. `record` files this sample
+      // as Band A or Band B by asking whether the request left the process
+      // (Analytics.usedNetwork), not by reading `path` - three outcomes call the
+      // model and then report a path that is not GENERATIVE. The aside below is
+      // a separate request on a separate endpoint and is timed separately again.
       analytics.record(res, sttMs);
       paint(res);
 
@@ -239,7 +280,16 @@ export function boot() {
       // costs nothing against the 200 ms band - the fast path still makes zero
       // network calls, and this one is not on it.
       if (mode === "accurate") {
+        const asideStarted = performance.now();
         aside(query).then(({ text, model }) => {
+          // Wall clock from request to resolve, which is the honest figure for
+          // "what did this panel cost" - it is a browser-to-service round trip
+          // and there is no server trace to read it off. Recorded even when the
+          // call came back empty: a rate-limited or failed call still spent its
+          // time, and hiding those would flatter the external percentiles.
+          const ms = performance.now() - asideStarted;
+          analytics.recordAside(ms);
+
           // The mode can change, or another question can be asked, while this is
           // in flight. Only paint if the answer it belongs to is still showing.
           //
@@ -247,8 +297,11 @@ export function boot() {
           // panel carries no citation and no grounding check, so an
           // unattributed one would be the only unlabelled claim on the page.
           if (mode === "accurate" && el.transcript?.textContent === query) {
+            asideMs = ms;
             renderAside(el.aside, text, model);
+            paintTiming();      // the external view has a second bar now
           }
+          paintAnalytics();     // and a new sample either way
         });
       }
     } catch (err) {
@@ -258,6 +311,23 @@ export function boot() {
       recorder.reset();
     }
   }
+
+  /* Both switches. Label and view are the same piece of state, so the button's
+     own text is the source of truth for what is showing - nothing to keep in
+     sync, and a reader can see which view they are in without a legend. */
+  el.timingView?.addEventListener("click", () => {
+    timingView = timingView === "model" ? "external" : "model";
+    el.timingView.textContent = timingView;
+    el.timingView.title = `showing ${timingView} timings, click for the other`;
+    paintTiming();
+  });
+
+  el.analyticsView?.addEventListener("click", () => {
+    analyticsView = analyticsView === "model" ? "external" : "model";
+    el.analyticsView.textContent = analyticsView;
+    el.analyticsView.title = `showing ${analyticsView} percentiles, click for the other`;
+    paintAnalytics();
+  });
 
   el.mic?.addEventListener("click", async () => {
     if (recorder.state === "listening") {

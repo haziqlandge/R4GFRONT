@@ -104,6 +104,20 @@ a.brand:hover small { color: var(--fg-3); }
   font-size: 11px; font-weight: 400; letter-spacing: .18em;
   text-transform: uppercase; color: var(--accent);
 }
+/* The MODEL / EXTERNAL switch that lives inside a window title.
+   Inherits every type property from .win-title so it reads as part of the label
+   rather than as a control bolted onto it - the only things marking it out are
+   the caret and the hover. */
+.win-view {
+  font: inherit; letter-spacing: inherit; text-transform: inherit;
+  background: none; border: 0; padding: 0;
+  color: var(--fg-2); cursor: pointer;
+}
+.win-view::after { content: " \21C4"; color: var(--fg-3); }
+.win-view:hover { color: var(--accent); }
+.win-view:hover::after { color: var(--accent); }
+.win-view:focus-visible { outline: 1px solid var(--accent); outline-offset: 3px; }
+
 .win-body { padding: 24px 18px 18px; }
 
 .inputrow { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 22px; align-items: start; }

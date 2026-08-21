@@ -210,11 +210,26 @@ distribution build up instead of taking a table on trust.
 
 Two honesty rules are enforced in code:
 
-1. `n` is always shown next to the percentiles, and below 20 samples the panel
-   says in plain words that a P100 over that few runs is not a tail measurement.
-2. Band A and Band B samples are kept in separate series. Averaging an in process
-   extractive answer with a Groq round trip produces a number that describes
-   neither.
+1. `n` is always shown next to the percentiles, so a P100 over four runs is
+   never presented as a tail measurement. The panel used to spell that out in a
+   sentence below the grid as well; the sentence was dropped on 21 Aug and the
+   `n` label is now carrying it alone.
+2. Band A and Band B samples are kept in separate series, and the panel shows
+   one at a time — the title is a switch, `analytics · model` or
+   `analytics · external`. Averaging an in process extractive answer with a Groq
+   round trip produces a number that describes neither.
+
+   **Membership is decided by whether the request left the process, not by
+   `path`.** Three outcomes call the model and then report a path that is not
+   `GENERATIVE`: the model reporting insufficient context, the call failing, and
+   the output guard rejecting the answer. `rag_core` stamps `called the model`
+   onto the `answer_generative` span and `Analytics.usedNetwork()` reads it. This
+   was a live defect until 21 Aug — one Hindi question routed to the model pinned
+   "Band A P100" above 500 ms for the rest of the session.
+
+The timing panel switches the same way, `timing · model` or `timing · external`,
+and for the same reason: a routed query used to draw a 551 ms `answer_generative`
+bar inside a panel captioned "pipeline is the 200 ms claim".
 
 **The aside is not in either series.** `accurate` mode draws a second panel below
 the answer, headed "external source · not from corpus", holding the same question
