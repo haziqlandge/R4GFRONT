@@ -307,7 +307,7 @@ export function renderWaterfall(el, trace, budgetMs = 200, view = "model", sampl
         <span class="sh-wf-verdict">${total > budget ? `over the ${budget} ms budget` : `of a ${budget} ms budget`}</span>
       </div>
       <div class="sh-wf-rows">${bars}</div>
-      <p class="sh-fineprint">Timed stage by stage inside the process, on a monotonic clock, from the query arriving to the response being serialized. Reranking is where the budget goes: a cross encoder scoring the top passages is most of every run, and everything else together is single digit milliseconds.</p>
+      <p class="sh-fineprint">Timed stage by stage inside the process, Reranking is where the budget goes: a cross encoder scoring the top passages is most of every run, and everything else together is single digit milliseconds.</p>
     </div>`;
 }
 

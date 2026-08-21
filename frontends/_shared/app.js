@@ -237,7 +237,7 @@ export function boot() {
       // below covers the bars and the analytics panel covers the distribution.
       // Three captions saying the same sentence is worse than two saying nothing.
       el.boundary.textContent = external
-        ? "everything on this question that happened somewhere we do not control. our own retrieval and reranking are not counted here - they are the other view - so the two add up to the wall clock rather than overlapping."
+        ? "External source monitoring, our own retrieval and reranking are not counted here - they are the other view - so the two add up to the wall clock rather than overlapping."
         : "pipeline is the 200 ms claim. speech is a network call to sarvam and is timed on its own line, because you time from when you stop speaking.";
     }
     if (el.total) {
