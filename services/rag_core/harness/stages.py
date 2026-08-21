@@ -35,6 +35,20 @@ from ..retrieval.rerank import CrossEncoder
 from .pipeline import Context, FunctionStage, Pipeline
 
 
+# Written into the answer_generative span's detail whenever the external model
+# was actually reached for. PART OF THE TRACE CONTRACT: the browser matches this
+# exact string to keep network-bound requests out of the Band A percentiles
+# (frontends/_shared/core.js, LLM_CALLED). Do not reword it alone.
+#
+# It exists because `path` cannot answer "did this request call the LLM". Three
+# outcomes below spend a Groq round trip and then report a path that is not
+# GENERATIVE: the model reporting insufficient context (-> ABSTAIN/NONE), the
+# call failing (-> EXTRACTIVE), and the output guard rejecting what came back
+# (-> ABSTAIN/NONE). A reader of the response cannot tell those apart from a
+# request that never left the process, and the difference is 500 ms.
+LLM_CALLED: str = "called the model"
+
+
 class Runtime:
     """Everything loaded once at startup and shared by every request.
 
@@ -282,6 +296,13 @@ def build_pipeline(rt: Runtime) -> Pipeline:
         decision: Route | None = ctx.data.get("route")
         if decision is None or decision.decision != "GENERATIVE" or rt.groq is None:
             return ctx
+
+        # Stamped BEFORE the call, not after, and deliberately not conditional on
+        # it succeeding. The question this answers is "did this request leave the
+        # process", and a call that fails, times out or is refused by an open
+        # breaker has still left Band A - it either spent the wall clock or was
+        # routed on the assumption that it would.
+        ctx.trace.note(LLM_CALLED)
 
         try:
             text = await rt.groq.generate(ctx.query, ctx.data.get("citations", []))

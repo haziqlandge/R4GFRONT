@@ -285,9 +285,17 @@ function sparkline(values, w = 240, h = 34, budget = 200) {
 
 export function renderAnalytics(el, analytics, published) {
   const a = analytics.band("A");
-  const b = analytics.band("B");
   const paths = analytics.paths();
   const total = analytics.count;
+
+  // NO BAND B BLOCK, deliberately. This panel reports the pipeline this project
+  // built, and Band B is an external model's round trip - a number that says
+  // more about Groq's queue than about anything here. It is still recorded, so
+  // "which path answered" below stays truthful and the JSON export still carries
+  // it; it is just not shown as if it were our latency.
+  //
+  // See Analytics.usedNetwork() for the classification, which is the half of
+  // this that was actually broken.
 
   if (!total) {
     el.innerHTML = `
@@ -335,18 +343,6 @@ export function renderAnalytics(el, analytics, published) {
         ${sparkline(analytics.series("A"))}
       </div>` : ""}
 
-      ${b ? `
-      <div class="sh-an-band" data-band="B">
-        <p class="sh-an-band-label">Band B, generative path, n=${b.n}</p>
-        <div class="sh-an-grid">
-          ${["p50", "p70", "p100"].map((k) => `
-            <div class="sh-an-cell" data-over="true">
-              <span class="sh-an-k">${k.toUpperCase()}</span>
-              <span class="sh-num sh-an-v">${fmt(b[k], 0)}</span>
-            </div>`).join("")}
-        </div>
-      </div>` : ""}
-
       <div class="sh-an-block">
         <p class="sh-an-band-label">Which path answered</p>
         ${pathRows}
@@ -358,8 +354,12 @@ export function renderAnalytics(el, analytics, published) {
         <div class="sh-an-stages">${stageRows}</div>
       </div>` : ""}
 
-      <p class="sh-fineprint">${total < 20
-        ? `A P100 over ${total} sample${total === 1 ? "" : "s"} is not a tail measurement. The published numbers below come from 250 queries with 30 warmup runs discarded.`
+      <!-- Counts Band A samples, not every request. The sentence is about the
+           P100 printed above it, and that P100 is computed over Band A alone -
+           saying "a P100 over 6 samples" while the percentiles were built from 4
+           would be a smaller version of the error this panel just had. -->
+      <p class="sh-fineprint">${(a?.n ?? 0) < 20
+        ? `A P100 over ${a?.n ?? 0} sample${a?.n === 1 ? "" : "s"} is not a tail measurement. The published numbers below come from 250 queries with 30 warmup runs discarded.`
         : "Live samples from this browser. The published numbers below remain the ones we submit."}</p>
 
       ${publishedTable(published)}

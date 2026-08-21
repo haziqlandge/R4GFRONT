@@ -305,14 +305,45 @@ export class Recorder {
  *      in process extractive answer with a Groq round trip produces a number
  *      that describes neither.
  */
+/**
+ * The exact detail string rag_core stamps on the answer_generative span when it
+ * reached for the external model. Trace contract; see harness/stages.py.
+ */
+const LLM_CALLED = "called the model";
+
 export class Analytics {
   constructor() {
     this.samples = [];  // { ms, band, path, status, lang, sttMs, stages, query }
   }
 
+  /**
+   * Did this request leave the process?
+   *
+   * This is the whole basis of the Band A / Band B split, and `path` cannot
+   * answer it. THE BUG THIS REPLACES: the band was `path === "GENERATIVE" ? "B"
+   * : "A"`, and three outcomes call the model and then report a path that is not
+   * GENERATIVE - the model reporting insufficient context (ABSTAIN, path NONE),
+   * the call failing (path EXTRACTIVE), and the output guard rejecting the
+   * answer (ABSTAIN, path NONE). All three landed a ~600 ms network sample in
+   * the core pipeline's percentiles.
+   *
+   * P100 is where that showed, and it never recovered: it is the session
+   * maximum, so one Hindi query routed to the model pinned "Band A P100" above
+   * 500 ms for the rest of the session no matter how many fast queries followed.
+   *
+   * The `path` check is kept as a second signal so an older core that does not
+   * stamp the note still classifies the ordinary generative case correctly.
+   */
+  static usedNetwork(res) {
+    if (res.path === "GENERATIVE") return true;
+    return (res.trace?.stages || []).some(
+      (s) => s.name === "answer_generative" && s.detail === LLM_CALLED
+    );
+  }
+
   record(res, sttMs) {
     if (!res?.trace) return;
-    const band = res.path === "GENERATIVE" ? "B" : "A";
+    const band = Analytics.usedNetwork(res) ? "B" : "A";
     this.samples.push({
       ms: res.trace.total_ms,
       band,
@@ -372,10 +403,20 @@ export class Analytics {
     return this.samples.filter((s) => s.status === "ABSTAINED");
   }
 
-  /** Median per stage across the session, for the analytics breakdown. */
+  /**
+   * Median per stage across the session, for the analytics breakdown.
+   *
+   * BAND A ONLY, for the same reason the percentiles are. This used to run over
+   * every sample, so one request routed to the model put its ~550 ms
+   * answer_generative span into a table captioned "median per stage" beside
+   * stages measured in single milliseconds - and dominated it. The stage
+   * breakdown describes the pipeline this project built; the external model is
+   * not one of its stages.
+   */
   stageMedians() {
     const acc = {};
     for (const s of this.samples) {
+      if (s.band !== "A") continue;
       for (const st of s.stages) {
         if (st.status === "skipped") continue;
         (acc[st.name] ||= []).push(st.ms);
