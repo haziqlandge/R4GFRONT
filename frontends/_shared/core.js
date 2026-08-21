@@ -311,34 +311,45 @@ export class Recorder {
  */
 const LLM_CALLED = "called the model";
 
+/** The one pipeline stage that is not ours. */
+export const LLM_STAGE = "answer_generative";
+
+/** ms this request spent inside the hosted model. 0 when it never called it. */
+export function externalMs(trace) {
+  const s = (trace?.stages || []).find((x) => x.name === LLM_STAGE);
+  return s ? s.ms : 0;
+}
+
+/**
+ * ms this request spent in OUR pipeline: everything except the hosted model.
+ *
+ * Subtracted from the total rather than summed from the stages, because
+ * total_ms is measured around the whole run and includes the overhead between
+ * stages. Summing would quietly under-report us, which is the wrong direction
+ * for a number this project publishes.
+ */
+export function modelMs(trace) {
+  if (!trace) return null;
+  return Math.max(0, trace.total_ms - externalMs(trace));
+}
+
 export class Analytics {
   constructor() {
-    this.samples = [];  // { ms, band, path, status, lang, sttMs, stages, query }
-    // Aside round trips, measured in the BROWSER because they are their own
-    // request on their own endpoint and never appear in a /v1/answer trace.
-    // Wall clock from fetch to resolve, so it includes the network both ways -
-    // which is the honest figure for "what did the panel cost".
-    this.asides = [];   // ms
+    this.samples = [];  // { ms, modelMs, extMs, path, status, stages, ... }
+    this.asides = [];   // ms, browser-measured; exported, not charted
   }
 
-  /** One /v1/aside round trip. Recorded even when it returned no panel: a call
-   *  that came back empty still cost the time it cost. */
+  /** One /v1/aside round trip, for the JSON export only.
+   *
+   *  It is deliberately NOT in either percentile series. The aside is its own
+   *  request on its own endpoint and would be a third number in a panel that is
+   *  already asking a reader to hold two - and the two that matter are "what did
+   *  our pipeline cost" and "what did the same question cost with the model in
+   *  it". Recorded even when it came back empty: a rate-limited call still spent
+   *  its time, and dropping those would flatter the figure.
+   */
   recordAside(ms) {
     if (typeof ms === "number" && isFinite(ms) && ms >= 0) this.asides.push(ms);
-  }
-
-  asideStats() {
-    if (!this.asides.length) return null;
-    const sorted = [...this.asides].sort((x, y) => x - y);
-    return {
-      n: sorted.length,
-      p50: Analytics.pct(sorted, 50),
-      p70: Analytics.pct(sorted, 70),
-      p90: Analytics.pct(sorted, 90),
-      p100: sorted[sorted.length - 1],
-      mean: sorted.reduce((x, y) => x + y, 0) / sorted.length,
-      min: sorted[0],
-    };
   }
 
   /**
@@ -366,12 +377,25 @@ export class Analytics {
     );
   }
 
+  /**
+   * EVERY request contributes to BOTH series, and that is the point.
+   *
+   *   modelMs  what our pipeline cost, with the hosted model's stage removed
+   *   ms       what the same request cost with it left in
+   *
+   * The difference between the two views is therefore exactly the model, on the
+   * same questions, with the same n. An earlier version filtered requests out of
+   * one series or the other, which made the two panels describe different sets
+   * of questions and left the external percentiles frozen on whatever handful of
+   * queries had happened to route - "P100 stuck" was that, not a maths bug.
+   */
   record(res, sttMs) {
     if (!res?.trace) return;
-    const band = Analytics.usedNetwork(res) ? "B" : "A";
     this.samples.push({
       ms: res.trace.total_ms,
-      band,
+      modelMs: modelMs(res.trace),
+      extMs: externalMs(res.trace),
+      usedNetwork: Analytics.usedNetwork(res),
       path: res.path,
       status: res.status,
       reason: res.abstain_reason,
@@ -401,18 +425,25 @@ export class Analytics {
     return sorted[i];
   }
 
-  band(which) {
-    const rows = this.samples.filter((s) => s.band === which);
-    if (!rows.length) return null;
-    const sorted = rows.map((s) => s.ms).sort((a, b) => a - b);
-    const mean = sorted.reduce((a, b) => a + b, 0) / sorted.length;
+  /**
+   * Percentiles for one view.
+   *
+   *   "model"     our pipeline alone
+   *   "external"  the same requests with the hosted model's time left in
+   *
+   * Same requests, same n, both views. The only difference is the model.
+   */
+  stats(view = "model") {
+    if (!this.samples.length) return null;
+    const key = view === "external" ? "ms" : "modelMs";
+    const sorted = this.samples.map((s) => s[key]).sort((a, b) => a - b);
     return {
       n: sorted.length,
       p50: Analytics.pct(sorted, 50),
       p70: Analytics.pct(sorted, 70),
       p90: Analytics.pct(sorted, 90),
       p100: sorted[sorted.length - 1],
-      mean,
+      mean: sorted.reduce((a, b) => a + b, 0) / sorted.length,
       min: sorted[0],
     };
   }
@@ -429,22 +460,21 @@ export class Analytics {
   }
 
   /**
-   * Median per stage across the session, for the analytics breakdown.
+   * Median per stage across the session.
    *
-   * BAND A ONLY, for the same reason the percentiles are. This used to run over
-   * every sample, so one request routed to the model put its ~550 ms
-   * answer_generative span into a table captioned "median per stage" beside
-   * stages measured in single milliseconds - and dominated it. The stage
-   * breakdown describes the pipeline this project built; the external model is
-   * not one of its stages.
+   * Every stage appears in both views, including answer_generative - it reads as
+   * 0.00 in the model view rather than vanishing, because a stage that is absent
+   * from the list looks like a stage that was forgotten, while a stage sitting at
+   * zero is the claim: the fast path makes no model call, and here is the
+   * measurement saying so.
    */
-  stageMedians() {
+  stageMedians(view = "model") {
     const acc = {};
     for (const s of this.samples) {
-      if (s.band !== "A") continue;
       for (const st of s.stages) {
         if (st.status === "skipped") continue;
-        (acc[st.name] ||= []).push(st.ms);
+        const ms = (view === "model" && st.name === LLM_STAGE) ? 0 : st.ms;
+        (acc[st.name] ||= []).push(ms);
       }
     }
     return Object.entries(acc).map(([name, arr]) => {
@@ -453,9 +483,10 @@ export class Analytics {
     });
   }
 
-  /** Every Band A sample, oldest first, for the sparkline. */
-  series(which = "A") {
-    return this.samples.filter((s) => s.band === which).map((s) => s.ms);
+  /** Every sample in order, for the sparkline, in the requested view. */
+  series(view = "model") {
+    const key = view === "external" ? "ms" : "modelMs";
+    return this.samples.map((s) => s[key]);
   }
 
   /** Download the session as JSON, so a run can be kept as evidence. */
@@ -463,9 +494,8 @@ export class Analytics {
     const blob = new Blob([JSON.stringify({
       generated: new Date().toISOString(),
       note: "Live session samples from the Shruti browser client. Not a substitute for the offline 250 query benchmark in bench/results.",
-      bandA: this.band("A"),
-      bandB: this.band("B"),
-      aside: this.asideStats(),
+      model: this.stats("model"),
+      external: this.stats("external"),
       paths: this.paths(),
       samples: this.samples,
       asideMs: this.asides,

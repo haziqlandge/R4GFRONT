@@ -533,7 +533,6 @@ body[data-chat="off"] .sh-form { display: none; }
   text-transform: uppercase; color: var(--fg-3); margin-bottom: 9px;
 }
 .sh-an-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
-.sh-an-band[data-band="B"] .sh-an-grid { grid-template-columns: repeat(3, 1fr); }
 .sh-an-cell {
   display: grid; gap: 3px; padding: 9px 10px;
   border: 1px solid var(--line); border-radius: var(--r-sm);
@@ -541,15 +540,15 @@ body[data-chat="off"] .sh-form { display: none; }
 }
 .sh-an-k { font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .1em; color: var(--fg-3); }
 .sh-an-v { font-size: 19px; line-height: 1.1; color: var(--ok); }
+/* Green under the budget, red over it, in BOTH views. The with-AI series is
+   graded on the same rule as our own, which is the point of showing it: the
+   reader sees exactly which percentiles the model pushes across 200 ms. */
 .sh-an-cell[data-over="true"] .sh-an-v { color: var(--halt); }
-/* External round trips are not graded. They sit outside the 200 ms budget by
-   construction, so neither the green that means "in budget" nor the red that
-   means "over" is a true statement about them - they are simply what the
-   network cost, and colouring them green reads as a pass mark nobody awarded. */
-.sh-an-band[data-band="B"] .sh-an-v { color: var(--fg); }
 
 .sh-spark { width: 100%; height: 34px; margin-top: 10px; }
 .sh-spark-line { fill: none; stroke: var(--accent); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+/* Both views use the same amber line and the same dashed budget rule, so they
+   are read the same way and only the data changes between them. */
 .sh-spark-budget { stroke: var(--fg-3); stroke-width: 1; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; opacity: .6; }
 
 .sh-an-path { display: grid; grid-template-columns: 92px 1fr 24px; align-items: center; gap: 9px; margin-bottom: 5px; }

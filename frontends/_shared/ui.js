@@ -8,7 +8,7 @@
  * a rewrite.
  */
 
-import { fmt, esc } from "./core.js";
+import { fmt, esc, LLM_STAGE, modelMs } from "./core.js";
 import { SCOPE, VINTAGE } from "./data.js";
 
 /* ------------------------------------------------------------------ */
@@ -230,118 +230,59 @@ export function renderAnswer(el, res, floor = -1.103) {
  * make every run fill the width and destroy the only thing this chart exists to
  * show, which is how much headroom is left.
  */
-export const LLM_STAGE = "answer_generative";
-
-/** ms this request spent inside the hosted model, 0 when it never called it. */
-export function externalMs(trace) {
-  const s = (trace?.stages || []).find((x) => x.name === LLM_STAGE);
-  return s ? s.ms : 0;
-}
-
 /**
- * ms this request spent in OUR pipeline: everything except the hosted model.
+ * Per stage timing, in one of two views over THE SAME EIGHT STAGES.
  *
- * Subtracted from the total rather than summed from the stages, because
- * total_ms is measured around the whole run and includes the overhead between
- * stages. Summing would quietly under-report us, which is the wrong direction
- * for a number this project publishes.
+ *   "model"     our pipeline. answer_generative is pinned to 0.00.
+ *   "external"  the same run with the model's real cost left in.
+ *
+ * Every stage is listed in both. answer_generative reads 0.00 in the model view
+ * rather than disappearing, because a row that is missing looks like a row
+ * somebody forgot, while a row sitting at zero is the claim itself: the fast
+ * path makes no model call, and this is the measurement saying so.
+ *
+ * They were one chart until 21 Aug, and that was wrong in a way that mattered: a
+ * routed query drew a 551 ms answer_generative bar inside a panel captioned
+ * "pipeline is the 200 ms claim", dwarfing every real stage and printing a
+ * headline that was mostly Groq's queue.
  */
-export function modelMs(trace) {
-  if (!trace) return null;
-  return Math.max(0, trace.total_ms - externalMs(trace));
-}
-
-/**
- * Per stage timing against the 200 ms budget, for one of two views.
- *
- *   "model"     our pipeline, with the hosted model's stage removed entirely
- *   "external"  the hosted model's round trips, and nothing of ours
- *
- * They were one chart until 21 Aug, and that was wrong in a way that mattered:
- * a query routed to the model drew a 551 ms answer_generative bar inside a panel
- * captioned "pipeline is the 200 ms claim", dwarfing every real stage and
- * printing a headline number that was mostly Groq's queue. The budget belongs to
- * our pipeline; the model was never in it.
- */
-export function renderWaterfall(el, trace, budgetMs = 200, view = "model", asideMs = null) {
+export function renderWaterfall(el, trace, budgetMs = 200, view = "model") {
   if (!trace) {
     el.innerHTML = `<p class="sh-idle">No run yet.</p>`;
     return;
   }
-  if (view === "external") return renderExternalWaterfall(el, trace, asideMs);
-
+  const external = view === "external";
   const budget = trace.budget_ms || budgetMs;
-  const total = modelMs(trace);
+  const total = external ? trace.total_ms : modelMs(trace);
   const over = total > budget;
   const scale = Math.max(budget, total);
 
-  const bars = trace.stages.filter((s) => s.name !== LLM_STAGE).map((s) => {
-    const pct = Math.max(0.4, (s.ms / scale) * 100);
+  const bars = trace.stages.map((s) => {
+    const ms = (!external && s.name === LLM_STAGE) ? 0 : s.ms;
+    const pct = Math.max(0.4, (ms / scale) * 100);
     return `
-      <div class="sh-wf-row" data-status="${esc(s.status)}">
+      <div class="sh-wf-row" data-status="${esc(s.status)}" data-llm="${s.name === LLM_STAGE}">
         <span class="sh-wf-name">${esc(s.name)}</span>
         <span class="sh-wf-track">
           <span class="sh-wf-bar" style="width:${pct}%"></span>
         </span>
-        <span class="sh-num sh-wf-ms">${fmt(s.ms, 2)}</span>
+        <span class="sh-num sh-wf-ms">${fmt(ms, 2)}</span>
       </div>`;
   }).join("");
 
   el.innerHTML = `
-    <div class="sh-wf" data-over="${over}">
+    <div class="sh-wf" data-over="${over}" data-view="${external ? "external" : "model"}">
       <div class="sh-wf-total">
         <span class="sh-num sh-wf-big">${fmt(total, 1)}</span>
         <span class="sh-wf-unit">ms</span>
-        <span class="sh-wf-verdict">${over ? `over the ${budget} ms budget` : `of a ${budget} ms budget`}</span>
+        <span class="sh-wf-verdict">${external
+          ? "with the AI's time included"
+          : over ? `over the ${budget} ms budget` : `of a ${budget} ms budget`}</span>
       </div>
       <div class="sh-wf-rows">${bars}</div>
-      <p class="sh-fineprint">Band A only. Speech to text is a network call and is timed separately.</p>
-    </div>`;
-}
-
-/**
- * The other half: what this request spent outside our process.
- *
- * Two possible calls and they are different things, so they are separate rows
- * rather than one total. The generative call answers FROM our passages and is
- * inside /v1/answer; the aside answers from the model's own knowledge on its own
- * endpoint, after our answer has painted. Neither is inside the 200 ms budget,
- * so this view draws no budget line - there is nothing here to be under.
- */
-function renderExternalWaterfall(el, trace, asideMs) {
-  const gen = externalMs(trace);
-  const rows = [
-    gen > 0 ? { name: "generative answer", ms: gen, note: "wrote the answer from our passages" } : null,
-    asideMs != null ? { name: "unverified aside", ms: asideMs, note: "answered from its own knowledge" } : null,
-  ].filter(Boolean);
-
-  if (!rows.length) {
-    el.innerHTML = `
-      <div class="sh-wf">
-        <p class="sh-idle">No external call on this question. Retrieval was confident enough to answer from the corpus, and nothing left the process.</p>
-      </div>`;
-    return;
-  }
-
-  const scale = Math.max(...rows.map((r) => r.ms));
-  const bars = rows.map((r) => `
-    <div class="sh-wf-row" data-status="external">
-      <span class="sh-wf-name">${esc(r.name)}</span>
-      <span class="sh-wf-track">
-        <span class="sh-wf-bar" style="width:${Math.max(0.4, (r.ms / scale) * 100)}%"></span>
-      </span>
-      <span class="sh-num sh-wf-ms">${fmt(r.ms, 2)}</span>
-    </div>`).join("");
-
-  el.innerHTML = `
-    <div class="sh-wf" data-over="true">
-      <div class="sh-wf-total">
-        <span class="sh-num sh-wf-big">${fmt(rows.reduce((a, r) => a + r.ms, 0), 1)}</span>
-        <span class="sh-wf-unit">ms</span>
-        <span class="sh-wf-verdict">outside the budget by construction</span>
-      </div>
-      <div class="sh-wf-rows">${bars}</div>
-      <p class="sh-fineprint">${rows.map((r) => `${esc(r.name)}: ${esc(r.note)}`).join(". ")}. Neither is counted in the 200 ms claim.</p>
+      <p class="sh-fineprint">${external
+        ? "Same question, same stages, with the time the AI took added back in. That one call is the whole difference between these two views."
+        : "Our own pipeline. answer_generative is 0.00 because no AI was called. Speech to text is a network call and is timed separately."}</p>
     </div>`;
 }
 
@@ -349,35 +290,49 @@ function renderExternalWaterfall(el, trace, asideMs) {
 /* Session analytics                                                   */
 /* ------------------------------------------------------------------ */
 
-function sparkline(values, w = 240, h = 34, budget = 200) {
+/**
+ * The session as a line, against the 200 ms rule.
+ *
+ * BOTH views are drawn the same way, deliberately. An earlier version made the
+ * external series neutral and dropped the budget rule, on the reasoning that a
+ * number which was never inside a budget should not be graded against one - but
+ * that is exactly backwards for this project. "Band B is over budget and we
+ * publish it anyway" is a claim the site makes in words everywhere else, and
+ * drawing the rule is what lets a reader see WHICH percentiles the model pushes
+ * across it. Same colours, same rule, so the two views are read the same way and
+ * the only thing that changes between them is the data.
+ */
+function sparkline(values, view = "model", w = 240, h = 34, budget = 200) {
   if (values.length < 2) return "";
   const max = Math.max(budget, ...values);
   const step = w / (values.length - 1);
   const pts = values.map((v, i) => `${(i * step).toFixed(1)},${(h - (v / max) * h).toFixed(1)}`).join(" ");
   const budgetY = (h - (budget / max) * h).toFixed(1);
-  // An information graphic, not decoration: the line is the session and the
-  // dashed rule is the budget it is being judged against.
   return `
-    <svg class="sh-spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" role="img"
-         aria-label="Band A latency across ${values.length} queries this session">
+    <svg class="sh-spark" data-view="${view === "external" ? "external" : "model"}"
+         viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" role="img"
+         aria-label="${view === "external" ? "Total time with the AI included" : "Our pipeline"} across ${values.length} queries this session">
       <line class="sh-spark-budget" x1="0" y1="${budgetY}" x2="${w}" y2="${budgetY}"></line>
       <polyline class="sh-spark-line" points="${pts}"></polyline>
     </svg>`;
 }
 
 /**
- * Session percentiles, in one of two views.
+ * Session percentiles, in one of two views over THE SAME REQUESTS.
  *
- *   "model"     our pipeline. Band A only, and every request that reached for
- *               the hosted model is excluded - see Analytics.usedNetwork().
- *   "external"  the hosted model's round trips, kept entirely separate.
+ *   "model"     what our pipeline cost, with the AI's stage removed
+ *   "external"  what the same questions cost with the AI left in
  *
- * They were one series until 21 Aug and it produced a number that was nobody's:
- * a query the router sent to the model recorded ~630 ms as core-pipeline
- * latency, and since P100 is the session maximum it never came back down.
+ * Same n both ways, so the difference between the panels is exactly the AI and
+ * nothing else. An earlier version filtered requests INTO one view or the other,
+ * which meant the external percentiles only ever described the handful of
+ * questions that happened to route - so they sat unchanged through a whole
+ * rotation of the sample prompts and looked stuck. They were not stuck; they had
+ * nothing new to describe.
  */
 export function renderAnalytics(el, analytics, published, view = "model") {
   const total = analytics.count;
+  const external = view === "external";
 
   if (!total) {
     el.innerHTML = `
@@ -388,13 +343,7 @@ export function renderAnalytics(el, analytics, published, view = "model") {
     return;
   }
 
-  if (view === "external") {
-    el.innerHTML = `<div class="sh-an">${externalAnalytics(analytics)}${publishedTable(published)}</div>`;
-    el.querySelector(".sh-an-export")?.addEventListener("click", () => analytics.export());
-    return;
-  }
-
-  const a = analytics.band("A");
+  const a = analytics.stats(view);
   const paths = analytics.paths();
 
   const pathRows = Object.entries(paths)
@@ -406,10 +355,10 @@ export function renderAnalytics(el, analytics, published, view = "model") {
         <span class="sh-num">${n}</span>
       </div>`).join("");
 
-  const stageRows = analytics.stageMedians()
+  const stageRows = analytics.stageMedians(view)
     .sort((x, y) => y.median - x.median)
     .map((s) => `
-      <div class="sh-an-stage">
+      <div class="sh-an-stage" data-llm="${s.name === LLM_STAGE}">
         <span>${esc(s.name)}</span>
         <span class="sh-num">${fmt(s.median, 2)} ms</span>
       </div>`).join("");
@@ -422,8 +371,10 @@ export function renderAnalytics(el, analytics, published, view = "model") {
       </div>
 
       ${a ? `
-      <div class="sh-an-band" data-band="A">
-        <p class="sh-an-band-label">Band A, core pipeline, n=${a.n}</p>
+      <div class="sh-an-band" data-band="${external ? "B" : "A"}">
+        <p class="sh-an-band-label">${external
+          ? `With the AI included, n=${a.n}`
+          : `Our pipeline, n=${a.n}`}</p>
         <div class="sh-an-grid">
           ${["p50", "p70", "p90", "p100"].map((k) => `
             <div class="sh-an-cell" data-over="${a[k] > 200}">
@@ -431,7 +382,10 @@ export function renderAnalytics(el, analytics, published, view = "model") {
               <span class="sh-num sh-an-v">${fmt(a[k], 1)}</span>
             </div>`).join("")}
         </div>
-        ${sparkline(analytics.series("A"))}
+        ${sparkline(analytics.series(view), view)}
+        <p class="sh-fineprint">${external
+          ? "The same questions, timed with the AI's call left in. Everything above the 200 ms figures is that call."
+          : "The 200 ms claim. No AI is called on this path."}</p>
       </div>` : ""}
 
       <div class="sh-an-block">
@@ -451,66 +405,11 @@ export function renderAnalytics(el, analytics, published, view = "model") {
   el.querySelector(".sh-an-export")?.addEventListener("click", () => analytics.export());
 }
 
-/**
- * The other view: what left the process.
- *
- * Two series, not one total, because they are different calls answering
- * different questions. The generative path writes an answer FROM our retrieved
- * passages and lives inside /v1/answer; the aside answers from the model's own
- * knowledge on its own endpoint, after our answer has painted. Averaging them
- * would describe neither.
- *
- * No budget colouring here. Both are outside the 200 ms claim by construction,
- * so marking them "over" would imply they were ever meant to be under it.
- */
-function externalAnalytics(analytics) {
-  const b = analytics.band("B");
-  const aside = analytics.asideStats();
-
-  const grid = (stats, label, note) => !stats ? "" : `
-    <div class="sh-an-band" data-band="B">
-      <p class="sh-an-band-label">${esc(label)}, n=${stats.n}</p>
-      <div class="sh-an-grid">
-        ${/* Three, not four. data-band="B" is already laid out in three columns,
-              and P90 earns its place on a 200 ms budget where the tail is the
-              whole argument - on a network call whose P50 is already 3x the
-              budget it is one more number saying the same thing. */
-          ["p50", "p70", "p100"].map((k) => `
-          <div class="sh-an-cell">
-            <span class="sh-an-k">${k.toUpperCase()}</span>
-            <span class="sh-num sh-an-v">${fmt(stats[k], 0)}</span>
-          </div>`).join("")}
-      </div>
-      <p class="sh-fineprint">${esc(note)}</p>
-    </div>`;
-
-  const blocks =
-    grid(b, "Generative path", "The model writing an answer from the passages we retrieved. Inside /v1/answer, outside the 200 ms budget.") +
-    grid(aside, "Unverified aside", "The model answering from its own knowledge, with no corpus behind it. Its own endpoint, requested after our answer has painted.");
-
-  if (!blocks) {
-    return `
-      <div class="sh-an-head">
-        <h3 class="sh-an-title">This session</h3>
-        <button class="sh-an-export" type="button">Export JSON</button>
-      </div>
-      <p class="sh-idle">Nothing has left the process this session. Every question so far was answered from the corpus with no model call at all, which is the fast path doing its job.</p>`;
-  }
-
-  return `
-    <div class="sh-an-head">
-      <h3 class="sh-an-title">This session</h3>
-      <button class="sh-an-export" type="button">Export JSON</button>
-    </div>
-    ${blocks}
-    <p class="sh-fineprint">These are network round trips to a hosted model. They describe that provider's queue as much as anything here, and none of them is counted in the figures below.</p>`;
-}
-
 function publishedTable(published) {
   if (!published) return "";
   return `
     <div class="sh-an-block sh-an-published">
-      <p class="sh-an-band-label">Average / worst case timings measured over 250 frozen queries:</p>
+      <p class="sh-an-band-label">Average worst case timings measured over 250 frozen queries:</p>
       <table class="sh-table">
         <thead><tr><th>Run</th><th class="sh-th-num">P50</th><th class="sh-th-num">P70</th><th class="sh-th-num">P100</th></tr></thead>
         <tbody>

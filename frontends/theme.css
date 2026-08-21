@@ -117,6 +117,12 @@ a.brand:hover small { color: var(--fg-3); }
 .win-view:hover { color: var(--accent); }
 .win-view:hover::after { color: var(--accent); }
 .win-view:focus-visible { outline: 1px solid var(--accent); outline-offset: 3px; }
+/* Fast mode makes no AI call, so there is no external view to switch to. Dimmed
+   and inert rather than hidden: a control that disappears reads as a bug, one
+   that is visibly off reads as a rule. */
+.win-view:disabled { color: var(--fg-3); cursor: default; opacity: .45; }
+.win-view:disabled::after { content: ""; }
+.win-view:disabled:hover { color: var(--fg-3); }
 
 .win-body { padding: 24px 18px 18px; }
 

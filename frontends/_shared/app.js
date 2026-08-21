@@ -22,8 +22,8 @@
  *   data-sh="samples"    container that gets sample question buttons
  */
 
-import { Recorder, Analytics, ask, aside, transcribe, openLiveTranscript, health, fmt, esc, SAMPLE_QUERIES } from "./core.js";
-import { renderAnswer, renderAside, renderWaterfall, renderAnalytics, renderHealth, modelMs, externalMs } from "./ui.js";
+import { Recorder, Analytics, ask, aside, transcribe, openLiveTranscript, health, fmt, esc, modelMs, SAMPLE_QUERIES } from "./core.js";
+import { renderAnswer, renderAside, renderWaterfall, renderAnalytics, renderHealth } from "./ui.js";
 import { BANDS, ROUTING, PROJECT } from "./data.js";
 
 export function boot() {
@@ -220,26 +220,24 @@ export function boot() {
   let timingView = "model";
   let analyticsView = "model";
   let lastRes = null;    // so a view switch can repaint without re-asking
-  let asideMs = null;    // this question's aside round trip, browser-measured
 
   function paintTiming() {
     if (el.waterfall) {
-      renderWaterfall(el.waterfall, lastRes?.trace ?? null, PROJECT.budgetMs, timingView, asideMs);
+      renderWaterfall(el.waterfall, lastRes?.trace ?? null, PROJECT.budgetMs, timingView);
     }
-    // The big readout follows the switch too. Showing our 78 ms beside a
-    // waterfall of the model's 551 ms, or the reverse, is how the two got
-    // conflated in the first place.
+    // The big readout follows the switch too. Showing our 74 ms beside a
+    // waterfall that includes the model's 551 ms, or the reverse, is how the two
+    // got conflated in the first place.
     const external = timingView === "external";
-    if (el.totalK) el.totalK.textContent = external ? "external" : "pipeline";
+    if (el.totalK) el.totalK.textContent = external ? "with ai" : "pipeline";
     if (el.boundary) {
       el.boundary.textContent = external
-        ? "these are round trips to a hosted model, outside the 200 ms claim by construction. the aside is timed in the browser because it is its own request."
+        ? "the same question, timed with the ai's call left in. everything above the pipeline figure is that one call, and it is outside the 200 ms claim by design."
         : "pipeline is the 200 ms claim. speech is a network call to sarvam and is timed on its own line, because you time from when you stop speaking.";
     }
     if (el.total) {
       const ms = !lastRes?.trace ? null
-        : external ? externalMs(lastRes.trace) + (asideMs ?? 0)
-        : modelMs(lastRes.trace);
+        : external ? lastRes.trace.total_ms : modelMs(lastRes.trace);
       el.total.textContent = ms === null ? "-" : fmt(ms, 1);
       // Never flag the external view as over budget: it was never in one.
       el.total.dataset.over = String(!external && ms !== null && ms > PROJECT.budgetMs);
@@ -248,6 +246,47 @@ export function boot() {
 
   function paintAnalytics() {
     el.analytics && renderAnalytics(el.analytics, analytics, BANDS, analyticsView);
+  }
+
+  /**
+   * Put both panels back to MODEL and forget the session.
+   *
+   * Called on every mode change, in BOTH directions. The two modes do not
+   * produce comparable samples - fast never calls the AI and accurate may - so
+   * carrying a fast session's percentiles into accurate, or the reverse, builds
+   * a distribution out of two different systems. Clearing is the honest reset,
+   * and starting from MODEL means a reader always begins at our own numbers.
+   */
+  function resetViews() {
+    analytics.clear();
+    lastRes = null;
+    timingView = "model";
+    analyticsView = "model";
+    if (el.timingView) el.timingView.textContent = "model";
+    if (el.analyticsView) el.analyticsView.textContent = "model";
+    syncViewSwitches();
+    paintTiming();
+    paintAnalytics();
+    if (el.total) { el.total.textContent = "-"; el.total.dataset.over = "false"; }
+  }
+
+  /**
+   * EXTERNAL is unavailable in fast mode, and the switch says so.
+   *
+   * Fast makes no AI call at all - not the generative path, which the router
+   * gates on mode, and not the aside, which is requested only in accurate. So
+   * there is nothing for an external view to show, and a switch that leads to an
+   * empty panel is worse than one that is visibly off.
+   */
+  function syncViewSwitches() {
+    const on = mode === "accurate";
+    for (const b of [el.timingView, el.analyticsView]) {
+      if (!b) continue;
+      b.disabled = !on;
+      b.title = on
+        ? `showing ${b.textContent}, click for the other`
+        : "fast mode makes no AI call, so there is nothing external to show";
+    }
   }
 
   function paint(res) {
@@ -263,7 +302,6 @@ export function boot() {
     setError("");
     document.body.dataset.busy = "true";
     renderAside(el.aside, null);   // clear the previous question's aside first
-    asideMs = null;                // and its timing, before the new one arrives
     try {
       const res = await ask(query, mode);
 
@@ -297,11 +335,8 @@ export function boot() {
           // panel carries no citation and no grounding check, so an
           // unattributed one would be the only unlabelled claim on the page.
           if (mode === "accurate" && el.transcript?.textContent === query) {
-            asideMs = ms;
             renderAside(el.aside, text, model);
-            paintTiming();      // the external view has a second bar now
           }
-          paintAnalytics();     // and a new sample either way
         });
       }
     } catch (err) {
@@ -316,16 +351,18 @@ export function boot() {
      own text is the source of truth for what is showing - nothing to keep in
      sync, and a reader can see which view they are in without a legend. */
   el.timingView?.addEventListener("click", () => {
+    if (mode !== "accurate") return;
     timingView = timingView === "model" ? "external" : "model";
     el.timingView.textContent = timingView;
-    el.timingView.title = `showing ${timingView} timings, click for the other`;
+    syncViewSwitches();
     paintTiming();
   });
 
   el.analyticsView?.addEventListener("click", () => {
+    if (mode !== "accurate") return;
     analyticsView = analyticsView === "model" ? "external" : "model";
     el.analyticsView.textContent = analyticsView;
-    el.analyticsView.title = `showing ${analyticsView} percentiles, click for the other`;
+    syncViewSwitches();
     paintAnalytics();
   });
 
@@ -440,6 +477,7 @@ export function boot() {
 
   document.querySelectorAll("[data-mode]").forEach((btn) => {
     btn.addEventListener("click", () => {
+      if (btn.dataset.mode === mode) return;   // same mode, nothing to reset
       mode = btn.dataset.mode;
       document.querySelectorAll("[data-mode]").forEach((b) => {
         b.dataset.on = String(b.dataset.mode === mode);
@@ -447,9 +485,15 @@ export function boot() {
       // Leaving accurate takes the aside with it: it belongs to that mode, and
       // a stale panel under a fast answer would claim a comparison nobody ran.
       if (mode !== "accurate") renderAside(el.aside, null);
+      // And the session goes with it, in BOTH directions. Fast never calls the
+      // AI and accurate may, so samples from one do not belong in the other's
+      // distribution - carrying them across would build percentiles out of two
+      // different systems. Both panels return to MODEL as well.
+      resetViews();
     });
     btn.dataset.on = String(btn.dataset.mode === mode);
   });
+  syncViewSwitches();
 
   // Four sample questions, two per language, every one of them checked against
   // the real pipeline before it went on the page (see SAMPLE_QUERIES in core.js
