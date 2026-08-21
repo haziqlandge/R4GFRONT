@@ -108,8 +108,8 @@ def test_zero_disables_the_limiter() -> None:
 
 
 def test_shipped_config() -> None:
-    """The window never changes; the limit is currently 0, meaning disabled on
-    the owner's call. The limiter itself is unchanged and re-enabling it is this
-    one number."""
-    assert ASIDE_RATE_LIMIT == 0
+    """15 per minute per client. Loose enough that a judge working through the
+    sample questions never meets it, tight enough that a script cannot drain the
+    shared token window in seconds."""
+    assert ASIDE_RATE_LIMIT == 15
     assert ASIDE_RATE_WINDOW_SECONDS == 60.0

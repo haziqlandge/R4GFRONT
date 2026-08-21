@@ -327,7 +327,7 @@ export function boot() {
       if (mode === "accurate") {
         const startedAt = performance.now();
         const sample = lastSample;          // pinned: another question may land first
-        aside(query).then(({ text, model, upstreamMs, usage }) => {
+        aside(query).then(({ text, model, upstreamMs, usage, rateLimited }) => {
           // Wall clock from request to resolve, which is the honest figure for
           // "what did this panel cost" - it is a browser-to-service round trip
           // and there is no server trace to read it off. Recorded even when the
@@ -343,7 +343,7 @@ export function boot() {
           // panel carries no citation and no grounding check, so an
           // unattributed one would be the only unlabelled claim on the page.
           if (mode === "accurate" && el.transcript?.textContent === query) {
-            renderAside(el.aside, text, model);
+            renderAside(el.aside, text, model, rateLimited);
             paintTiming();   // the external view has its last row now
           }
           paintAnalytics();  // and a completed sample either way

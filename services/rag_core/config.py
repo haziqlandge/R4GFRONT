@@ -606,12 +606,22 @@ GROQ_CONTEXT_PASSAGES: Final[int] = 3
 # It is deliberately in front of the circuit breaker rather than behind it. The
 # breaker reacts to an upstream that has already been pushed over; this declines
 # to push it over. They are different jobs and both are wanted.
-# SET TO 0 = DISABLED, 21 Aug, on the owner's call. The limiter and its tests
-# are intact; this is the only line that turns it back on, and 5 is the value it
-# was measured at. Restore it before the site is public for any length of time -
-# everything in the paragraphs above is still true, the exposure just is not
-# being taken right now.
-ASIDE_RATE_LIMIT: Final[int] = 0
+# 15 per minute per client, set 21 Aug. It has been 5, then 0 (disabled), and is
+# now 15: loose enough that a judge clicking through the sample questions and
+# trying a few of their own never meets it, tight enough that a held key or a
+# script cannot drain the shared 12,000-token window in seconds.
+#
+# 0 means DISABLED rather than "refuse everything" - pinned by
+# tests/test_ratelimit.py, and the one value that could never be a sensible cap,
+# which is why it can carry that meaning.
+#
+# EXCEEDING IT IS NOW VISIBLE. Until today a refusal returned the same empty
+# response as a dead upstream and the panel simply did not appear, which told a
+# visitor nothing about why. The endpoint returns `rate_limited: true` and the
+# page says so in words. A broken upstream is still silent - that is not the
+# visitor's doing and shouting about it helps nobody - but being throttled IS a
+# consequence of what they just did, and they can act on it.
+ASIDE_RATE_LIMIT: Final[int] = 15
 ASIDE_RATE_WINDOW_SECONDS: Final[float] = 60.0
 
 # --------------------------------------------------------------------------

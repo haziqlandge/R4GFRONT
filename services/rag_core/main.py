@@ -334,13 +334,19 @@ async def aside(req: AnswerRequest, request: Request) -> dict[str, object]:
 
     none: dict[str, object] = {
         "text": None, "model": None, "upstream_ms": 0.0, "usage": {},
+        "rate_limited": False,
     }
 
+    # No key is not the visitor's problem and stays silent: the panel does not
+    # appear and nothing is said about it.
     if rt.groq is None or not rt.groq.configured:
         return none
 
+    # Being throttled IS a consequence of what the visitor just did, so unlike
+    # every other empty response this one is labelled. `text` stays null - there
+    # is no answer - and `rate_limited` is what the page keys off.
     if not ASIDE_LIMIT.allow(client_key(request)):
-        return none
+        return {**none, "rate_limited": True}
 
     started = time.perf_counter()
     text, usage = await rt.groq.aside(req.query)
@@ -355,6 +361,7 @@ async def aside(req: AnswerRequest, request: Request) -> dict[str, object]:
         # unmodified apart from seconds-to-milliseconds, so the panel reports
         # what Groq said rather than a number this service inferred.
         "usage": {k: round(v, 3) for k, v in usage.items()},
+        "rate_limited": False,
     }
 
 

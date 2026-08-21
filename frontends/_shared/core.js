@@ -136,7 +136,7 @@ export function openLiveTranscript({ onPartial, onFinal, onError } = {}) {
  * exceeded rate limit both look like from here.
  */
 export async function aside(query) {
-  const none = { text: null, model: null, upstreamMs: 0, usage: null };
+  const none = { text: null, model: null, upstreamMs: 0, usage: null, rateLimited: false };
   try {
     const res = await fetch(`${RAG_CORE}/v1/aside`, {
       method: "POST",
@@ -155,6 +155,10 @@ export async function aside(query) {
       // network was slow" rather than reporting one number for both.
       upstreamMs: typeof body?.upstream_ms === "number" ? body.upstream_ms : 0,
       usage: body?.usage && typeof body.usage === "object" ? body.usage : null,
+      // The one empty response the page speaks about. Every other reason the
+      // panel is missing - no key, dead upstream, open breaker - stays silent,
+      // because none of those is something the visitor did or can act on.
+      rateLimited: body?.rate_limited === true,
     };
   } catch {
     return none;

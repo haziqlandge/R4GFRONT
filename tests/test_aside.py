@@ -99,6 +99,9 @@ async def test_a_failed_call_names_no_model(endpoint) -> None:
     m = endpoint[0](_Stub(None))
     out = await m.aside(AnswerRequest(query="q"), endpoint[1]())
     assert out["text"] is None and out["model"] is None
+    # A dead upstream is NOT a rate limit and must not be reported as one -
+    # the page stays silent for this, and speaks for the other.
+    assert out["rate_limited"] is False
 
 
 async def test_client_is_cut_off_after_the_limit(endpoint) -> None:
@@ -113,7 +116,11 @@ async def test_client_is_cut_off_after_the_limit(endpoint) -> None:
         assert (await m.aside(req, http))["model"] == GROQ_MODEL
     assert groq.calls == 5
 
-    assert (await m.aside(req, http))["text"] is None
+    out = await m.aside(req, http)
+    assert out["text"] is None
+    # The refusal is LABELLED, unlike every other empty response. The page shows
+    # "You are being Rate Limited" only on the strength of this flag.
+    assert out["rate_limited"] is True
     assert groq.calls == 5, "a rate-limited client still reached the network"
 
 

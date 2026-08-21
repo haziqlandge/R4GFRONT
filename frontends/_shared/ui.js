@@ -467,10 +467,35 @@ function publishedTable(published) {
  * a stale corpus the disagreement fires hardest on the answers most faithful to
  * it. This labels; it does not adjudicate.
  */
-export function renderAside(el, text, model) {
+export function renderAside(el, text, model, rateLimited = false) {
   if (!el) return;
   const body = el.querySelector(".win-body");
   if (!body) return;
+
+  // THE THROTTLED STATE IS THE ONE EMPTY RESPONSE THAT SPEAKS.
+  //
+  // Every other reason this panel is missing - no key, a dead upstream, an open
+  // breaker - stays silent, because none of them is the visitor's doing and a
+  // page that announces its own broken plumbing helps nobody. Being rate limited
+  // is different: it is a direct consequence of what they just did, it clears on
+  // its own, and telling them means they wait rather than concluding the feature
+  // is broken.
+  if (rateLimited) {
+    el.hidden = false;
+    body.innerHTML = `
+      <div class="sh-aside" data-state="limited">
+        <p class="sh-aside-head">
+          <span class="sh-aside-glyph" aria-hidden="true">⚠</span>
+          <span>external source · not from corpus</span>
+        </p>
+        <p class="sh-aside-text">too many frequent requests ⚠<br>You are being Rate Limited</p>
+        <p class="sh-aside-foot">
+          the external source is capped per visitor, per minute · it frees up on its own, no need to reload
+        </p>
+      </div>`;
+    return;
+  }
+
   if (!text) { body.innerHTML = ""; el.hidden = true; return; }
   el.hidden = false;
   body.innerHTML = `

@@ -49,22 +49,30 @@ source, which is outside it by construction.
 ### 1.1 The per-client rate limit
 
 **Constant:** `ASIDE_RATE_LIMIT`
-**Currently:** `0`
+**Currently:** `15`
 **Meaning:** how many external-source calls one client may make per
 `ASIDE_RATE_WINDOW_SECONDS` (60).
 
 ```python
 # services/rag_core/config.py
-ASIDE_RATE_LIMIT: Final[int] = 0          # 0 = DISABLED
+ASIDE_RATE_LIMIT: Final[int] = 15         # 0 = DISABLED
 ASIDE_RATE_WINDOW_SECONDS: Final[float] = 60.0
 ```
 
 - **`0` means DISABLED**, not "refuse everything". That is deliberate and pinned
   by `tests/test_ratelimit.py::test_zero_disables_the_limiter`. Zero is the off
   switch because it is the one value that could never be a sensible cap.
-- **It was 5**, and 5 is the value it was measured at. It was set to 0 on
-  21 Aug on the owner's instruction. **The limiter, its tests and its wiring are
-  all intact** — this one number turns it back on.
+- It has been **5**, then **0**, and is now **15**. Loose enough that a judge
+  working through the sample questions and a few of their own never meets it;
+  tight enough that a script cannot drain the shared token window in seconds.
+- **Exceeding it is VISIBLE to the visitor.** The endpoint returns
+  `rate_limited: true` and the external panel says *"too many frequent
+  requests ⚠ / You are being Rate Limited"*. Every OTHER empty response — no
+  key, dead upstream, open breaker — stays silent and the panel simply does not
+  appear, because none of those is the visitor's doing. Being throttled is, and
+  it clears on its own, so saying so means they wait instead of concluding the
+  feature is broken. If you change this behaviour, change `renderAside()` in
+  `frontends/_shared/ui.js` and the `rate_limited` flag in `main.py` together.
 
 **To change it:** edit the number, restart `rag_core`, confirm on `/health`.
 
@@ -74,16 +82,18 @@ curl -s http://127.0.0.1:8000/health
 
 `aside.per_client_per_minute` reports the value, or `null` when it is `0`.
 
-**To verify it actually bites** (only meaningful when it is not 0 — set it to 2
-first if you want a quick test):
+**To verify it actually bites**, send one more than the limit from a single
+client. Every call must carry the SAME `X-Forwarded-For`, since that is the
+bucket key:
 
 ```bash
-for i in 1 2 3 4 5 6 7; do curl -s -X POST http://127.0.0.1:8000/v1/aside -H "Content-Type: application/json" -H "X-Forwarded-For: 203.0.113.7" -d '{"query":"who is the mayor of new york city"}' | head -c 120; echo; done
+python -c "import httpx; [print(i+1, httpx.post('http://127.0.0.1:8000/v1/aside', json={'query':'who is elon musk'}, headers={'X-Forwarded-For':'203.0.113.99'}, timeout=40).json().get('rate_limited')) for i in range(17)]"
 ```
 
-Calls past the limit return `{"text": null, "model": null, ...}` in ~1 ms with no
-network touched. That is not an error — the page renders a null aside as no panel
-at all, which is the same thing a dead upstream produces.
+Expect `False` for the first 15 and `True` after. A refused call returns in ~1 ms
+with no network touched — that is the limiter running in FRONT of the circuit
+breaker, so a capped client never records a failure against a breaker that is
+protecting other visitors.
 
 **Why it exists, before you leave it off permanently.** The external source and
 the Band B generative fallback share ONE free-tier Groq key and one 12,000-token
