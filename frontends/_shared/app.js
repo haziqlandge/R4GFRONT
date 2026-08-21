@@ -22,7 +22,7 @@
  *   data-sh="samples"    container that gets sample question buttons
  */
 
-import { Recorder, Analytics, ask, aside, transcribe, openLiveTranscript, health, fmt, esc, modelMs, SAMPLE_QUERIES } from "./core.js";
+import { Recorder, Analytics, ask, aside, transcribe, openLiveTranscript, health, fmt, esc, modelMs, externalRows, SAMPLE_QUERIES } from "./core.js";
 import { renderAnswer, renderAside, renderWaterfall, renderAnalytics, renderHealth } from "./ui.js";
 import { BANDS, ROUTING, PROJECT } from "./data.js";
 
@@ -222,28 +222,27 @@ export function boot() {
   let lastRes = null;    // so a view switch can repaint without re-asking
   let lastSample = null; // the analytics row for lastRes, amended when the
                          // external source returns
-  let srcMs = null;      // this question's external-source round trip, ms
 
   function paintTiming() {
     if (el.waterfall) {
-      renderWaterfall(el.waterfall, lastRes?.trace ?? null, PROJECT.budgetMs, timingView, srcMs);
+      renderWaterfall(el.waterfall, lastRes?.trace ?? null, PROJECT.budgetMs, timingView, lastSample);
     }
     // The big readout follows the switch too. Showing our 74 ms beside a
     // waterfall that includes the model's 551 ms, or the reverse, is how the two
     // got conflated in the first place.
     const external = timingView === "external";
-    if (el.totalK) el.totalK.textContent = external ? "with source" : "pipeline";
+    if (el.totalK) el.totalK.textContent = external ? "external" : "pipeline";
     if (el.boundary) {
       // Explains the HEADLINE NUMBER, and nothing else - the waterfall caption
       // below covers the bars and the analytics panel covers the distribution.
       // Three captions saying the same sentence is worse than two saying nothing.
       el.boundary.textContent = external
-        ? "this number includes one hop out to a hosted model and back. that hop is somebody else's queue, which is why the 200 ms claim is measured without it rather than stretched around it."
+        ? "everything on this question that happened somewhere we do not control. our own retrieval and reranking are not counted here - they are the other view - so the two add up to the wall clock rather than overlapping."
         : "pipeline is the 200 ms claim. speech is a network call to sarvam and is timed on its own line, because you time from when you stop speaking.";
     }
     if (el.total) {
       const ms = !lastRes?.trace ? null
-        : external ? lastRes.trace.total_ms + (srcMs ?? 0)
+        : external ? externalRows(lastSample).reduce((a, [, v]) => a + v, 0)
         : modelMs(lastRes.trace);
       el.total.textContent = ms === null ? "-" : fmt(ms, 1);
       // Never flag the external view as over budget: it was never in one.
@@ -268,7 +267,6 @@ export function boot() {
     analytics.clear();
     lastRes = null;
     lastSample = null;
-    srcMs = null;
     timingView = "model";
     analyticsView = "model";
     if (el.timingView) el.timingView.textContent = "model";
@@ -311,7 +309,6 @@ export function boot() {
     setError("");
     document.body.dataset.busy = "true";
     renderAside(el.aside, null);   // clear the previous external answer first
-    srcMs = null;                  // and its timing, before the new one arrives
     try {
       const res = await ask(query, mode);
 
@@ -330,14 +327,14 @@ export function boot() {
       if (mode === "accurate") {
         const startedAt = performance.now();
         const sample = lastSample;          // pinned: another question may land first
-        aside(query).then(({ text, model }) => {
+        aside(query).then(({ text, model, upstreamMs, usage }) => {
           // Wall clock from request to resolve, which is the honest figure for
           // "what did this panel cost" - it is a browser-to-service round trip
           // and there is no server trace to read it off. Recorded even when the
           // call came back empty: a rate-limited or failed call still spent its
           // time, and hiding those would flatter the external percentiles.
           const ms = performance.now() - startedAt;
-          analytics.attachExternalSource(sample, ms);
+          analytics.attachExternalSource(sample, ms, upstreamMs, usage);
 
           // The mode can change, or another question can be asked, while this is
           // in flight. Only paint if the answer it belongs to is still showing.
@@ -346,7 +343,6 @@ export function boot() {
           // panel carries no citation and no grounding check, so an
           // unattributed one would be the only unlabelled claim on the page.
           if (mode === "accurate" && el.transcript?.textContent === query) {
-            srcMs = ms;
             renderAside(el.aside, text, model);
             paintTiming();   // the external view has its last row now
           }

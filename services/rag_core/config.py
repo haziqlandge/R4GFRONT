@@ -606,7 +606,12 @@ GROQ_CONTEXT_PASSAGES: Final[int] = 3
 # It is deliberately in front of the circuit breaker rather than behind it. The
 # breaker reacts to an upstream that has already been pushed over; this declines
 # to push it over. They are different jobs and both are wanted.
-ASIDE_RATE_LIMIT: Final[int] = 5
+# SET TO 0 = DISABLED, 21 Aug, on the owner's call. The limiter and its tests
+# are intact; this is the only line that turns it back on, and 5 is the value it
+# was measured at. Restore it before the site is public for any length of time -
+# everything in the paragraphs above is still true, the exposure just is not
+# being taken right now.
+ASIDE_RATE_LIMIT: Final[int] = 0
 ASIDE_RATE_WINDOW_SECONDS: Final[float] = 60.0
 
 # --------------------------------------------------------------------------

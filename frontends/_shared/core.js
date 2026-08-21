@@ -136,7 +136,7 @@ export function openLiveTranscript({ onPartial, onFinal, onError } = {}) {
  * exceeded rate limit both look like from here.
  */
 export async function aside(query) {
-  const none = { text: null, model: null };
+  const none = { text: null, model: null, upstreamMs: 0, usage: null };
   try {
     const res = await fetch(`${RAG_CORE}/v1/aside`, {
       method: "POST",
@@ -145,7 +145,17 @@ export async function aside(query) {
     });
     if (!res.ok) return none;
     const body = await res.json();
-    return { text: body?.text || null, model: body?.model || null };
+    return {
+      text: body?.text || null,
+      model: body?.model || null,
+      // How long the hosted model itself took, measured server-side around the
+      // call alone. The caller also knows the wall clock of the whole request,
+      // and the difference between the two is our own transport - which is what
+      // lets the external panel separate "the provider was slow" from "the
+      // network was slow" rather than reporting one number for both.
+      upstreamMs: typeof body?.upstream_ms === "number" ? body.upstream_ms : 0,
+      usage: body?.usage && typeof body.usage === "object" ? body.usage : null,
+    };
   } catch {
     return none;
   }
@@ -322,6 +332,78 @@ export const LLM_STAGE = "answer_generative";
  */
 export const EXTERNAL_SOURCE_STAGE = "external_source";
 
+/**
+ * The rows the EXTERNAL view is built from.
+ *
+ * NOT the pipeline's stages. An earlier version listed all eight of ours beside
+ * the external call, which read as a claim that the hosted model had done the
+ * reranking - `rerank 96.59` under a heading that says EXTERNAL is a sentence
+ * about the wrong system. Retrieval, reranking and answer selection are ours and
+ * they belong in the model view; this view answers "what did the work we do not
+ * control cost, and where did it go".
+ *
+ *   compose_answer    the model writing from OUR passages, when routed
+ *   queue_wait        waiting for a slot at the provider
+ *   read_question     the provider reading our question
+ *   write_answer      the provider generating the answer
+ *   provider_network  the wire to and from the provider
+ *   browser_hop       this browser to our own service and back
+ */
+export const EXTERNAL_ROWS = {
+  GENERATIVE: "compose_answer",
+  QUEUE: "queue_wait",
+  PROMPT: "read_question",
+  WRITE: "write_answer",
+  WIRE: "provider_network",
+  TRANSPORT: "browser_hop",
+};
+
+/**
+ * The external breakdown for one sample, as [name, ms] pairs.
+ *
+ * Every row is MEASURED, and three come from the provider's own usage block
+ * rather than from anything this project inferred: queue_time, prompt_time and
+ * completion_time. provider_network is whatever the provider did not account
+ * for, and browser_hop is the rest of the request the browser timed.
+ *
+ * Measured on one call - 745.6 ms wall, of which 312.4 queued, 4.5 reading,
+ * 75.4 writing, and ~353 on the wire - GENERATION IS THE SMALLEST PART. That is
+ * not what a reader would guess, and showing it is the point of breaking this
+ * out instead of printing one number for the whole trip.
+ *
+ * Rows are omitted rather than zeroed when the thing did not happen. A row
+ * reading 0.00 says "this was free"; an absent row says "this did not occur",
+ * and for a call that was never made - not routed, no key, refused by the rate
+ * limit - the second one is the true statement.
+ */
+export function externalRows(sample) {
+  const rows = [];
+  if (!sample) return rows;
+
+  if (sample.extMs > 1) rows.push([EXTERNAL_ROWS.GENERATIVE, sample.extMs]);
+
+  const u = sample.srcUsage || {};
+  const queue = u.queue_time ?? 0;
+  const prompt = u.prompt_time ?? 0;
+  const write = u.completion_time ?? 0;
+  if (queue > 0) rows.push([EXTERNAL_ROWS.QUEUE, queue]);
+  if (prompt > 0) rows.push([EXTERNAL_ROWS.PROMPT, prompt]);
+  if (write > 0) rows.push([EXTERNAL_ROWS.WRITE, write]);
+
+  if (sample.srcUpstreamMs > 0) {
+    // Clamped at zero: the provider's clock and ours are different machines,
+    // and a few ms of skew must not be drawn as a negative bar.
+    const wire = Math.max(0, sample.srcUpstreamMs - queue - prompt - write);
+    if (wire > 0) rows.push([EXTERNAL_ROWS.WIRE, wire]);
+  }
+
+  if (sample.srcMs != null) {
+    const hop = Math.max(0, sample.srcMs - (sample.srcUpstreamMs ?? 0));
+    if (hop > 0) rows.push([EXTERNAL_ROWS.TRANSPORT, hop]);
+  }
+  return rows;
+}
+
 /** ms this request spent inside the hosted model. 0 when it never called it. */
 export function externalMs(trace) {
   const s = (trace?.stages || []).find((x) => x.name === LLM_STAGE);
@@ -362,13 +444,29 @@ export class Analytics {
    * Recorded even when it returned nothing - a refused or rate-limited call
    * still spent its time, and dropping those would flatter the figure.
    */
-  attachExternalSource(sample, ms) {
+  attachExternalSource(sample, ms, upstreamMs = 0, usage = null) {
     if (!sample || typeof ms !== "number" || !isFinite(ms) || ms < 0) return;
     sample.srcMs = ms;
+    sample.srcUsage = usage || null;
+    // Clamped to the wall clock it is a part of. A server figure larger than the
+    // browser's would make `transport` negative, which cannot have happened and
+    // would be drawn as a bar.
+    sample.srcUpstreamMs = Math.max(0, Math.min(ms, upstreamMs || 0));
   }
 
-  /** What a request cost once everything that left the process is counted. */
-  static externalTotal(s) { return s.ms + (s.srcMs ?? 0); }
+  /**
+   * What the work we do NOT control cost on this request.
+   *
+   * External work only - the generative call plus the external-source request -
+   * and deliberately not `total_ms + srcMs`. The two views are disjoint: MODEL
+   * is our pipeline, EXTERNAL is theirs, and they sum to the wall clock. An
+   * external figure that silently included our retrieval and reranking was the
+   * same category error as listing `rerank` among its rows.
+   */
+  static externalTotal(s) {
+    const gen = s.extMs > 1 ? s.extMs : 0;
+    return gen + (s.srcMs ?? 0);
+  }
 
   /**
    * Did this request leave the process?
@@ -411,7 +509,9 @@ export class Analytics {
     if (!res?.trace) return null;
     const sample = {
       ms: res.trace.total_ms,
-      srcMs: null,        // filled in by attachExternalSource when it returns
+      srcMs: null,          // whole external-source request, browser wall clock
+      srcUpstreamMs: null,  // the hosted model's share of it, server-measured
+      srcUsage: null,       // the provider's own breakdown of that share
       modelMs: modelMs(res.trace),
       extMs: externalMs(res.trace),
       usedNetwork: Analytics.usedNetwork(res),
@@ -493,16 +593,16 @@ export class Analytics {
   stageMedians(view = "model") {
     const acc = {};
     for (const s of this.samples) {
+      if (view === "external") {
+        // Only external work. Our stages are not listed here at all - see
+        // externalRows() for why putting them here was a misstatement.
+        for (const [name, ms] of externalRows(s)) (acc[name] ||= []).push(ms);
+        continue;
+      }
       for (const st of s.stages) {
         if (st.status === "skipped") continue;
-        const ms = (view === "model" && st.name === LLM_STAGE) ? 0 : st.ms;
+        const ms = st.name === LLM_STAGE ? 0 : st.ms;
         (acc[st.name] ||= []).push(ms);
-      }
-      // The external source is not a pipeline stage - it is a separate request
-      // on a separate endpoint - so it only exists in the external view, and
-      // only for questions that actually made the call.
-      if (view === "external" && s.srcMs != null) {
-        (acc[EXTERNAL_SOURCE_STAGE] ||= []).push(s.srcMs);
       }
     }
     return Object.entries(acc).map(([name, arr]) => {

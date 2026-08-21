@@ -217,7 +217,7 @@ class GroqClient:
             return None
         return text
 
-    async def aside(self, query: str) -> str | None:
+    async def aside(self, query: str) -> tuple[str | None, dict[str, float]]:
         """The model answering as itself, with no retrieved context.
 
         Never part of the pipeline and never inside Band A. It is requested by
@@ -229,9 +229,22 @@ class GroqClient:
         It shares the circuit breaker with the generative path on purpose: the
         two draw on one rate limit (ISSUES.md I7, 12,000 tokens per window), and
         an aside must never be the reason the real fallback is unavailable.
+
+        RETURNS THE PROVIDER'S OWN TIMING ALONGSIDE THE TEXT. Groq reports
+        `queue_time`, `prompt_time` and `completion_time` in its usage block, and
+        those three plus the wall clock are what let the external timing panel say
+        WHERE the time went instead of printing one number for the whole trip.
+        Measured on one call: 745.6 ms wall, of which 312.4 was queue, 4.5 was
+        reading the prompt, 75.4 was writing the answer and the remaining 353 was
+        the wire. Generation is the smallest part, which is not what a reader
+        would guess, and is exactly the sort of thing this page exists to show.
+
+        The dict is empty when there is nothing to report - no call made, or a
+        provider that did not send usage - and the panel draws no rows for it
+        rather than drawing zeros.
         """
         if not self.configured or self._client is None or not self.breaker.allows():
-            return None
+            return None, {}
 
         payload = {
             "model": self.model,
@@ -244,6 +257,8 @@ class GroqClient:
             ],
         }
 
+        usage: dict[str, float] = {}
+
         async def _call() -> str:
             assert self._client is not None
             resp = await self._client.post(GROQ_URL, json=payload)
@@ -252,6 +267,14 @@ class GroqClient:
             if resp.status_code >= 400:
                 raise UpstreamUnavailable("groq", f"HTTP {resp.status_code}")
             data = resp.json()
+            u = data.get("usage") or {}
+            # Seconds on the wire, milliseconds everywhere in this project.
+            for key in ("queue_time", "prompt_time", "completion_time", "total_time"):
+                if isinstance(u.get(key), (int, float)):
+                    usage[key] = float(u[key]) * 1000.0
+            for key in ("prompt_tokens", "completion_tokens"):
+                if isinstance(u.get(key), (int, float)):
+                    usage[key] = float(u[key])
             return _clean(data["choices"][0]["message"]["content"] or "")
 
         try:
@@ -259,5 +282,5 @@ class GroqClient:
                 _call, self.breaker, timeout_ms=GROQ_TIMEOUT_MS, retries=0
             )
         except (UpstreamUnavailable, RateLimited, httpx.HTTPError):
-            return None
-        return text or None
+            return None, {}
+        return (text or None), usage

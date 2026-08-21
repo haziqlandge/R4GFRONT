@@ -163,7 +163,10 @@ async def health() -> ORJSONResponse:
             # The aside's model and the per-client cap it is behind. ISSUES.md I35.
             "aside": {
                 "model": STATE.get("aside_model"),
-                "per_client_per_minute": ASIDE_RATE_LIMIT,
+                # 0 means no cap is being enforced. Reported as-is rather than
+                # omitted: "the limiter is off" is a fact about this deployment
+                # that /health should be able to answer.
+                "per_client_per_minute": ASIDE_RATE_LIMIT or None,
             },
         },
     )
@@ -311,19 +314,48 @@ async def aside(req: AnswerRequest, request: Request) -> dict[str, object]:
     `model` names the model that answered, and the page prints it in the panel
     footer. An unattributed panel would be the one unlabelled claim on a site
     whose whole pitch is that every figure names its source.
+
+    `upstream_ms` is how long the hosted model itself took, measured around the
+    call and nothing else. The browser already knows the wall clock of the whole
+    request; subtracting this from it leaves the part that was OUR transport, so
+    the external timing panel can separate "the provider was slow" from "the
+    network was slow" instead of reporting one number and calling it external.
+    It is 0.0 when no call was made - no key, or the rate limit refused it -
+    which is not the same as a call that took no time, and the page draws no row
+    for it in that case.
+
+    `usage` is the provider's own breakdown of that upstream time - queued,
+    reading the prompt, writing the answer - so the panel can say where the time
+    went rather than printing one figure for the whole trip.
     """
     if not STATE.get("ready"):
         raise InvalidQuery("service still warming")
     rt: Runtime = STATE["runtime"]  # type: ignore[assignment]
 
+    none: dict[str, object] = {
+        "text": None, "model": None, "upstream_ms": 0.0, "usage": {},
+    }
+
     if rt.groq is None or not rt.groq.configured:
-        return {"text": None, "model": None}
+        return none
 
     if not ASIDE_LIMIT.allow(client_key(request)):
-        return {"text": None, "model": None}
+        return none
 
-    text = await rt.groq.aside(req.query)
-    return {"text": text, "model": GROQ_MODEL if text else None}
+    started = time.perf_counter()
+    text, usage = await rt.groq.aside(req.query)
+    upstream_ms = (time.perf_counter() - started) * 1000.0
+
+    return {
+        "text": text,
+        "model": GROQ_MODEL if text else None,
+        "upstream_ms": round(upstream_ms, 3),
+        # The provider's own account of where its share went: time queued, time
+        # reading the question, time writing the answer. Passed through
+        # unmodified apart from seconds-to-milliseconds, so the panel reports
+        # what Groq said rather than a number this service inferred.
+        "usage": {k: round(v, 3) for k, v in usage.items()},
+    }
 
 
 @app.exception_handler(RagCoreError)

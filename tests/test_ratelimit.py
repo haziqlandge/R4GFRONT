@@ -99,7 +99,17 @@ def test_idle_clients_are_evicted(monkeypatch) -> None:
     assert rl.snapshot()["tracked_clients"] == 1
 
 
-def test_shipped_config_is_five_per_minute() -> None:
-    """The number the documentation and the /health payload both publish."""
-    assert ASIDE_RATE_LIMIT == 5
+def test_zero_disables_the_limiter() -> None:
+    """0 is the off switch, and it must mean "admit everything" rather than
+    "refuse everything" - a limiter that admits nothing is a broken endpoint,
+    not a policy."""
+    rl = RateLimiter(limit=0, window_seconds=60.0)
+    assert all(rl.allow("a") for _ in range(50))
+
+
+def test_shipped_config() -> None:
+    """The window never changes; the limit is currently 0, meaning disabled on
+    the owner's call. The limiter itself is unchanged and re-enabling it is this
+    one number."""
+    assert ASIDE_RATE_LIMIT == 0
     assert ASIDE_RATE_WINDOW_SECONDS == 60.0

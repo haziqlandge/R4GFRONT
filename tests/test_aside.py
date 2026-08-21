@@ -52,9 +52,9 @@ class _Stub:
         self.configured = configured
         self.calls = 0
 
-    async def aside(self, query: str) -> str | None:
+    async def aside(self, query: str) -> tuple[str | None, dict]:
         self.calls += 1
-        return self.answer
+        return self.answer, {}
 
 
 @pytest.fixture()
@@ -72,7 +72,7 @@ def endpoint(monkeypatch):
         headers: dict[str, str] = {}
         client = type("C", (), {"host": "10.0.0.7"})()
 
-    def build(groq, limit: int = ASIDE_RATE_LIMIT):
+    def build(groq, limit: int = 5):   # explicit: the shipped value is 0 = off
         monkeypatch.setitem(m.STATE, "ready", True)
         monkeypatch.setitem(m.STATE, "runtime", type("RT", (), {"groq": groq})())
         monkeypatch.setattr(m, "ASIDE_LIMIT", RateLimiter(limit, 60.0, "test"))
@@ -86,7 +86,9 @@ async def test_answers_and_names_the_model(endpoint) -> None:
 
     m = endpoint[0](_Stub("Eric Adams is the mayor."))
     out = await m.aside(AnswerRequest(query="who is the mayor of nyc"), endpoint[1]())
-    assert out == {"text": "Eric Adams is the mayor.", "model": GROQ_MODEL}
+    assert out["text"] == "Eric Adams is the mayor."
+    assert out["model"] == GROQ_MODEL
+    assert "upstream_ms" in out and "usage" in out
 
 
 async def test_a_failed_call_names_no_model(endpoint) -> None:
@@ -96,7 +98,7 @@ async def test_a_failed_call_names_no_model(endpoint) -> None:
 
     m = endpoint[0](_Stub(None))
     out = await m.aside(AnswerRequest(query="q"), endpoint[1]())
-    assert out == {"text": None, "model": None}
+    assert out["text"] is None and out["model"] is None
 
 
 async def test_client_is_cut_off_after_the_limit(endpoint) -> None:
@@ -111,7 +113,7 @@ async def test_client_is_cut_off_after_the_limit(endpoint) -> None:
         assert (await m.aside(req, http))["model"] == GROQ_MODEL
     assert groq.calls == 5
 
-    assert await m.aside(req, http) == {"text": None, "model": None}
+    assert (await m.aside(req, http))["text"] is None
     assert groq.calls == 5, "a rate-limited client still reached the network"
 
 
@@ -140,7 +142,7 @@ async def test_unkeyed_upstream_does_not_spend_the_window(endpoint) -> None:
     http = endpoint[1]()
 
     for _ in range(4):
-        assert await m.aside(AnswerRequest(query="q"), http) == {"text": None, "model": None}
+        assert (await m.aside(AnswerRequest(query="q"), http))["text"] is None
     assert groq.calls == 0
     assert m.ASIDE_LIMIT.remaining("10.0.0.7") == 2
 

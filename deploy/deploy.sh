@@ -80,21 +80,40 @@ if (( DO_SERVICES )); then
   curl -fsS --max-time 5 http://127.0.0.1:8001/health | sed 's/^/   gateway /' || echo "   gateway NOT READY"
 fi
 
-# VERIFY OVER HTTPS, NOT ON DISK. DONT-FORGET.md 12A: checking the file you just
-# copied proves nothing, because the whole failure mode is that the copy landed
-# somewhere Caddy is not reading. Fetch the asset the browser fetches.
+# VERIFY OVER HTTPS, NOT ON DISK, AND BY HASH RATHER THAN BY GREP.
+#
+# Checking the file you just copied proves nothing when the whole failure mode is
+# that the copy landed somewhere Caddy is not reading - so this fetches what a
+# browser fetches. And it compares the WHOLE FILE, because both weaker forms have
+# already lied here:
+#
+#   - grepping for a phrase from the newest change reported "ok" for ui.js while
+#     the box served a two-day-old build. The phrase was already in the file.
+#   - `curl ... | grep -q` reported STALE for a file that was correct: grep exits
+#     on the first match, curl dies of SIGPIPE, and the pipeline's status is
+#     curl's. That is the "curl: (23)" you may have seen.
+#
+# Line endings are normalised because the repo checks out CRLF on the Windows box
+# and LF here, so a raw byte comparison would report every file stale forever.
 echo "== serving now"
-for probe in "_shared/ui.js:external source" "_shared/data.js:C4"; do
-  path="${probe%%:*}"; needle="${probe#*:}"
-  if curl -fsS --max-time 10 "$HOST/$path" | grep -q -- "$needle"; then
-    echo "   ok      $path contains '$needle'"
+stale=0
+for f in index.html docs.html console.js theme.css          _shared/app.js _shared/core.js _shared/ui.js _shared/data.js          _shared/docs.js _shared/base.css; do
+  [[ -f "$REPO/frontends/$f" ]] || continue
+  want=$(tr -d '' < "$REPO/frontends/$f" | sha256sum | cut -d' ' -f1)
+  got=$(curl -fsS --max-time 20 "$HOST/$f?v=$RANDOM" 2>/dev/null | tr -d '' | sha256sum | cut -d' ' -f1)
+  if [[ "$want" == "$got" ]]; then
+    echo "   ok      $f"
   else
-    echo "   STALE   $path does NOT contain '$needle'"
+    echo "   STALE   $f"
+    stale=$((stale + 1))
   fi
 done
 
 echo
-echo "If a probe says STALE, the sync did not land. If the browser still shows the"
-echo "old page while these say ok, it is the browser cache - Caddy sends no"
-echo "cache-control on static files, so Chrome will reuse a heuristically cached"
-echo "copy. Ctrl-F5, or DevTools with 'Disable cache' ticked."
+if (( stale == 0 )); then
+  echo "The live site is this build."
+  echo "If the page still looks old in a browser, that is the browser CACHE and not"
+  echo "the deploy - Caddy sends no cache-control on these files. Ctrl-F5."
+else
+  echo "$stale asset(s) did not land. Re-run, or check the rsync output above."
+fi

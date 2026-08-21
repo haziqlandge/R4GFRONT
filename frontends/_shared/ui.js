@@ -8,7 +8,7 @@
  * a rewrite.
  */
 
-import { fmt, esc, LLM_STAGE, EXTERNAL_SOURCE_STAGE, modelMs } from "./core.js";
+import { fmt, esc, LLM_STAGE, externalRows, modelMs } from "./core.js";
 import { SCOPE, VINTAGE } from "./data.js";
 
 /* ------------------------------------------------------------------ */
@@ -246,26 +246,13 @@ export function renderAnswer(el, res, floor = -1.103) {
  * "pipeline is the 200 ms claim", dwarfing every real stage and printing a
  * headline that was mostly Groq's queue.
  */
-export function renderWaterfall(el, trace, budgetMs = 200, view = "model", srcMs = null) {
+export function renderWaterfall(el, trace, budgetMs = 200, view = "model", sample = null) {
   if (!trace) {
     el.innerHTML = `<p class="sh-idle">No run yet.</p>`;
     return;
   }
-  const external = view === "external";
   const budget = trace.budget_ms || budgetMs;
-
-  // THE EXTERNAL TOTAL HAS TO INCLUDE THE EXTERNAL SOURCE, and leaving it out
-  // was the defect this view exists to prevent. answer_generative only runs for
-  // a mid-confidence question - 2 of 15 measured - while the external source is
-  // asked on EVERY accurate question and costs 259 to 583 ms. Counting only the
-  // stage made both views print the same number on 13 of 15 questions, with an
-  // uncounted external answer sitting on screen right above them.
-  const extra = external && srcMs != null ? srcMs : 0;
-  const total = (external ? trace.total_ms : modelMs(trace)) + extra;
-  const over = total > budget;
-  const scale = Math.max(budget, total);
-
-  const row = (name, ms, attrs = "") => `
+  const row = (name, ms, scale, attrs = "") => `
       <div class="sh-wf-row" ${attrs}>
         <span class="sh-wf-name">${esc(name)}</span>
         <span class="sh-wf-track">
@@ -274,36 +261,53 @@ export function renderWaterfall(el, trace, budgetMs = 200, view = "model", srcMs
         <span class="sh-num sh-wf-ms">${fmt(ms, 2)}</span>
       </div>`;
 
-  let bars = trace.stages.map((s) => {
-    const ms = (!external && s.name === LLM_STAGE) ? 0 : s.ms;
-    return row(s.name, ms, `data-status="${esc(s.status)}" data-llm="${s.name === LLM_STAGE}"`);
-  }).join("");
-
-  // Appended last because that is when it happens: the browser asks for it only
-  // after our answer has painted. Absent until it returns, and absent for good
-  // if the call was refused - a row claiming 0.00 would read as "free" when what
-  // actually happened is "never made".
-  if (external && srcMs != null) {
-    bars += row(EXTERNAL_SOURCE_STAGE, srcMs, `data-status="external" data-llm="true"`);
+  if (view === "external") {
+    // NOT the pipeline's stages. Listing input_guard, rerank and the rest here
+    // read as a claim that the hosted model had done the reranking - "rerank
+    // 96.59" under a heading that says EXTERNAL is a sentence about the wrong
+    // system. Those are ours and they belong in the model view. This view is
+    // only the work we do not control, broken down by where it went.
+    const rows = externalRows(sample);
+    if (!rows.length) {
+      el.innerHTML = `
+        <div class="sh-wf" data-view="external">
+          <p class="sh-idle">Nothing left the process on this question. Retrieval answered it from the corpus alone, which is the fast path doing its job.</p>
+        </div>`;
+      return;
+    }
+    const total = rows.reduce((a, [, ms]) => a + ms, 0);
+    const scale = Math.max(...rows.map(([, ms]) => ms));
+    return void (el.innerHTML = `
+      <div class="sh-wf" data-over="${total > budget}" data-view="external">
+        <div class="sh-wf-total">
+          <span class="sh-num sh-wf-big">${fmt(total, 1)}</span>
+          <span class="sh-wf-unit">ms</span>
+          <span class="sh-wf-verdict">spent outside this system</span>
+        </div>
+        <div class="sh-wf-rows">${rows.map(([n, ms]) => row(n, ms, scale, 'data-status="external"')).join("")}</div>
+        <p class="sh-fineprint">Queue, read and write are the provider's own figures, not ours. Generation is usually the smallest of the three - most of the wait is queueing and wire.</p>
+      </div>`);
   }
 
+  // MODEL: our pipeline, every stage, with the one that is not ours pinned to
+  // 0.00 rather than dropped. A missing row looks like a row somebody forgot; a
+  // zero row is the claim itself.
+  const total = modelMs(trace);
+  const scale = Math.max(budget, total);
+  const bars = trace.stages.map((st) => {
+    const ms = st.name === LLM_STAGE ? 0 : st.ms;
+    return row(st.name, ms, scale, `data-status="${esc(st.status)}" data-llm="${st.name === LLM_STAGE}"`);
+  }).join("");
+
   el.innerHTML = `
-    <div class="sh-wf" data-over="${over}" data-view="${external ? "external" : "model"}">
+    <div class="sh-wf" data-over="${total > budget}" data-view="model">
       <div class="sh-wf-total">
         <span class="sh-num sh-wf-big">${fmt(total, 1)}</span>
         <span class="sh-wf-unit">ms</span>
-        <span class="sh-wf-verdict">${external
-          ? "with the external source counted"
-          : over ? `over the ${budget} ms budget` : `of a ${budget} ms budget`}</span>
+        <span class="sh-wf-verdict">${total > budget ? `over the ${budget} ms budget` : `of a ${budget} ms budget`}</span>
       </div>
       <div class="sh-wf-rows">${bars}</div>
-      <!-- Each caption on this page has ONE job and must not restate its
-           neighbours. This one is about the BARS: which of them is ours. The
-           readout above it explains the headline number, and the analytics panel
-           explains the distribution. -->
-      <p class="sh-fineprint">${external
-        ? "Seven of these bars are ours. answer_generative is a hosted model composing an answer from the passages the rows above it retrieved, and its length is that provider's queue rather than anything this pipeline controls."
-        : "Timed stage by stage inside the process, on a monotonic clock, from the query arriving to the response being serialized. Reranking is where the budget goes: a cross encoder scoring the top passages is most of every run, and everything else together is single digit milliseconds."}</p>
+      <p class="sh-fineprint">Timed stage by stage inside the process, on a monotonic clock, from the query arriving to the response being serialized. Reranking is where the budget goes: a cross encoder scoring the top passages is most of every run, and everything else together is single digit milliseconds.</p>
     </div>`;
 }
 

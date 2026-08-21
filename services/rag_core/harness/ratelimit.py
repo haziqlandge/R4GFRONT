@@ -65,6 +65,12 @@ class RateLimiter:
         and record afterwards - by which time the window has moved and the count
         describes a different sixty seconds than the one that was checked.
         """
+        # A limit of zero means DISABLED, not "refuse everything". Zero is the
+        # off switch because it is the one value that cannot be a sensible cap -
+        # a limiter that admits nothing is a broken endpoint, not a policy - so
+        # it can carry the meaning without colliding with a real setting.
+        if self.limit <= 0: return True
+
         now = time.monotonic()
         cutoff = now - self.window_seconds
 
