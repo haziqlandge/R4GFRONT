@@ -559,10 +559,9 @@ export class Analytics {
    * Same requests, same n, both views. The only difference is the model.
    */
   stats(view = "model") {
-    if (!this.samples.length) return null;
-    const sorted = this.samples
-      .map((s) => (view === "external" ? Analytics.externalTotal(s) : s.modelMs))
-      .sort((a, b) => a - b);
+    const rows = this.rows(view);
+    if (!rows.length) return null;
+    const sorted = [...rows].sort((a, b) => a - b);
     return {
       n: sorted.length,
       p50: Analytics.pct(sorted, 50),
@@ -616,9 +615,28 @@ export class Analytics {
   }
 
   /** Every sample in order, for the sparkline, in the requested view. */
-  series(view = "model") {
-    return this.samples.map((s) =>
-      view === "external" ? Analytics.externalTotal(s) : s.modelMs);
+  series(view = "model") { return this.rows(view); }
+
+  /**
+   * The values one view is built from, in the order they were asked.
+   *
+   * MODEL takes every sample, including ones asked in fast mode: `modelMs` is
+   * our pipeline with the external stage removed, so a fast request and an
+   * accurate one measure exactly the same work and belong in one distribution.
+   * That is what lets the session survive a mode switch instead of being thrown
+   * away every time somebody toggles to compare the two.
+   *
+   * EXTERNAL takes only the requests that actually called out. A fast request
+   * has no external work, so including it would contribute a ZERO - and a
+   * handful of zeros drags a percentile somewhere no request ever was. The two
+   * views therefore report different `n` in a mixed session, which is correct:
+   * they are describing different sets of requests because only one set exists.
+   */
+  rows(view = "model") {
+    if (view !== "external") return this.samples.map((s) => s.modelMs);
+    return this.samples
+      .map((s) => Analytics.externalTotal(s))
+      .filter((v) => v > 0);
   }
 
   /** Download the session as JSON, so a run can be kept as evidence. */

@@ -404,7 +404,7 @@ export function renderAnalytics(el, analytics, published, view = "model") {
           ${["p50", "p70", "p90", "p100"].map((k) => `
             <div class="sh-an-cell" data-over="${a[k] > 200}">
               <span class="sh-an-k">${k.toUpperCase()}</span>
-              <span class="sh-num sh-an-v">${fmt(a[k], 1)}</span>
+              <span class="sh-num sh-an-v">${fmt(a[k], 1)}<span class="sh-unit">ms</span></span>
             </div>`).join("")}
         </div>
         ${sparkline(analytics.series(view), view)}

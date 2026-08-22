@@ -244,7 +244,9 @@ export function boot() {
       const ms = !lastRes?.trace ? null
         : external ? externalRows(lastSample).reduce((a, [, v]) => a + v, 0)
         : modelMs(lastRes.trace);
-      el.total.textContent = ms === null ? "-" : fmt(ms, 1);
+      // innerHTML, not textContent, because the unit is a nested span: at this
+      // size the digits are the figure and "ms" must not compete with them.
+      el.total.innerHTML = ms === null ? "-" : `${fmt(ms, 1)}<span class="sh-unit">ms</span>`;
       // Never flag the external view as over budget: it was never in one.
       el.total.dataset.over = String(!external && ms !== null && ms > PROJECT.budgetMs);
     }
@@ -264,7 +266,14 @@ export function boot() {
    * and starting from MODEL means a reader always begins at our own numbers.
    */
   function resetViews() {
-    analytics.clear();
+    // THE SESSION SURVIVES. `analytics.clear()` used to run here, on the
+    // reasoning that fast and accurate do not produce comparable samples - and
+    // for the EXTERNAL series that is true, which is why that one filters
+    // (see Analytics.stats). For the MODEL series it is not: `modelMs` is our
+    // pipeline with the external stage removed, so a fast sample and an
+    // accurate one measure exactly the same work and belong in one
+    // distribution. Clearing threw away a growing n every time somebody
+    // toggled the mode to compare the two.
     lastRes = null;
     lastSample = null;
     timingView = "model";
@@ -274,7 +283,7 @@ export function boot() {
     syncViewSwitches();
     paintTiming();
     paintAnalytics();
-    if (el.total) { el.total.textContent = "-"; el.total.dataset.over = "false"; }
+    if (el.total) { el.total.innerHTML = "-"; el.total.dataset.over = "false"; }
   }
 
   /**
@@ -301,7 +310,9 @@ export function boot() {
     el.answer && renderAnswer(el.answer, res, ROUTING.tauLow);
     paintTiming();
     paintAnalytics();
-    if (el.stt) el.stt.textContent = sttMs === null ? "-" : fmt(sttMs, 0);
+    if (el.stt) {
+      el.stt.innerHTML = sttMs === null ? "-" : `${fmt(sttMs, 0)}<span class="sh-unit">ms</span>`;
+    }
   }
 
   async function submit(query) {
