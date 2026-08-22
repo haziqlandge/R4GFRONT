@@ -23,7 +23,6 @@ The brief asks for sub-200ms. We publish three bands and state the boundary for 
 |---|---|---|---|
 | **A — Core RAG** | Transcript in → response serialized. Guardrails, embedding, dense + lexical search, fusion, reranking, routing, extractive answering, groundedness. No STT, no LLM network call. | < 200 ms | **95.89 ms P50 en, 115.88 ms hi**, on the deployed box. P100 183.35 / 182.20, 0% over budget |
 | **B — Core RAG + generation** | Band A routed through the Groq LLM fallback. | reported honestly | **643.83 ms P50.** Over budget, published anyway |
-| **C — Full wall clock** | User stops speaking → answer painted. | reported honestly | Sarvam alone 527-911 ms. Reported separately |
 
 250 frozen queries x 2 passes per language, 30 warmup runs discarded, measured
 **through the deployed service** in Mumbai — `Latency.md` 6 has always required
