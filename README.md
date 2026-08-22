@@ -1,27 +1,27 @@
-# Shruti — a voice-enabled RAG system
+# Shruti: a voice-enabled RAG system
 
-Team **OK4T** · HH Goa 2026, Shortlisting Task 2 · `#RAGInGoa`
+Team **OK4T** · HH Goa 2026, Task 2 · `#RAGInGoa`
 
 **Live: https://shrutirag.duckdns.org**
 
-Speak a question in Hindi or English, get an answer grounded in the AI4Bharat MSMARCO-XI corpus, cited, with a live per-stage latency breakdown — and a system that refuses to answer when it cannot ground the answer.
+Speak a question in Hindi or English, get an answer grounded in the AI4Bharat MSMARCO-XI corpus, cited, with a live per-stage latency breakdown - and a system that refuses to answer when it cannot ground the answer.
 
 ```
 Voice → STT → input guard → embed → hybrid retrieve → fuse → rerank
      → confidence route → [extractive | LLM | abstain] → output guard → response
 ```
 
-**Status: Phases 0-5, 7 and 8 complete, Phase 6 partial.** Deployed at **https://shrutirag.duckdns.org**. Band A P50 **95.89 ms** English / **115.88 ms** Hindi against a 200 ms budget, measured through the deployed service, **0 of 998 requests over budget**, en Recall@10 **0.878**, **seven chunking strategies** built and compared in one process, 246 tests green, `mypy --strict` clean. Voice input, reranking, routing, abstention, guardrails and the site all work end to end. Guardrail layers 1 and 4 are live and measured over 60 adversarial cases plus 16 controls; layer 2 was measured and deliberately not shipped ([`ISSUES.md`](ISSUES.md) I27). **Phase 9 videos are now the top priority.** See [`HANDOFF.md`](HANDOFF.md) 1A to reach the deployed box and 1B for what changed on 21 August, [`DONT-FORGET.md`](DONT-FORGET.md) 12 for the decisions waiting on a human, and read [`ISSUES.md`](ISSUES.md) I24-I27 before quoting any Phase 5 or 6 number. **Two figures are routinely misread and both are documented:** Hit@1 measures the exact `is_selected` label, and 75% of its "misses" retrieve the right passage group ([`ISSUES.md`](ISSUES.md) I33), so 62.1% is not "62% of answers are useless"; and no threshold predicts whether an answer is wrong - three candidates measured, best AUC 0.606 against a 0.500 coin flip ([`ISSUES.md`](ISSUES.md) I31, I33).
+Deployed at **https://shrutirag.duckdns.org**. Band A P50 **95.89 ms** English / **115.88 ms** Hindi against a 200 ms budget, measured through the deployed service, **0 of 998 requests over budget**, en Recall@10 **0.878**, **seven chunking strategies** built and compared in one process, 246 tests green, `mypy --strict` clean. Voice input, reranking, routing, abstention, guardrails and the site all work end to end. Guardrail layers 1 and 4 are live and measured over 60 adversarial cases plus 16 controls; layer 2 was measured and deliberately not shipped ([`ISSUES.md`](ISSUES.md) I27). **Phase 9 videos are now the top priority.** See [`HANDOFF.md`](HANDOFF.md) 1A to reach the deployed box and 1B for what changed on 21 August, [`DONT-FORGET.md`](DONT-FORGET.md) 12 for the decisions waiting on a human, and read [`ISSUES.md`](ISSUES.md) I24-I27 before quoting any Phase 5 or 6 number. **Two figures are routinely misread and both are documented:** Hit@1 measures the exact `is_selected` label, and 75% of its "misses" retrieve the right passage group ([`ISSUES.md`](ISSUES.md) I33), so 62.1% is not "62% of answers are useless"; and no threshold predicts whether an answer is wrong - three candidates measured, best AUC 0.606 against a 0.500 coin flip ([`ISSUES.md`](ISSUES.md) I31, I33).
 
 ---
 
 ## The honest version of the latency claim
 
-The brief asks for sub-200ms. We publish three bands and state the boundary for each, because the alternative looks like hiding something.
+The brief asks for sub-200ms. We publish three bands and state the boundary for each.
 
 | Band | Boundary | Target | Measured |
 |---|---|---|---|
-| **A — Core RAG** | Transcript in → response serialized. Guardrails, embedding, dense + lexical search, fusion, reranking, routing, extractive answering, groundedness. No STT, no LLM network call. | < 200 ms | **95.89 ms P50 en, 115.88 ms hi**, on the deployed box. P100 183.35 / 182.20, 0 of 998 over budget |
+| **A — Core RAG** | Transcript in → response serialized. Guardrails, embedding, dense + lexical search, fusion, reranking, routing, extractive answering, groundedness. No STT, no LLM network call. | < 200 ms | **95.89 ms P50 en, 115.88 ms hi**, on the deployed box. P100 183.35 / 182.20, 0% over budget |
 | **B — Core RAG + generation** | Band A routed through the Groq LLM fallback. | reported honestly | **643.83 ms P50.** Over budget, published anyway |
 | **C — Full wall clock** | User stops speaking → answer painted. | reported honestly | Sarvam alone 527-911 ms. Reported separately |
 
@@ -32,7 +32,7 @@ instead.
 
 **It did not start out meeting the target, and how it got there is the more
 useful story.** The first deploy measured English P50 190.47 ms and Hindi
-200.87 ms — over the line, with the cross-encoder at 94% of the budget. Two
+200.87 ms, over the line, with the cross-encoder at 94% of the budget. Two
 levers were pulled from the optimization list: a bigger instance, then rerank
 depth 5 to 3. Both were reasonable and neither was the fix.
 
@@ -171,20 +171,4 @@ Check <http://localhost:8000/health> before testing. It reports which capabiliti
 | `scripts/` | Offline: download, freeze, index build, ONNX export, benchmarks, evals |
 | `bench/` | Frozen query sets and dated results |
 
-## Before you change anything
 
-[`DONT-FORGET.md`](DONT-FORGET.md) — the facts that are easy to get wrong and expensive to rediscover, each with the file that proves it. Which chunking strategies were actually built, why one published threshold is not the calibrated one, what the abstention floor does and does not detect, and why serving the site on any port but 3000 breaks speech and not typing.
-
-## Joining the project
-
-**On a new machine? Start with [`PREREQUISITES.md`](PREREQUISITES.md)** — per-box setup from bare metal to a verified working box.
-
-Then [`HANDOFF.md`](HANDOFF.md) — what a human still has to do by hand, and the traps already paid for.
-
-## Planning documents
-
-[`Devices.md`](Devices.md) the three build machines · [`Phase3-Parallel.md`](Phase3-Parallel.md) the Phase 3 job board · [`ISSUES.md`](ISSUES.md) measured open problems
-
-[`Project.md`](Project.md) scope and success criteria · [`Architecture.md`](Architecture.md) the design · [`Rules.md`](Rules.md) hard constraints · [`Phases.md`](Phases.md) the schedule · [`Latency.md`](Latency.md) the budget · [`Design.md`](Design.md) the interface system · [`Submission.md`](Submission.md) deliverables · [`Memory.md`](Memory.md) decisions, reversals and what they cost
-
-`Memory.md` is the one to read first on a cold start. It carries the *why*.
