@@ -4,7 +4,7 @@ Team OK4T, HH Goa 2026 Task 2.
 
 ---
 
-## 1. System overview
+## 1. System overview.
 
 Three deployable units. Keep them separate so the latency-critical one can be tuned independently.
 
